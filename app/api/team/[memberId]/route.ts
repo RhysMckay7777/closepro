@@ -4,7 +4,6 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { users, userOrganizations } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { desc } from 'drizzle-orm';
 
 /**
  * Remove a team member

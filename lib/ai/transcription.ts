@@ -212,7 +212,7 @@ async function startTranscription(audioUrl: string): Promise<string> {
   return data.id;
 }
 
-async function getTranscriptionStatus(transcriptId: string): Promise<{
+export async function getTranscriptionStatus(transcriptId: string): Promise<{
   status: 'queued' | 'processing' | 'completed' | 'error';
   result?: TranscriptionResult;
   error?: string;
