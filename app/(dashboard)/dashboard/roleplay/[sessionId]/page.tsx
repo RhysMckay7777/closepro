@@ -1,0 +1,564 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, MoreVertical, Loader2, User, Bot } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { cn } from '@/lib/utils';
+
+interface Message {
+  id?: string;
+  role: 'rep' | 'prospect';
+  content: string;
+  timestamp: number;
+  messageType?: 'text' | 'voice';
+  audioUrl?: string | null;
+  metadata?: any;
+}
+
+interface Session {
+  id: string;
+  status: string;
+  inputMode: string;
+  offerName?: string;
+}
+
+interface UserProfile {
+  name: string;
+  email: string;
+  profilePhoto: string | null;
+}
+
+export default function RoleplaySessionPage() {
+  const params = useParams();
+  const router = useRouter();
+  const sessionId = params.sessionId as string;
+
+  const [session, setSession] = useState<Session | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [activeSpeaker, setActiveSpeaker] = useState<'rep' | 'prospect' | null>(null);
+  const [showTranscript, setShowTranscript] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const transcriptEndRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
+  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const activeSpeakerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    fetchSession();
+    fetchUserProfile();
+    initializeVoice();
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (activeSpeakerTimeoutRef.current) {
+        clearTimeout(activeSpeakerTimeoutRef.current);
+      }
+    };
+  }, [sessionId]);
+
+  const fetchUserProfile = async () => {
+    try {
+      const response = await fetch('/api/profile');
+      if (response.ok) {
+        const data = await response.json();
+        setUserProfile({
+          name: data.name || 'User',
+          email: data.email || '',
+          profilePhoto: data.profilePhoto || null,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
+    }
+  };
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const fetchSession = async () => {
+    try {
+      const response = await fetch(`/api/roleplay/${sessionId}`);
+      const data = await response.json();
+      setSession(data.session);
+      setMessages(data.messages || []);
+    } catch (error) {
+      console.error('Error fetching session:', error);
+    }
+  };
+
+  const initializeVoice = () => {
+    // Initialize Web Speech API
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+      const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setInput(transcript);
+        setIsListening(false);
+        handleSend(transcript);
+      };
+
+      recognitionRef.current.onerror = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+
+    synthRef.current = window.speechSynthesis;
+  };
+
+  const handleSend = async (messageText?: string) => {
+    const text = messageText || input.trim();
+    if (!text || loading) return;
+
+    const repMessage: Message = {
+      role: 'rep',
+      content: text,
+      timestamp: Date.now(),
+      messageType: session?.inputMode === 'voice' ? 'voice' : 'text',
+    };
+
+    setMessages((prev) => [...prev, repMessage]);
+    setInput('');
+    setLoading(true);
+    setActiveSpeaker('rep');
+
+    // Clear active speaker after 2 seconds
+    if (activeSpeakerTimeoutRef.current) {
+      clearTimeout(activeSpeakerTimeoutRef.current);
+    }
+    activeSpeakerTimeoutRef.current = setTimeout(() => {
+      setActiveSpeaker(null);
+    }, 2000);
+
+    try {
+      const response = await fetch(`/api/roleplay/${sessionId}/message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send message');
+      }
+
+      const data = await response.json();
+      const prospectMessage: Message = {
+        role: 'prospect',
+        content: data.response,
+        timestamp: Date.now(),
+        metadata: data.metadata,
+      };
+
+      setMessages((prev) => [...prev, prospectMessage]);
+      setActiveSpeaker('prospect');
+
+      // Clear active speaker after prospect finishes
+      if (activeSpeakerTimeoutRef.current) {
+        clearTimeout(activeSpeakerTimeoutRef.current);
+      }
+      activeSpeakerTimeoutRef.current = setTimeout(() => {
+        setActiveSpeaker(null);
+      }, 5000);
+
+      // Speak prospect response if voice mode
+      if (session?.inputMode === 'voice' && synthRef.current && !isMuted) {
+        synthRef.current.cancel(); // Cancel any ongoing speech
+        const utterance = new SpeechSynthesisUtterance(data.response);
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.onend = () => {
+          setActiveSpeaker(null);
+        };
+        synthRef.current.speak(utterance);
+      }
+    } catch (error: any) {
+      console.error('Error sending message:', error);
+      alert('Failed to send message: ' + error.message);
+      setActiveSpeaker(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVoiceInput = () => {
+    if (!recognitionRef.current) {
+      alert('Speech recognition not supported in your browser');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      recognitionRef.current.start();
+      setIsListening(true);
+      setActiveSpeaker('rep');
+    }
+  };
+
+  const handleMute = () => {
+    setIsMuted(!isMuted);
+    if (synthRef.current) {
+      if (!isMuted) {
+        synthRef.current.cancel();
+      }
+    }
+  };
+
+  const handleEndSession = async () => {
+    if (!confirm('End this roleplay session? It will be analyzed and scored.')) return;
+
+    try {
+      setLoading(true);
+
+      // Stop any ongoing speech
+      if (synthRef.current) {
+        synthRef.current.cancel();
+      }
+
+      // First, score the session
+      const scoreResponse = await fetch(`/api/roleplay/${sessionId}/score`, {
+        method: 'POST',
+      });
+
+      if (!scoreResponse.ok) {
+        const errorData = await scoreResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to score session');
+      }
+
+      // Then update status
+      await fetch(`/api/roleplay/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' }),
+      });
+
+      // Redirect to results page
+      router.push(`/dashboard/roleplay/${sessionId}/results`);
+    } catch (error) {
+      console.error('Error ending session:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+      // Show user-friendly error
+      if (errorMessage.includes('API keys') || errorMessage.includes('GROQ_API_KEY') || errorMessage.includes('ANTHROPIC_API_KEY')) {
+        alert(`Setup Required:\n\n${errorMessage}\n\nAdd GROQ_API_KEY or ANTHROPIC_API_KEY to your .env file to enable scoring.`);
+      } else {
+        alert('Failed to end session: ' + errorMessage);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden z-50">
+      {/* Minimal Header - Arena Mode */}
+      <div className="border-b bg-card/80 backdrop-blur-md p-3 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/dashboard/roleplay')}
+            className="gap-2"
+          >
+            <PhoneOff className="h-4 w-4" />
+            Exit Arena
+          </Button>
+          <div className="h-4 w-px bg-border" />
+          <div>
+            <h1 className="text-sm font-semibold">{session?.offerName || 'Roleplay Session'}</h1>
+            <p className="text-xs text-muted-foreground">
+              {session?.inputMode === 'voice' ? 'Voice Mode' : 'Text Mode'} • {messages.length} messages
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {session?.status === 'in_progress' && (
+            <Badge variant="default" className="bg-blue-500 text-xs">In Progress</Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div className="flex-1 flex overflow-hidden bg-gradient-to-br from-background via-background to-muted/10">
+        {/* Video Grid Area (Left) */}
+        <div className="flex-1 flex items-center justify-center p-6">
+          <div className="grid grid-cols-2 gap-4 w-full max-w-4xl">
+            {/* Rep (You) */}
+            <Card
+              className={cn(
+                "aspect-video relative overflow-hidden border-2 transition-all duration-300 bg-card",
+                activeSpeaker === 'rep'
+                  ? "border-orange-500 shadow-2xl shadow-orange-500/50 scale-[1.02] ring-4 ring-orange-500/20"
+                  : "border-border/50"
+              )}
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent flex items-center justify-center">
+                <div className="text-center z-10">
+                  <div className={cn(
+                    "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300 overflow-hidden",
+                    activeSpeaker === 'rep'
+                      ? "ring-4 ring-orange-500/30 scale-110"
+                      : ""
+                  )}>
+                    {userProfile?.profilePhoto ? (
+                      <Avatar className="w-full h-full">
+                        <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                        <AvatarFallback className="bg-primary/40 text-primary">
+                          {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <div className={cn(
+                        "w-full h-full flex items-center justify-center",
+                        activeSpeaker === 'rep' ? "bg-primary/40" : "bg-primary/20"
+                      )}>
+                        <User className="h-12 w-12 text-primary" />
+                      </div>
+                    )}
+                  </div>
+                  <p className="font-semibold text-lg">{userProfile?.name || 'You'}</p>
+                  <p className="text-xs text-muted-foreground">Rep</p>
+                  {isListening && (
+                    <div className="mt-2 flex items-center justify-center gap-2">
+                      <div className="flex gap-1">
+                        <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
+                        <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
+                      </div>
+                      <span className="text-xs text-orange-400 font-medium">Listening...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {activeSpeaker === 'rep' && (
+                <div className="absolute top-3 right-3 z-20">
+                  <div className="w-4 h-4 bg-orange-400 rounded-full animate-pulse ring-2 ring-orange-400/50"></div>
+                </div>
+              )}
+            </Card>
+
+            {/* Prospect (AI) */}
+            <Card
+              className={cn(
+                "aspect-video relative overflow-hidden border-2 transition-all duration-300 bg-card",
+                activeSpeaker === 'prospect'
+                  ? "border-blue-500 shadow-2xl shadow-blue-500/50 scale-[1.02] ring-4 ring-blue-500/20"
+                  : "border-border/50"
+              )}
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-muted/10 via-muted/5 to-transparent flex items-center justify-center">
+                <div className="text-center z-10">
+                  <div className={cn(
+                    "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300",
+                    activeSpeaker === 'prospect'
+                      ? "bg-blue-500/20 ring-4 ring-blue-500/30 scale-110"
+                      : "bg-muted/20"
+                  )}>
+                    <Bot className="h-12 w-12 text-foreground" />
+                  </div>
+                  <p className="font-semibold text-lg">AI Prospect</p>
+                  <p className="text-xs text-muted-foreground">Virtual Buyer</p>
+                  {loading && (
+                    <div className="mt-2 flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                      <span className="text-xs text-blue-500 font-medium">Thinking...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {activeSpeaker === 'prospect' && (
+                <div className="absolute top-3 right-3 z-20">
+                  <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse ring-2 ring-blue-500/50"></div>
+                </div>
+              )}
+            </Card>
+          </div>
+        </div>
+
+        {/* Transcript Panel (Right) */}
+        {showTranscript && (
+          <div className="w-96 border-l bg-card/80 backdrop-blur-md flex flex-col shrink-0">
+            <div className="border-b p-4 flex items-center justify-between">
+              <h2 className="font-semibold">Transcript</h2>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowTranscript(false)}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {messages.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p>Conversation will appear here</p>
+                </div>
+              ) : (
+                messages.map((msg, idx) => (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className={cn(
+                        "font-semibold text-sm",
+                        msg.role === 'rep' ? "text-primary" : "text-muted-foreground"
+                      )}>
+                        {msg.role === 'rep' ? 'You' : 'Prospect'}
+                      </span>
+                      {msg.metadata?.objectionType && (
+                        <Badge variant="outline" className="text-xs">
+                          {msg.metadata.objectionType}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-foreground/80 whitespace-pre-wrap">
+                      {msg.content}
+                    </p>
+                  </div>
+                ))
+              )}
+              {loading && (
+                <div className="space-y-1">
+                  <span className="font-semibold text-sm text-muted-foreground">Prospect</span>
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Typing...</span>
+                  </div>
+                </div>
+              )}
+              <div ref={transcriptEndRef} />
+            </div>
+          </div>
+        )}
+
+        {/* Show Transcript Button (when hidden) */}
+        {!showTranscript && (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="fixed top-20 right-4 z-30 shadow-lg"
+            onClick={() => setShowTranscript(true)}
+          >
+            <MessageSquare className="h-5 w-5" />
+          </Button>
+        )}
+      </div>
+
+      {/* Footer Controls - Clean Meeting Style */}
+      <div className="border-t bg-card/95 backdrop-blur-md p-4 flex items-center justify-center shrink-0">
+        <div className="flex items-center gap-4 max-w-5xl w-full">
+          {/* Left: AI Voice Control */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant={isMuted ? 'destructive' : 'outline'}
+              size="icon"
+              onClick={handleMute}
+              className="rounded-full h-11 w-11"
+              title={isMuted ? 'Unmute AI voice' : 'Mute AI voice'}
+            >
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </Button>
+            <span className="text-xs text-muted-foreground hidden sm:block">
+              {isMuted ? 'AI Muted' : 'AI Voice'}
+            </span>
+          </div>
+
+          {/* Center: Input Area */}
+          <div className="flex-1 flex items-center gap-2">
+            {/* Voice Input Button (only in voice mode) */}
+            {session?.inputMode === 'voice' && (
+              <Button
+                variant={isListening ? 'default' : 'outline'}
+                size="icon"
+                onClick={handleVoiceInput}
+                className={cn(
+                  "rounded-full h-11 w-11 border-2 transition-all",
+                  isListening && "border-blue-500 ring-2 ring-blue-500/20"
+                )}
+                title={isListening ? 'Stop voice input' : 'Start voice input'}
+              >
+                {isListening ? (
+                  <div className="relative">
+                    <Mic className="h-5 w-5" />
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border-2 border-background"></div>
+                  </div>
+                ) : (
+                  <Mic className="h-5 w-5" />
+                )}
+              </Button>
+            )}
+
+            {/* Text Input */}
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={
+                session?.inputMode === 'voice'
+                  ? (isListening ? 'Listening...' : 'Click mic or type here...')
+                  : 'Type your message...'
+              }
+              disabled={loading || isListening}
+              className="flex-1 bg-background/90 border-border/50 h-11"
+            />
+
+            {/* Send Button */}
+            <Button
+              onClick={() => handleSend()}
+              disabled={loading || !input.trim() || isListening}
+              size="icon"
+              className="rounded-full h-11 w-11"
+              title="Send message"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+
+          {/* Right: End Call */}
+          <Button
+            variant="destructive"
+            size="icon"
+            onClick={handleEndSession}
+            className="rounded-full h-11 w-11"
+            title="End session"
+          >
+            <PhoneOff className="h-5 w-5" />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

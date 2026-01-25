@@ -1,0 +1,7 @@
+-- Drop all tables and enums
+DROP TABLE IF EXISTS "usage_tracking" CASCADE;
+DROP TABLE IF EXISTS "sessions" CASCADE;
+DROP TABLE IF EXISTS "users" CASCADE;
+DROP TABLE IF EXISTS "organizations" CASCADE;
+DROP TYPE IF EXISTS "plan_tier" CASCADE;
+DROP TYPE IF EXISTS "user_role" CASCADE;
