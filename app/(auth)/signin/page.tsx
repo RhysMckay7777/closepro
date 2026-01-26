@@ -24,7 +24,7 @@ function SignInForm() {
     setIsLoading(true);
 
     // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/52c10fac-742a-4196-833c-68882aa7bf34',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signin/page.tsx:21',message:'Sign-in form submitted',data:{email:email.substring(0,3)+'***'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+    console.log('[DEBUG] Sign-in form submitted', {email: email.substring(0,3)+'***', timestamp: Date.now()});
     // #endregion
 
     try {
@@ -34,7 +34,7 @@ function SignInForm() {
       });
 
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/52c10fac-742a-4196-833c-68882aa7bf34',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signin/page.tsx:32',message:'Sign-in API response received',data:{hasError:!!result.error,errorMessage:result.error?.message,hasData:!!result.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      console.log('[DEBUG] Sign-in API response', {hasError: !!result.error, errorMessage: result.error?.message, hasData: !!result.data, timestamp: Date.now()});
       // #endregion
 
       // #region agent log
@@ -43,7 +43,7 @@ function SignInForm() {
         if (name.includes('session') || name.includes('auth')) acc[name] = value?.substring(0, 20) + '...';
         return acc;
       }, {} as Record<string, string>);
-      fetch('http://127.0.0.1:7242/ingest/52c10fac-742a-4196-833c-68882aa7bf34',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signin/page.tsx:35',message:'Cookies after sign-in API call',data:{cookieCount:Object.keys(allCookies).length,cookies:allCookies},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      console.log('[DEBUG] Cookies after sign-in API call', {cookieCount: Object.keys(allCookies).length, cookies: allCookies, timestamp: Date.now()});
       // #endregion
 
       if (result.error) {
@@ -56,7 +56,7 @@ function SignInForm() {
       const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
       
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/52c10fac-742a-4196-833c-68882aa7bf34',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signin/page.tsx:42',message:'Before delay and redirect',data:{callbackUrl,delayMs:300},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      console.log('[DEBUG] Before delay and redirect', {callbackUrl, delayMs: 300, timestamp: Date.now()});
       // #endregion
       
       // Small delay to ensure cookie is set by Better Auth before redirect
@@ -69,7 +69,7 @@ function SignInForm() {
         if (name.includes('session') || name.includes('auth')) acc[name] = value?.substring(0, 20) + '...';
         return acc;
       }, {} as Record<string, string>);
-      fetch('http://127.0.0.1:7242/ingest/52c10fac-742a-4196-833c-68882aa7bf34',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signin/page.tsx:47',message:'Cookies after delay, before redirect',data:{cookieCount:Object.keys(cookiesAfterDelay).length,cookies:cookiesAfterDelay,redirectingTo:callbackUrl},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+      console.log('[DEBUG] Cookies after delay, before redirect', {cookieCount: Object.keys(cookiesAfterDelay).length, cookies: cookiesAfterDelay, redirectingTo: callbackUrl, timestamp: Date.now()});
       // #endregion
       
       // Use window.location.href to force a full page reload
@@ -77,7 +77,7 @@ function SignInForm() {
       window.location.href = callbackUrl;
     } catch (err) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/52c10fac-742a-4196-833c-68882aa7bf34',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'signin/page.tsx:52',message:'Sign-in exception caught',data:{errorMessage:err instanceof Error ? err.message : String(err)},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      console.log('[DEBUG] Sign-in exception caught', {errorMessage: err instanceof Error ? err.message : String(err), timestamp: Date.now()});
       // #endregion
       console.error('Signin error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred. Please try again.');
