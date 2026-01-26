@@ -22,17 +22,24 @@ export async function proxy(request: NextRequest) {
   const isSelfAuthRoute = selfAuthRoutes.some(route => pathname === route);
 
   // Check for Better Auth session cookie
-  // Better Auth uses 'better-auth.session_token' as the cookie name
-  // Also check alternative cookie names in case of configuration differences
-  const sessionToken1 = request.cookies.get('better-auth.session_token');
-  const sessionToken2 = request.cookies.get('better-auth_session_token');
-  const sessionToken3 = request.cookies.get('session_token');
+  // In production with secure cookies, browser adds __Secure- prefix
+  // Check all possible cookie name variations
+  const sessionToken1 = request.cookies.get('__Secure-better-auth.session_token');
+  const sessionToken2 = request.cookies.get('better-auth.session_token');
+  const sessionToken3 = request.cookies.get('better-auth_session_token');
+  const sessionToken4 = request.cookies.get('session_token');
 
   // #region agent log
-  console.log('[DEBUG PROXY] Cookie check results', {'better-auth.session_token': !!sessionToken1, 'better-auth_session_token': !!sessionToken2, 'session_token': !!sessionToken3, pathname});
+  console.log('[DEBUG PROXY] Cookie check results', {
+    '__Secure-better-auth.session_token': !!sessionToken1,
+    'better-auth.session_token': !!sessionToken2,
+    'better-auth_session_token': !!sessionToken3,
+    'session_token': !!sessionToken4,
+    pathname
+  });
   // #endregion
 
-  const sessionToken = sessionToken1 || sessionToken2 || sessionToken3;
+  const sessionToken = sessionToken1 || sessionToken2 || sessionToken3 || sessionToken4;
   const hasSession = !!sessionToken;
 
   // #region agent log
