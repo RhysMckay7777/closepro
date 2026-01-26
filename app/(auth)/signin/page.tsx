@@ -34,16 +34,18 @@ function SignInForm() {
       });
 
       // #region agent log
-      console.log('[DEBUG] Sign-in API response', {hasError: !!result.error, errorMessage: result.error?.message, hasData: !!result.data, timestamp: Date.now()});
+      console.log('[DEBUG] Sign-in API response', {hasError: !!result.error, errorMessage: result.error?.message, hasData: !!result.data, fullResult: result, timestamp: Date.now()});
       // #endregion
 
       // #region agent log
+      // Check ALL cookies, not just session/auth ones
+      const allCookiesRaw = document.cookie;
       const allCookies = document.cookie.split(';').reduce((acc, cookie) => {
         const [name, value] = cookie.trim().split('=');
-        if (name.includes('session') || name.includes('auth')) acc[name] = value?.substring(0, 20) + '...';
+        acc[name] = value?.substring(0, 20) + '...';
         return acc;
       }, {} as Record<string, string>);
-      console.log('[DEBUG] Cookies after sign-in API call', {cookieCount: Object.keys(allCookies).length, cookies: allCookies, timestamp: Date.now()});
+      console.log('[DEBUG] ALL cookies after sign-in API call', {cookieString: allCookiesRaw, cookieCount: Object.keys(allCookies).length, cookies: allCookies, timestamp: Date.now()});
       // #endregion
 
       if (result.error) {
