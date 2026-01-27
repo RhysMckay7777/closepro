@@ -134,17 +134,17 @@ export default function RoleplayResultsPage() {
   // Generate diagnostic insight
   const getDiagnosticInsight = () => {
     if (!analysis) return null;
-    
+
     const scores = {
       value: analysis.valueScore,
       trust: analysis.trustScore,
       fit: analysis.fitScore,
       logistics: analysis.logisticsScore,
     };
-    
+
     const lowest = Math.min(scores.value, scores.trust, scores.fit, scores.logistics);
     const lowestPillar = Object.entries(scores).find(([_, score]) => score === lowest)?.[0];
-    
+
     if (lowestPillar === 'value') {
       return 'This sale was lost in Value, not the Close. Focus on building stronger value before presenting.';
     } else if (lowestPillar === 'trust') {
@@ -154,7 +154,7 @@ export default function RoleplayResultsPage() {
     } else if (lowestPillar === 'logistics') {
       return 'This sale was lost in Logistics, not the Close. Address time, money, and commitment concerns earlier.';
     }
-    
+
     return 'Review all four pillars to identify improvement areas.';
   };
 
@@ -221,7 +221,7 @@ export default function RoleplayResultsPage() {
           <h2 className="text-lg sm:text-xl font-semibold mb-4">
             Prospect Difficulty Profile {session.prospectAvatar.executionResistance !== undefined ? '(50-Point Model)' : '(40-Point Model)'}
           </h2>
-          
+
           {/* Layer A: Persuasion Difficulty (40 points) */}
           <div className="mb-4">
             <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Layer A: Persuasion Difficulty (40 points)</h3>
@@ -259,11 +259,11 @@ export default function RoleplayResultsPage() {
                 <p className="text-sm text-muted-foreground">Ability to Proceed</p>
                 <p className="text-2xl font-bold">{session.prospectAvatar.executionResistance}/10</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {session.prospectAvatar.executionResistance >= 8 
+                  {session.prospectAvatar.executionResistance >= 8
                     ? 'Fully Able - Has money, time, authority'
                     : session.prospectAvatar.executionResistance >= 5
-                    ? 'Partial Ability - Needs reprioritization'
-                    : 'Extreme Resistance - Severe constraints'}
+                      ? 'Partial Ability - Needs reprioritization'
+                      : 'Extreme Resistance - Severe constraints'}
                 </p>
               </div>
             </div>
@@ -464,8 +464,8 @@ export default function RoleplayResultsPage() {
                       rec.priority === 'high'
                         ? 'destructive'
                         : rec.priority === 'medium'
-                        ? 'default'
-                        : 'secondary'
+                          ? 'default'
+                          : 'secondary'
                     }
                   >
                     {rec.priority}
