@@ -37,7 +37,7 @@ interface Session {
     perceivedNeedForHelp: number;
     authorityLevel: string;
     funnelContext: number;
-    executionResistance: number;
+    executionResistance?: number; // Optional for backward compatibility
   } | null;
 }
 
@@ -180,7 +180,7 @@ export default function RoleplayResultsPage() {
           {session?.prospectAvatar && (
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-base sm:text-lg px-3 sm:px-4 py-2">
-                Difficulty: {session.prospectAvatar.difficultyIndex}/50
+                Difficulty: {session.prospectAvatar.difficultyIndex}/{session.prospectAvatar.executionResistance !== undefined ? '50' : '40'}
               </Badge>
               {session.actualDifficultyTier && (
                 <Badge variant="secondary" className="text-base sm:text-lg px-3 sm:px-4 py-2">
@@ -218,7 +218,9 @@ export default function RoleplayResultsPage() {
       {/* Prospect Difficulty Details */}
       {session?.prospectAvatar && (
         <Card className="p-4 sm:p-6">
-          <h2 className="text-lg sm:text-xl font-semibold mb-4">Prospect Difficulty Profile (50-Point Model)</h2>
+          <h2 className="text-lg sm:text-xl font-semibold mb-4">
+            Prospect Difficulty Profile {session.prospectAvatar.executionResistance !== undefined ? '(50-Point Model)' : '(40-Point Model)'}
+          </h2>
           
           {/* Layer A: Persuasion Difficulty (40 points) */}
           <div className="mb-4">
@@ -250,30 +252,36 @@ export default function RoleplayResultsPage() {
           </div>
 
           {/* Layer B: Execution Resistance (10 points) */}
-          <div className="pt-4 border-t">
-            <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Layer B: Execution Resistance (10 points)</h3>
-            <div>
-              <p className="text-sm text-muted-foreground">Ability to Proceed</p>
-              <p className="text-2xl font-bold">{session.prospectAvatar.executionResistance}/10</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                {session.prospectAvatar.executionResistance >= 8 
-                  ? 'Fully Able - Has money, time, authority'
-                  : session.prospectAvatar.executionResistance >= 5
-                  ? 'Partial Ability - Needs reprioritization'
-                  : 'Extreme Resistance - Severe constraints'}
-              </p>
+          {session.prospectAvatar.executionResistance !== undefined && (
+            <div className="pt-4 border-t">
+              <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Layer B: Execution Resistance (10 points)</h3>
+              <div>
+                <p className="text-sm text-muted-foreground">Ability to Proceed</p>
+                <p className="text-2xl font-bold">{session.prospectAvatar.executionResistance}/10</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {session.prospectAvatar.executionResistance >= 8 
+                    ? 'Fully Able - Has money, time, authority'
+                    : session.prospectAvatar.executionResistance >= 5
+                    ? 'Partial Ability - Needs reprioritization'
+                    : 'Extreme Resistance - Severe constraints'}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Total Score */}
           <div className="mt-4 pt-4 border-t">
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold">Total Difficulty Score</p>
-              <p className="text-3xl font-bold">{session.prospectAvatar.difficultyIndex}/50</p>
+              <p className="text-3xl font-bold">
+                {session.prospectAvatar.difficultyIndex}/{session.prospectAvatar.executionResistance !== undefined ? '50' : '40'}
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              Layer A ({session.prospectAvatar.positionProblemAlignment + session.prospectAvatar.painAmbitionIntensity + session.prospectAvatar.perceivedNeedForHelp + session.prospectAvatar.funnelContext}) + Layer B ({session.prospectAvatar.executionResistance})
-            </p>
+            {session.prospectAvatar.executionResistance !== undefined && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Layer A ({session.prospectAvatar.positionProblemAlignment + session.prospectAvatar.painAmbitionIntensity + session.prospectAvatar.perceivedNeedForHelp + session.prospectAvatar.funnelContext}) + Layer B ({session.prospectAvatar.executionResistance})
+              </p>
+            )}
           </div>
         </Card>
       )}
