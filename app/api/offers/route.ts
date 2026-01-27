@@ -5,13 +5,44 @@ import { db } from '@/db';
 import { offers } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { users, organizations, userOrganizations } from '@/db/schema';
-import { validateOfferProfile } from '@/lib/ai/roleplay/offer-intelligence';
+import { validateOfferProfile, getOfferTemplates, OFFER_TEMPLATES } from '@/lib/ai/roleplay/offer-intelligence';
 
 /**
- * GET - List all offers for user's organization
+ * GET - List all offers for user's organization, or return templates
  */
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const templatesOnly = searchParams.get('templates') === 'true';
+
+    // If requesting templates, return them without auth (they're public templates)
+    if (templatesOnly) {
+      const templates = getOfferTemplates();
+      const templateKeys = Object.keys(OFFER_TEMPLATES);
+      return NextResponse.json({
+        templates: templates.map((t, index) => ({
+          id: `template_${templateKeys[index]}`,
+          key: templateKeys[index],
+          name: t.name,
+          offerCategory: t.offerCategory,
+          whoItsFor: t.whoItsFor,
+          coreOutcome: t.coreOutcome,
+          mechanismHighLevel: t.mechanismHighLevel,
+          deliveryModel: t.deliveryModel,
+          priceRange: t.priceRange,
+          primaryProblemsSolved: t.primaryProblemsSolved,
+          emotionalDrivers: t.emotionalDrivers,
+          logicalDrivers: t.logicalDrivers,
+          commonSkepticismTriggers: t.commonSkepticismTriggers,
+          effortRequired: t.effortRequired,
+          timeToResult: t.timeToResult,
+          riskReversal: t.riskReversal,
+          bestFitNotes: t.bestFitNotes,
+          isTemplate: true,
+        })),
+      });
+    }
+
     const session = await auth.api.getSession({
       headers: await headers(),
     });

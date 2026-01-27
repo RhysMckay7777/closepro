@@ -6,13 +6,14 @@ import { salesCalls, prospectAvatars } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { users, userOrganizations } from '@/db/schema';
 import { calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
+import { transcribeAudioFile } from '@/lib/ai/transcription';
 import { Groq } from 'groq-sdk';
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
 /**
- * POST - Extract prospect avatar from a sales call transcript
+ * POST - Extract prospect avatar from a sales call transcript or audio file
  * This analyzes the transcript and creates a prospect avatar for replay roleplays
  */
 export async function POST(request: NextRequest) {
@@ -28,27 +29,56 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const body = await request.json();
-    const { callId, transcript } = body;
+    let transcriptText: string | null = null;
+    let sourceCallId: string | null = null;
 
-    if (!callId && !transcript) {
-      return NextResponse.json(
-        { error: 'Either callId or transcript is required' },
-        { status: 400 }
-      );
+    // Check if request is FormData (file upload) or JSON
+    const contentType = request.headers.get('content-type') || '';
+    
+    if (contentType.includes('multipart/form-data')) {
+      // Handle file upload
+      const formData = await request.formData();
+      const audioFile = formData.get('audio') as File | null;
+      const transcriptInput = formData.get('transcript') as string | null;
+      
+      if (audioFile) {
+        // Transcribe audio file
+        const arrayBuffer = await audioFile.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+        const transcriptionResult = await transcribeAudioFile(buffer, audioFile.name);
+        transcriptText = transcriptionResult.transcript;
+      } else if (transcriptInput) {
+        transcriptText = transcriptInput;
+      } else {
+        return NextResponse.json(
+          { error: 'Either audio file or transcript is required' },
+          { status: 400 }
+        );
+      }
+    } else {
+      // Handle JSON request
+      const body = await request.json();
+      const { callId, transcript } = body;
+
+      if (!callId && !transcript) {
+        return NextResponse.json(
+          { error: 'Either callId or transcript is required' },
+          { status: 400 }
+        );
+      }
+
+      transcriptText = transcript;
+      sourceCallId = callId || null;
     }
 
-    let transcriptText = transcript;
-    let sourceCallId = callId || null;
-
     // If callId provided, fetch transcript from database
-    if (callId && !transcript) {
+    if (sourceCallId && !transcriptText) {
       const call = await db
         .select()
         .from(salesCalls)
         .where(
           and(
-            eq(salesCalls.id, callId),
+            eq(salesCalls.id, sourceCallId),
             eq(salesCalls.userId, session.user.id)
           )
         )

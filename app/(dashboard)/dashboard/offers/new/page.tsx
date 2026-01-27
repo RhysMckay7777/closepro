@@ -25,6 +25,13 @@ export default function NewOfferPage() {
     primaryProblemsSolved: ['', '', ''],
     effortRequired: 'medium',
     riskReversal: 'none',
+    customerStage: '',
+    proofLevel: '',
+    timeToResult: '',
+    timePerWeek: '',
+    commonObjections: [''],
+    funnelContext: '',
+    paymentOptions: { payInFull: true, paymentPlans: [] },
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -51,6 +58,7 @@ export default function NewOfferPage() {
         body: JSON.stringify({
           ...formData,
           primaryProblemsSolved: problems,
+          commonSkepticismTriggers: formData.commonObjections.filter(o => o.trim()),
         }),
       });
 
@@ -274,6 +282,139 @@ export default function NewOfferPage() {
             >
               Add Another Problem
             </Button>
+          </div>
+
+          {/* Customer Stage & Proof */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Customer Stage & Proof</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="customerStage">Customer Stage</Label>
+                <Select
+                  value={formData.customerStage}
+                  onValueChange={(value) => setFormData({ ...formData, customerStage: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select stage" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="aspiring">Aspiring (starting from zero)</SelectItem>
+                    <SelectItem value="current">Current (already doing it, stuck)</SelectItem>
+                    <SelectItem value="mixed">Mixed</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="proofLevel">Proof Level</Label>
+                <Select
+                  value={formData.proofLevel}
+                  onValueChange={(value) => setFormData({ ...formData, proofLevel: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select proof level" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="strong">Strong (many case studies/testimonials)</SelectItem>
+                    <SelectItem value="moderate">Moderate (some proof available)</SelectItem>
+                    <SelectItem value="light">Light (limited proof)</SelectItem>
+                    <SelectItem value="new">New / Minimal (just starting)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Cost Profile */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Cost Profile</h2>
+            <p className="text-sm text-muted-foreground">
+              What does it take for a customer to get results?
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="timePerWeek">Time Per Week Required</Label>
+                <Input
+                  id="timePerWeek"
+                  value={formData.timePerWeek}
+                  onChange={(e) => setFormData({ ...formData, timePerWeek: e.target.value })}
+                  placeholder="e.g., 5-10 hours"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="timeToResult">Estimated Time to Reach Results</Label>
+                <Input
+                  id="timeToResult"
+                  value={formData.timeToResult}
+                  onChange={(e) => setFormData({ ...formData, timeToResult: e.target.value })}
+                  placeholder="e.g., 12-16 weeks"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Common Objections */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Common Objections</h2>
+            <p className="text-sm text-muted-foreground">
+              What objections do you most commonly hear?
+            </p>
+            
+            {formData.commonObjections.map((objection, index) => (
+              <div key={index} className="space-y-2">
+                <Label>Objection {index + 1}</Label>
+                <Input
+                  value={objection}
+                  onChange={(e) => {
+                    const updated = [...formData.commonObjections];
+                    updated[index] = e.target.value;
+                    setFormData({ ...formData, commonObjections: updated });
+                  }}
+                  placeholder="e.g., Too expensive"
+                />
+              </div>
+            ))}
+            
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setFormData({ ...formData, commonObjections: [...formData.commonObjections, ''] })}
+            >
+              Add Another Objection
+            </Button>
+          </div>
+
+          {/* Funnel Context */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Funnel Context</h2>
+            <p className="text-sm text-muted-foreground">
+              Where do most of your calls come from?
+            </p>
+            
+            <div className="space-y-2">
+              <Label htmlFor="funnelContext">Funnel Source</Label>
+              <Select
+                value={formData.funnelContext}
+                onValueChange={(value) => setFormData({ ...formData, funnelContext: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select funnel context" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cold_outbound_direct">Cold outbound → straight to call</SelectItem>
+                  <SelectItem value="cold_outbound_discovery">Cold outbound → discovery → call</SelectItem>
+                  <SelectItem value="cold_ads">Cold ads</SelectItem>
+                  <SelectItem value="warm_inbound">Warm inbound</SelectItem>
+                  <SelectItem value="content_educated">Content-educated inbound</SelectItem>
+                  <SelectItem value="referral">Referral</SelectItem>
+                  <SelectItem value="tripwire">Tripwire → call</SelectItem>
+                  <SelectItem value="existing_customer">Existing customer / upsell</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Actions */}

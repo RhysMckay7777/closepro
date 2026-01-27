@@ -29,6 +29,15 @@ interface Session {
   offerName?: string;
   overallScore: number | null;
   actualDifficultyTier: string | null;
+  prospectAvatar?: {
+    difficultyIndex: number;
+    difficultyTier: string;
+    positionProblemAlignment: number;
+    painAmbitionIntensity: number;
+    perceivedNeedForHelp: number;
+    authorityLevel: string;
+    funnelContext: number;
+  } | null;
 }
 
 export default function RoleplayResultsPage() {
@@ -48,7 +57,10 @@ export default function RoleplayResultsPage() {
     try {
       const response = await fetch(`/api/roleplay/${sessionId}`);
       const data = await response.json();
-      setSession(data.session);
+      setSession({
+        ...data.session,
+        prospectAvatar: data.prospectAvatar || null,
+      });
 
       // Analysis is included in session response when scored (from roleplay_analysis)
       if (data.analysis) {
@@ -116,6 +128,36 @@ export default function RoleplayResultsPage() {
   const fitDetails = JSON.parse(analysis.fitDetails || '{}');
   const logisticsDetails = JSON.parse(analysis.logisticsDetails || '{}');
   const recommendations = JSON.parse(analysis.coachingRecommendations || '[]');
+  const skillScores = JSON.parse(analysis.skillScores || '{}');
+
+  // Generate diagnostic insight
+  const getDiagnosticInsight = () => {
+    if (!analysis) return null;
+    
+    const scores = {
+      value: analysis.valueScore,
+      trust: analysis.trustScore,
+      fit: analysis.fitScore,
+      logistics: analysis.logisticsScore,
+    };
+    
+    const lowest = Math.min(scores.value, scores.trust, scores.fit, scores.logistics);
+    const lowestPillar = Object.entries(scores).find(([_, score]) => score === lowest)?.[0];
+    
+    if (lowestPillar === 'value') {
+      return 'This sale was lost in Value, not the Close. Focus on building stronger value before presenting.';
+    } else if (lowestPillar === 'trust') {
+      return 'This sale was lost in Trust, not the Close. Build more credibility and rapport.';
+    } else if (lowestPillar === 'fit') {
+      return 'This sale was lost in Discovery, not the Close. Better qualification and fit assessment needed.';
+    } else if (lowestPillar === 'logistics') {
+      return 'This sale was lost in Logistics, not the Close. Address time, money, and commitment concerns earlier.';
+    }
+    
+    return 'Review all four pillars to identify improvement areas.';
+  };
+
+  const diagnosticInsight = getDiagnosticInsight();
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -133,11 +175,25 @@ export default function RoleplayResultsPage() {
             {session?.offerName || 'Session Analysis'}
           </p>
         </div>
-        {session?.actualDifficultyTier && (
-          <Badge variant="outline" className="text-base sm:text-lg px-3 sm:px-4 py-2 w-fit">
-            {session.actualDifficultyTier.toUpperCase()} Difficulty
-          </Badge>
-        )}
+        <div className="flex flex-col sm:flex-row gap-2">
+          {session?.prospectAvatar && (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-base sm:text-lg px-3 sm:px-4 py-2">
+                Difficulty: {session.prospectAvatar.difficultyIndex}/40
+              </Badge>
+              {session.actualDifficultyTier && (
+                <Badge variant="secondary" className="text-base sm:text-lg px-3 sm:px-4 py-2">
+                  {session.actualDifficultyTier.toUpperCase()} Tier
+                </Badge>
+              )}
+            </div>
+          )}
+          {!session?.prospectAvatar && session?.actualDifficultyTier && (
+            <Badge variant="outline" className="text-base sm:text-lg px-3 sm:px-4 py-2 w-fit">
+              {session.actualDifficultyTier.toUpperCase()} Difficulty
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Overall Score */}
@@ -146,12 +202,48 @@ export default function RoleplayResultsPage() {
           <div>
             <h2 className="text-lg sm:text-xl font-semibold mb-2">Overall Score</h2>
             <p className="text-sm sm:text-base text-muted-foreground">Your performance in this roleplay</p>
+            {diagnosticInsight && (
+              <p className="text-sm text-orange-500 font-medium mt-2">
+                💡 {diagnosticInsight}
+              </p>
+            )}
           </div>
           <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysis.overallScore)}`}>
             {analysis.overallScore}
           </div>
         </div>
       </Card>
+
+      {/* Prospect Difficulty Details */}
+      {session?.prospectAvatar && (
+        <Card className="p-4 sm:p-6">
+          <h2 className="text-lg sm:text-xl font-semibold mb-4">Prospect Difficulty Profile</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <p className="text-sm text-muted-foreground">Position & Problem Alignment</p>
+              <p className="text-2xl font-bold">{session.prospectAvatar.positionProblemAlignment}/10</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Pain / Ambition Intensity</p>
+              <p className="text-2xl font-bold">{session.prospectAvatar.painAmbitionIntensity}/10</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Perceived Need for Help</p>
+              <p className="text-2xl font-bold">{session.prospectAvatar.perceivedNeedForHelp}/10</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Funnel Context</p>
+              <p className="text-2xl font-bold">{session.prospectAvatar.funnelContext}/10</p>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t">
+            <p className="text-sm text-muted-foreground">Authority Level</p>
+            <Badge variant="outline" className="mt-1">
+              {session.prospectAvatar.authorityLevel.charAt(0).toUpperCase() + session.prospectAvatar.authorityLevel.slice(1)}
+            </Badge>
+          </div>
+        </Card>
+      )}
 
       {/* Four Pillars */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -292,10 +384,36 @@ export default function RoleplayResultsPage() {
         </Card>
       </div>
 
+      {/* Skill Scores Breakdown */}
+      {Object.keys(skillScores).length > 0 && (
+        <Card className="p-4 sm:p-6">
+          <h2 className="text-xl font-semibold mb-4">10-Category Skill Breakdown</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {Object.entries(skillScores).slice(0, 10).map(([category, scores]: [string, any]) => (
+              <div key={category} className="border rounded-lg p-3">
+                <h3 className="font-semibold mb-2 capitalize">{category.replace(/_/g, ' ')}</h3>
+                {typeof scores === 'object' && scores !== null ? (
+                  <div className="space-y-1">
+                    {Object.entries(scores).slice(0, 3).map(([skill, score]: [string, any]) => (
+                      <div key={skill} className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">{skill}</span>
+                        <span className="font-medium">{score}/100</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Score: {scores}/100</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* Coaching Recommendations */}
       {recommendations.length > 0 && (
         <Card className="p-4 sm:p-6">
-          <h2 className="text-xl font-semibold mb-4">Coaching Recommendations</h2>
+          <h2 className="text-xl font-semibold mb-4">3-5 Prioritized Fixes</h2>
           <div className="space-y-3">
             {recommendations.slice(0, 5).map((rec: any, i: number) => (
               <div key={i} className="border-l-4 border-primary pl-4">

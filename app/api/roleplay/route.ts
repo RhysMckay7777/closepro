@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { roleplaySessions, offers, prospectAvatars } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { users, organizations, userOrganizations } from '@/db/schema';
+import { generateRandomProspectInBand, calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
 
 /**
  * GET - List all roleplay sessions for user
@@ -208,9 +209,38 @@ export async function POST(request: NextRequest) {
       offer = offerResult[0];
     }
 
-    // Get prospect avatar if provided
+    // Generate or get prospect avatar
+    let finalProspectAvatarId = prospectAvatarId;
     let actualDifficultyTier = selectedDifficulty || 'realistic';
-    if (prospectAvatarId) {
+
+    if (!prospectAvatarId && selectedDifficulty) {
+      // Generate random prospect within difficulty band
+      const prospectProfile = generateRandomProspectInBand(selectedDifficulty);
+      
+      // Create prospect avatar
+      const [newAvatar] = await db
+        .insert(prospectAvatars)
+        .values({
+          organizationId,
+          userId: session.user.id,
+          name: `Generated Prospect (${selectedDifficulty})`,
+          sourceType: 'manual',
+          positionProblemAlignment: prospectProfile.positionProblemAlignment,
+          painAmbitionIntensity: prospectProfile.painAmbitionIntensity,
+          perceivedNeedForHelp: prospectProfile.perceivedNeedForHelp,
+          authorityLevel: prospectProfile.authorityLevel,
+          funnelContext: prospectProfile.funnelContext,
+          difficultyIndex: prospectProfile.difficultyIndex,
+          difficultyTier: prospectProfile.difficultyTier,
+          isTemplate: false,
+          isActive: true,
+        })
+        .returning();
+      
+      finalProspectAvatarId = newAvatar.id;
+      actualDifficultyTier = newAvatar.difficultyTier;
+    } else if (prospectAvatarId) {
+      // Get existing avatar
       const avatar = await db
         .select()
         .from(prospectAvatars)
@@ -229,8 +259,8 @@ export async function POST(request: NextRequest) {
         organizationId,
         userId: session.user.id,
         offerId: finalOfferId,
-        prospectAvatarId: prospectAvatarId || null,
-        selectedDifficulty: selectedDifficulty || 'intermediate',
+        prospectAvatarId: finalProspectAvatarId || null,
+        selectedDifficulty: selectedDifficulty || 'realistic',
         actualDifficultyTier,
         mode: mode || 'manual',
         sourceCallId: sourceCallId || null,
