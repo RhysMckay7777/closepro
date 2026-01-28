@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { RoleplaySessionSkeleton } from '@/components/dashboard/skeletons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -33,7 +34,7 @@ interface UserProfile {
   profilePhoto: string | null;
 }
 
-export default function RoleplaySessionPage() {
+function RoleplaySessionContent() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -584,5 +585,13 @@ export default function RoleplaySessionPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RoleplaySessionPage() {
+  return (
+    <Suspense fallback={<RoleplaySessionSkeleton />}>
+      <RoleplaySessionContent />
+    </Suspense>
   );
 }

@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { FormPageSkeleton } from '@/components/dashboard/skeletons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -439,11 +440,7 @@ function NewProspectAvatarContent() {
 
 export default function NewProspectAvatarPage() {
   return (
-    <Suspense fallback={
-      <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
-        <div className="flex items-center justify-center py-12 text-muted-foreground">Loading...</div>
-      </div>
-    }>
+    <Suspense fallback={<FormPageSkeleton />}>
       <NewProspectAvatarContent />
     </Suspense>
   );
