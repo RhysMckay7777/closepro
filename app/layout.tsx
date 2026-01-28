@@ -3,6 +3,7 @@ import './globals.css';
 import { ThemeProvider } from 'next-themes';
 import { Instrument_Sans, Instrument_Serif, Space_Grotesk } from 'next/font/google';
 import { UserProvider } from '@/contexts/user-context';
+import { Toaster } from '@/components/ui/sonner';
 export const metadata: Metadata = {
   title: 'ClosePro - AI Sales Coaching',
   description: 'AI-powered sales coaching and performance analytics',
@@ -49,7 +50,10 @@ export default function RootLayout({
         disableTransitionOnChange
       >
         <UserProvider>
-          <body suppressHydrationWarning className={`${sans.variable} ${serif.variable} ${mono.variable} antialiased`}>{children}</body>
+          <body suppressHydrationWarning className={`${sans.variable} ${serif.variable} ${mono.variable} antialiased`}>
+            {children}
+            <Toaster />
+          </body>
         </UserProvider>
       </ThemeProvider>
     </html>

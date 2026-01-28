@@ -7,6 +7,9 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Edit, Trash2, Package } from 'lucide-react';
 import Link from 'next/link';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
+import { toastError } from '@/lib/toast';
+import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
 
 interface Offer {
   id: string;
@@ -22,6 +25,7 @@ interface Offer {
 
 export default function OffersPage() {
   const router = useRouter();
+  const { openDialog, ConfirmDialog } = useConfirmDialog();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,21 +46,23 @@ export default function OffersPage() {
     }
   };
 
-  const handleDelete = async (offerId: string) => {
-    if (!confirm('Are you sure you want to delete this offer?')) return;
-
-    try {
-      const response = await fetch(`/api/offers/${offerId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) throw new Error('Failed to delete offer');
-
-      setOffers(offers.filter(o => o.id !== offerId));
-    } catch (error) {
-      console.error('Error deleting offer:', error);
-      alert('Failed to delete offer');
-    }
+  const handleDelete = (offerId: string) => {
+    openDialog({
+      title: 'Delete offer?',
+      description: 'Are you sure you want to delete this offer? This cannot be undone.',
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/offers/${offerId}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error('Failed to delete offer');
+          setOffers((prev) => prev.filter((o) => o.id !== offerId));
+        } catch (error) {
+          console.error('Error deleting offer:', error);
+          toastError('Failed to delete offer');
+        }
+      },
+    });
   };
 
   const getCategoryLabel = (category: string) => {
@@ -89,8 +95,10 @@ export default function OffersPage() {
   }
 
   return (
-    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
-      {/* Header */}
+    <>
+      <ConfirmDialog />
+      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+        {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold">Offers</h1>
@@ -108,18 +116,24 @@ export default function OffersPage() {
 
       {/* Offers List */}
       {offers.length === 0 ? (
-        <Card className="p-8 sm:p-12 text-center">
-          <Package className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-          <h3 className="text-lg font-semibold mb-2">No offers yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Create your first offer to start using it in roleplays
-          </p>
-          <Link href="/dashboard/offers/new">
-            <Button>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Offer
-            </Button>
-          </Link>
+        <Card className="p-8 sm:p-12">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Package className="size-6" />
+              </EmptyMedia>
+              <EmptyTitle>No offers yet</EmptyTitle>
+              <EmptyDescription>Create your first offer to start using it in roleplays</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Link href="/dashboard/offers/new">
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Offer
+                </Button>
+              </Link>
+            </EmptyContent>
+          </Empty>
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -172,6 +186,7 @@ export default function OffersPage() {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 }

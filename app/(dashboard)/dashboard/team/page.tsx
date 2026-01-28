@@ -29,6 +29,9 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Progress } from '@/components/ui/progress';
+import { toastError, toastSuccess } from '@/lib/toast';
+import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 
 interface TeamMember {
   id: string;
@@ -61,6 +64,7 @@ interface PendingInvite {
 }
 
 export default function TeamPage() {
+  const { openDialog, ConfirmDialog } = useConfirmDialog();
   const [data, setData] = useState<TeamData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,42 +122,39 @@ export default function TeamPage() {
 
       // Show success message briefly, then reload to show the new organization
       if (result.message) {
-        alert(result.message);
+        toastSuccess(result.message);
       }
 
       // Reload the page to ensure we're viewing the correct organization
       // This is necessary because the user might have joined a different org
       window.location.reload();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error accepting invite:', err);
-      alert(err.message || 'Failed to accept invite');
+      toastError(err instanceof Error ? err.message : 'Failed to accept invite');
       setAcceptingInviteId(null);
     }
   };
 
-  const handleDeclineInvite = async (inviteId: string) => {
-    if (!confirm('Are you sure you want to decline this invitation?')) {
-      return;
-    }
-
-    setDecliningInviteId(inviteId);
-    try {
-      const response = await fetch(`/api/team/invite/${inviteId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to decline invite');
-      }
-
-      // Refresh invites
-      await fetchPendingInvites();
-    } catch (err) {
-      console.error('Error declining invite:', err);
-      alert('Failed to decline invite');
-    } finally {
-      setDecliningInviteId(null);
-    }
+  const handleDeclineInvite = (inviteId: string) => {
+    openDialog({
+      title: 'Decline invitation?',
+      description: 'Are you sure you want to decline this invitation? You can be invited again later.',
+      confirmLabel: 'Decline',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setDecliningInviteId(inviteId);
+        try {
+          const response = await fetch(`/api/team/invite/${inviteId}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error('Failed to decline invite');
+          await fetchPendingInvites();
+        } catch (err) {
+          console.error('Error declining invite:', err);
+          toastError('Failed to decline invite');
+        } finally {
+          setDecliningInviteId(null);
+        }
+      },
+    });
   };
 
   const handleInviteMember = () => {
@@ -164,25 +165,23 @@ export default function TeamPage() {
     fetchTeamData();
   };
 
-  const handleRemoveMember = async (memberId: string) => {
-    if (!confirm('Are you sure you want to remove this team member?')) {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/team/${memberId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to remove member');
-      }
-
-      fetchTeamData();
-    } catch (err) {
-      console.error('Error removing member:', err);
-      alert('Failed to remove team member');
-    }
+  const handleRemoveMember = (memberId: string) => {
+    openDialog({
+      title: 'Remove team member?',
+      description: 'Are you sure you want to remove this team member? They will lose access to this organization.',
+      confirmLabel: 'Remove',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          const response = await fetch(`/api/team/${memberId}`, { method: 'DELETE' });
+          if (!response.ok) throw new Error('Failed to remove member');
+          fetchTeamData();
+        } catch (err) {
+          console.error('Error removing member:', err);
+          toastError('Failed to remove team member');
+        }
+      },
+    });
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -230,9 +229,11 @@ export default function TeamPage() {
   const seatsPercentage = (data.currentSeats / data.maxSeats) * 100;
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Invite Dialog */}
-      <InviteUserDialog
+    <>
+      <ConfirmDialog />
+      <div className="space-y-6 sm:space-y-8">
+        {/* Invite Dialog */}
+        <InviteUserDialog
         open={inviteDialogOpen}
         onOpenChange={setInviteDialogOpen}
         onSuccess={handleInviteSuccess}
@@ -463,21 +464,21 @@ export default function TeamPage() {
         </CardHeader>
         <CardContent>
           {data.members.length === 0 ? (
-            <div className="text-center py-12 sm:py-16">
-              <Users className="h-12 w-12 sm:h-16 sm:w-16 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-2">No team members yet</p>
-              <p className="text-sm text-muted-foreground/70 mb-6">
-                Start building your team by inviting your first member
-              </p>
-              <Button
-                onClick={handleInviteMember}
-                variant="outline"
-                size="lg"
-              >
-                <UserPlus className="mr-2 h-4 w-4" />
-                Invite Your First Member
-              </Button>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Users className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No team members yet</EmptyTitle>
+                <EmptyDescription>Start building your team by inviting your first member</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button onClick={handleInviteMember} variant="outline" size="lg">
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Invite Your First Member
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
             <div className="space-y-3">
               {data.members.map((member) => (
@@ -546,6 +547,7 @@ export default function TeamPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }

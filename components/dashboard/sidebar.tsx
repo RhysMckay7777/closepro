@@ -33,7 +33,9 @@ import {
   Building2,
   Check,
   Loader2,
+  Compass,
 } from 'lucide-react';
+import { useTour } from '@/components/tour';
 
 interface NavItem {
   title: string;
@@ -158,6 +160,7 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
+  const { start: startTour } = useTour();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [loadingOrgs, setLoadingOrgs] = useState(true);
@@ -339,10 +342,15 @@ export function Sidebar({
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
 
+                const dataTour =
+                  item.href === '/dashboard/offers' ? 'nav-offers' :
+                  item.href === '/dashboard/roleplay' ? 'nav-roleplay' :
+                  item.href === '/dashboard/calls' ? 'nav-calls' : undefined;
                 return (
                   <Link
                     key={item.href}
                     href={item.href}
+                    {...(dataTour && { 'data-tour': dataTour })}
                     className={cn(
                       'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative group',
                       isActive
@@ -381,6 +389,14 @@ export function Sidebar({
       {/* Footer */}
       {!collapsed && (
         <div className="px-6 space-y-1 mb-6">
+          <button
+            type="button"
+            onClick={() => startTour()}
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-muted-foreground hover:bg-accent/50 hover:text-foreground hover:shadow-[0_1px_2px_rgba(0,0,0,0.04)] w-full text-left"
+          >
+            <Compass className="h-4 w-4 shrink-0" />
+            <span>Take a tour</span>
+          </button>
           <Link
             href="/dashboard/settings"
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-muted-foreground hover:bg-accent/50 hover:text-foreground hover:shadow-[0_1px_2px_rgba(0,0,0,0.04)]"

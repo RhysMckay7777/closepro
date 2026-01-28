@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Upload, FileAudio, Loader2, CheckCircle2, AlertCircle, X, Search, Filter, Trash2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 
 export default function CallAnalysisReviewPage() {
   const router = useRouter();
@@ -112,29 +113,39 @@ export default function CallAnalysisReviewPage() {
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : calls.length === 0 ? (
-            <div className="text-center py-12">
-              <FileAudio className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground mb-2">No calls uploaded yet</p>
-              <p className="text-sm text-muted-foreground/70">
-                Upload calls in <Link href="/dashboard/calls" className="underline">Live Call Reporting</Link> to review them here
-              </p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FileAudio className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No calls uploaded yet</EmptyTitle>
+                <EmptyDescription>
+                  Upload calls in <Link href="/dashboard/calls" className="underline">Live Call Reporting</Link> to review them here
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           ) : filteredCalls.length === 0 ? (
-            <div className="text-center py-12">
-              <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground mb-2">No calls match your filters</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('');
-                  setStatusFilter('all');
-                }}
-                className="mt-2"
-              >
-                Clear Filters
-              </Button>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Search className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No calls match your filters</EmptyTitle>
+                <EmptyDescription>Try clearing or changing your search and filters.</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStatusFilter('all');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
             <div className="space-y-3">
               {filteredCalls.map((call) => (

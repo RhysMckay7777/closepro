@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { toastError } from '@/lib/toast';
 
 export default function EditProspectAvatarPage() {
   const router = useRouter();
@@ -49,7 +50,7 @@ export default function EditProspectAvatarPage() {
       });
     } catch (error) {
       console.error('Error fetching avatar:', error);
-      alert('Failed to load avatar');
+      toastError('Failed to load avatar');
       router.push('/dashboard/prospect-avatars');
     } finally {
       setLoading(false);
@@ -60,7 +61,7 @@ export default function EditProspectAvatarPage() {
     e.preventDefault();
     
     if (!formData.name) {
-      alert('Please provide a name for this prospect avatar');
+      toastError('Please provide a name for this prospect avatar');
       return;
     }
 
@@ -80,7 +81,7 @@ export default function EditProspectAvatarPage() {
       router.push('/dashboard/prospect-avatars');
     } catch (error: any) {
       console.error('Error updating avatar:', error);
-      alert('Failed to update avatar: ' + error.message);
+      toastError('Failed to update avatar: ' + error.message);
     } finally {
       setSaving(false);
     }

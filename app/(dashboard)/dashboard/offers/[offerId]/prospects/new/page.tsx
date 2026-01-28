@@ -13,7 +13,8 @@ import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, ArrowLeft, Upload } from 'lucide-react';
 import Link from 'next/link';
-import { calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
+import { toastError, toastSuccess } from '@/lib/toast';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 
 export default function NewProspectPage() {
   const router = useRouter();
@@ -94,13 +95,13 @@ export default function NewProspectPage() {
     e.preventDefault();
     
     if (!formData.name) {
-      alert('Please provide a name for this prospect');
+      toastError('Please provide a name for this prospect');
       return;
     }
 
     const problems = formData.problems.filter(p => p.trim());
     if (problems.length === 0) {
-      alert('Please provide at least one problem');
+      toastError('Please provide at least one problem');
       return;
     }
 
@@ -147,7 +148,7 @@ export default function NewProspectPage() {
       router.push(`/dashboard/offers/${offerId}`);
     } catch (error: any) {
       console.error('Error creating prospect:', error);
-      alert('Failed to create prospect: ' + error.message);
+      toastError('Failed to create prospect: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -155,7 +156,7 @@ export default function NewProspectPage() {
 
   const handleTranscriptUpload = async () => {
     if (!transcriptText.trim() && !transcriptFile) {
-      alert('Please provide a transcript or upload a file');
+      toastError('Please provide a transcript or upload a file');
       return;
     }
 
@@ -198,13 +199,13 @@ export default function NewProspectPage() {
         });
         
         // Switch to manual tab to show extracted data
-        alert('Prospect extracted! Review and adjust the values below, then click "Create Prospect".');
+        toastSuccess('Prospect extracted! Review and adjust the values below, then click "Create Prospect".');
       } else {
         router.push(`/dashboard/offers/${offerId}`);
       }
     } catch (error: any) {
       console.error('Error processing transcript:', error);
-      alert('Failed to process transcript: ' + error.message);
+      toastError('Failed to process transcript: ' + error.message);
     } finally {
       setUploadingTranscript(false);
     }

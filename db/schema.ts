@@ -27,6 +27,7 @@ export const users = pgTable('users', {
   phone: text('phone'), // Phone number
   location: text('location'), // Location/city
   website: text('website'), // Personal website
+  isTourCompleted: boolean('is_tour_completed').notNull().default(false),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });

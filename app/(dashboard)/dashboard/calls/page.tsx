@@ -11,9 +11,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Upload, FileAudio, Loader2, CheckCircle2, AlertCircle, X, Search, Filter, Trash2 } from 'lucide-react';
 import Link from 'next/link';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
+import { toastError } from '@/lib/toast';
+import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
 
 export default function CallsPage() {
   const router = useRouter();
+  const { openDialog, ConfirmDialog } = useConfirmDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -223,30 +227,37 @@ export default function CallsPage() {
     }
   };
 
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedCalls.size === 0) return;
-    if (!confirm(`Are you sure you want to delete ${selectedCalls.size} call(s)?`)) return;
-
-    setIsDeleting(true);
-    try {
-      const deletePromises = Array.from(selectedCalls).map(callId =>
-        fetch(`/api/calls/${callId}`, { method: 'DELETE' })
-      );
-      await Promise.all(deletePromises);
-      
-      setCalls(calls.filter(c => !selectedCalls.has(c.id)));
-      setSelectedCalls(new Set());
-    } catch (error) {
-      console.error('Error deleting calls:', error);
-      alert('Failed to delete some calls');
-    } finally {
-      setIsDeleting(false);
-    }
+    openDialog({
+      title: 'Delete calls?',
+      description: `Are you sure you want to delete ${selectedCalls.size} call(s)? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setIsDeleting(true);
+        try {
+          const deletePromises = Array.from(selectedCalls).map((callId) =>
+            fetch(`/api/calls/${callId}`, { method: 'DELETE' })
+          );
+          await Promise.all(deletePromises);
+          setCalls((prev) => prev.filter((c) => !selectedCalls.has(c.id)));
+          setSelectedCalls(new Set());
+        } catch (error) {
+          console.error('Error deleting calls:', error);
+          toastError('Failed to delete some calls');
+        } finally {
+          setIsDeleting(false);
+        }
+      },
+    });
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8">
-      {/* Header */}
+    <>
+      <ConfirmDialog />
+      <div className="space-y-6 sm:space-y-8">
+        {/* Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-semibold tracking-tight">
           Upload Sales Call
@@ -431,29 +442,40 @@ export default function CallsPage() {
               <Loader2 className="h-6 w-6 animate-spin text-primary" />
             </div>
           ) : calls.length === 0 ? (
-            <div className="text-center py-12">
-              <FileAudio className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground mb-2">No calls uploaded yet</p>
-              <p className="text-sm text-muted-foreground/70">
-                Upload your first sales call to get started
-              </p>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <FileAudio className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No calls uploaded yet</EmptyTitle>
+                <EmptyDescription>Upload your first sales call to get AI feedback and scores.</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <p className="text-sm text-muted-foreground">Use the upload area above to add a call.</p>
+              </EmptyContent>
+            </Empty>
           ) : filteredCalls.length === 0 ? (
-            <div className="text-center py-12">
-              <Search className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground mb-2">No calls match your filters</p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSearchQuery('');
-                  setStatusFilter('all');
-                }}
-                className="mt-2"
-              >
-                Clear Filters
-              </Button>
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Search className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No calls match your filters</EmptyTitle>
+                <EmptyDescription>Try clearing or changing your search and filters.</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setStatusFilter('all');
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              </EmptyContent>
+            </Empty>
           ) : (
             <>
               {/* Select All */}
@@ -518,17 +540,23 @@ export default function CallsPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={async (e) => {
+                      onClick={(e) => {
                         e.stopPropagation();
-                        if (confirm('Are you sure you want to delete this call?')) {
-                          try {
-                            await fetch(`/api/calls/${call.id}`, { method: 'DELETE' });
-                            setCalls(calls.filter(c => c.id !== call.id));
-                          } catch (error) {
-                            console.error('Error deleting call:', error);
-                            alert('Failed to delete call');
-                          }
-                        }
+                        openDialog({
+                          title: 'Delete call?',
+                          description: 'Are you sure you want to delete this call? This cannot be undone.',
+                          confirmLabel: 'Delete',
+                          variant: 'destructive',
+                          onConfirm: async () => {
+                            try {
+                              await fetch(`/api/calls/${call.id}`, { method: 'DELETE' });
+                              setCalls((prev) => prev.filter((c) => c.id !== call.id));
+                            } catch (error) {
+                              console.error('Error deleting call:', error);
+                              toastError('Failed to delete call');
+                            }
+                          },
+                        });
                       }}
                       className="shrink-0"
                     >
@@ -541,6 +569,7 @@ export default function CallsPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+      </div>
+    </>
   );
 }

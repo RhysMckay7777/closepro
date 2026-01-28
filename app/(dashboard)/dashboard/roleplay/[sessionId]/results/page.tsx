@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, TrendingUp, Target, Users, Package } from 'lucide-react';
 import Link from 'next/link';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 
 interface Analysis {
   id: string;
@@ -67,7 +68,7 @@ export default function RoleplayResultsPage() {
         return;
       }
 
-      
+
       if (data.session.status === 'completed' && !data.session.analysisId) {
         // Session completed but not scored yet — score it now
         const scoreResponse = await fetch(`/api/roleplay/${sessionId}/score`, {
@@ -172,6 +173,19 @@ export default function RoleplayResultsPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard/roleplay">Roleplay</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Results</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -467,8 +481,8 @@ export default function RoleplayResultsPage() {
           <h2 className="text-xl font-semibold mb-4">3-5 Prioritized Fixes</h2>
           <div className="space-y-3">
             {recommendations.slice(0, 5).map((rec: { priority?: string; category?: string; timestamp?: number; issue?: string; explanation?: string; action?: string; transcriptSegment?: string }, i: number) => (
-              <div 
-                key={i} 
+              <div
+                key={i}
                 className="border-l-4 border-primary pl-4 hover:bg-muted/50 rounded-r-lg p-2 transition-colors cursor-pointer"
                 onClick={() => {
                   if (rec.timestamp) {
@@ -527,12 +541,11 @@ export default function RoleplayResultsPage() {
             {parsedTimestampedFeedback.slice(0, 10).map((feedback: { type?: string; pillar?: string; timestamp?: number; message?: string; transcriptSegment?: string }, i: number) => (
               <div
                 key={i}
-                className={`border-l-4 pl-4 p-2 rounded-r-lg transition-colors cursor-pointer hover:bg-muted/50 ${
-                  feedback.type === 'strength' ? 'border-green-500' :
+                className={`border-l-4 pl-4 p-2 rounded-r-lg transition-colors cursor-pointer hover:bg-muted/50 ${feedback.type === 'strength' ? 'border-green-500' :
                   feedback.type === 'weakness' ? 'border-red-500' :
-                  feedback.type === 'opportunity' ? 'border-blue-500' :
-                  'border-yellow-500'
-                }`}
+                    feedback.type === 'opportunity' ? 'border-blue-500' :
+                      'border-yellow-500'
+                  }`}
                 onClick={() => {
                   if (feedback.timestamp) {
                     router.push(`/dashboard/roleplay/${sessionId}?timestamp=${feedback.timestamp}`);
@@ -543,9 +556,9 @@ export default function RoleplayResultsPage() {
                   <Badge
                     variant={
                       feedback.type === 'strength' ? 'default' :
-                      feedback.type === 'weakness' ? 'destructive' :
-                      feedback.type === 'opportunity' ? 'secondary' :
-                      'outline'
+                        feedback.type === 'weakness' ? 'destructive' :
+                          feedback.type === 'opportunity' ? 'secondary' :
+                            'outline'
                     }
                   >
                     {feedback.type}

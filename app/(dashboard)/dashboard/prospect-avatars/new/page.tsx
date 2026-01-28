@@ -9,16 +9,17 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
-import { calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
+import { toastError } from '@/lib/toast';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 function NewProspectAvatarContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const offerId = searchParams?.get('offerId');
   const [loading, setLoading] = useState(false);
-  
+
   // Redirect if accessed directly - prospects must be created within offers
   useEffect(() => {
     if (!offerId) {
@@ -50,15 +51,15 @@ function NewProspectAvatarContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name) {
-      alert('Please provide a name for this prospect avatar');
+      toastError('Please provide a name for this prospect avatar');
       return;
     }
 
     const problems = formData.problems.filter(p => p.trim());
     if (problems.length === 0) {
-      alert('Please provide at least one problem');
+      toastError('Please provide at least one problem');
       return;
     }
 
@@ -66,16 +67,16 @@ function NewProspectAvatarContent() {
     try {
       // Map levels to scores
       const positionProblemAlignment = mapLevelToScore(formData.positionAlignment);
-      
+
       // Pain/Ambition: use the higher of the two
       const painScore = mapLevelToScore(formData.painLevel);
       const ambitionScore = mapLevelToScore(formData.ambitionLevel);
       const painAmbitionIntensity = Math.max(painScore, ambitionScore);
-      
+
       // Perceived need for help - map based on authority level
       const baseNeedScore = mapLevelToScore(formData.perceivedNeedForHelp);
       let perceivedNeedForHelp = baseNeedScore;
-      
+
       // Adjust based on authority level (API will handle final calculation)
       if (formData.authorityLevel === 'advisor') {
         perceivedNeedForHelp = Math.max(1, Math.min(3, baseNeedScore));
@@ -114,7 +115,7 @@ function NewProspectAvatarContent() {
       }
 
       if (!offerId) {
-        alert('Offer ID is required. Please create prospects from within an offer.');
+        toastError('Offer ID is required. Please create prospects from within an offer.');
         router.push('/dashboard/offers');
         return;
       }
@@ -142,9 +143,9 @@ function NewProspectAvatarContent() {
       }
 
       router.push(`/dashboard/offers/${offerId}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating avatar:', error);
-      alert('Failed to create avatar: ' + error.message);
+      toastError('Failed to create avatar: ' + (error instanceof Error ? error.message : 'Unknown error'));
     } finally {
       setLoading(false);
     }
@@ -171,7 +172,7 @@ function NewProspectAvatarContent() {
         <Card className="p-4 sm:p-6 space-y-4 sm:space-y-6">
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">Basic Information</h2>
-            
+
             <div className="space-y-2">
               <Label htmlFor="name">Prospect Name *</Label>
               <Input
@@ -204,10 +205,24 @@ function NewProspectAvatarContent() {
 
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="positionAlignment">Position Alignment (Relative to the Offer)</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="positionAlignment">Position Alignment (Relative to the Offer)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        How closely does this prospect match your ideal customer profile (ICP) for this offer?
+                        High alignment means they perfectly fit your target market, while low alignment indicates
+                        they may be outside your typical customer base.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Select
                   value={formData.positionAlignment}
-                  onValueChange={(value: 'high' | 'medium' | 'low') => 
+                  onValueChange={(value: 'high' | 'medium' | 'low') =>
                     setFormData({ ...formData, positionAlignment: value })
                   }
                 >
@@ -271,7 +286,7 @@ function NewProspectAvatarContent() {
                   <Label htmlFor="painLevel">Pain Level</Label>
                   <Select
                     value={formData.painLevel}
-                    onValueChange={(value: 'high' | 'medium' | 'low') => 
+                    onValueChange={(value: 'high' | 'medium' | 'low') =>
                       setFormData({ ...formData, painLevel: value })
                     }
                   >
@@ -293,7 +308,7 @@ function NewProspectAvatarContent() {
                   <Label htmlFor="ambitionLevel">Ambition Level</Label>
                   <Select
                     value={formData.ambitionLevel}
-                    onValueChange={(value: 'high' | 'medium' | 'low') => 
+                    onValueChange={(value: 'high' | 'medium' | 'low') =>
                       setFormData({ ...formData, ambitionLevel: value })
                     }
                   >
@@ -307,7 +322,7 @@ function NewProspectAvatarContent() {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground">
-                    How strong is the prospect's desire to reach their desired result?
+                    How strong is the prospect&apos;s desire to reach their desired result?
                   </p>
                 </div>
 
@@ -315,7 +330,7 @@ function NewProspectAvatarContent() {
                   <Label htmlFor="perceivedNeedForHelp">Perceived Need for Help</Label>
                   <Select
                     value={formData.perceivedNeedForHelp}
-                    onValueChange={(value: 'high' | 'medium' | 'low') => 
+                    onValueChange={(value: 'high' | 'medium' | 'low') =>
                       setFormData({ ...formData, perceivedNeedForHelp: value })
                     }
                   >
@@ -338,7 +353,7 @@ function NewProspectAvatarContent() {
                 <Label htmlFor="authorityLevel">Authority Level (Relative to Seller)</Label>
                 <Select
                   value={formData.authorityLevel}
-                  onValueChange={(value: 'advisee' | 'peer' | 'advisor') => 
+                  onValueChange={(value: 'advisee' | 'peer' | 'advisor') =>
                     setFormData({ ...formData, authorityLevel: value })
                   }
                 >
@@ -357,7 +372,21 @@ function NewProspectAvatarContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="funnelContext">Funnel Context</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="funnelContext">Funnel Context</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        The entry point or journey stage where this prospect entered your sales funnel.
+                        This affects their awareness level, trust, and readiness to buy. Examples range
+                        from cold outbound (low awareness) to referrals or existing customers (high trust).
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Select
                   value={formData.funnelContext}
                   onValueChange={(value) => setFormData({ ...formData, funnelContext: value })}
@@ -382,10 +411,25 @@ function NewProspectAvatarContent() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="executionResistance">Execution Resistance (Ability to Proceed)</Label>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="executionResistance">Execution Resistance (Ability to Proceed)</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        The prospect&apos;s practical ability to take action, independent of their emotional
+                        interest. This measures logistical constraints like budget availability, time
+                        capacity, decision-making authority, and ability to implement. This is about
+                        capability, not desire.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
                 <Select
                   value={formData.executionResistance}
-                  onValueChange={(value: 'fully_able' | 'partial' | 'extreme' | 'auto') => 
+                  onValueChange={(value: 'fully_able' | 'partial' | 'extreme' | 'auto') =>
                     setFormData({ ...formData, executionResistance: value })
                   }
                 >
@@ -400,7 +444,7 @@ function NewProspectAvatarContent() {
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  Measures whether the prospect has practical ability to act (money, time, effort capacity, decision authority). 
+                  Measures whether the prospect has practical ability to act (money, time, effort capacity, decision authority).
                   This is logistical, not emotional.
                 </p>
               </div>

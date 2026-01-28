@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { toastError } from '@/lib/toast';
 
 export default function EditOfferPage() {
   const router = useRouter();
@@ -57,7 +58,7 @@ export default function EditOfferPage() {
       });
     } catch (error) {
       console.error('Error fetching offer:', error);
-      alert('Failed to load offer');
+      toastError('Failed to load offer');
       router.push('/dashboard/offers');
     } finally {
       setLoading(false);
@@ -70,13 +71,13 @@ export default function EditOfferPage() {
     if (!formData.name || !formData.offerCategory || !formData.whoItsFor || 
         !formData.coreOutcome || !formData.mechanismHighLevel || 
         !formData.deliveryModel || !formData.priceRange) {
-      alert('Please fill in all required fields');
+      toastError('Please fill in all required fields');
       return;
     }
 
     const problems = formData.primaryProblemsSolved.filter(p => p.trim());
     if (problems.length < 3) {
-      alert('Please provide at least 3 problems this offer solves');
+      toastError('Please provide at least 3 problems this offer solves');
       return;
     }
 
@@ -99,7 +100,7 @@ export default function EditOfferPage() {
       router.push('/dashboard/offers');
     } catch (error: any) {
       console.error('Error updating offer:', error);
-      alert('Failed to update offer: ' + error.message);
+      toastError('Failed to update offer: ' + error.message);
     } finally {
       setSaving(false);
     }

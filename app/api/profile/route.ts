@@ -34,6 +34,7 @@ export async function GET(request: NextRequest) {
         location: users.location,
         website: users.website,
         emailVerified: users.emailVerified,
+        isTourCompleted: users.isTourCompleted,
         createdAt: users.createdAt,
         organizationId: users.organizationId,
       })
@@ -91,7 +92,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, bio, phone, location, website } = body;
+    const { name, bio, phone, location, website, isTourCompleted } = body;
 
     // Validate name if provided
     if (name !== undefined && (!name || name.trim().length === 0)) {
@@ -110,6 +111,7 @@ export async function PATCH(request: NextRequest) {
         phone: phone !== undefined ? phone.trim() || null : undefined,
         location: location !== undefined ? location.trim() || null : undefined,
         website: website !== undefined ? website.trim() || null : undefined,
+        isTourCompleted: isTourCompleted !== undefined ? Boolean(isTourCompleted) : undefined,
         updatedAt: new Date(),
       })
       .where(eq(users.id, session.user.id))
@@ -122,6 +124,7 @@ export async function PATCH(request: NextRequest) {
         phone: users.phone,
         location: users.location,
         website: users.website,
+        isTourCompleted: users.isTourCompleted,
       });
 
     return NextResponse.json(updated[0]);

@@ -10,7 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Upload, FileText } from 'lucide-react';
 import Link from 'next/link';
+import { toastError } from '@/lib/toast';
 import { Badge } from '@/components/ui/badge';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface Offer {
@@ -154,11 +156,11 @@ export default function NewRoleplayPage() {
         await fetchOffers(); // Refresh offers list
       } else {
         const errorData = await response.json();
-        alert('Failed to create offer: ' + (errorData.error || 'Unknown error'));
+        toastError('Failed to create offer: ' + (errorData.error || 'Unknown error'));
       }
     } catch (error: any) {
       console.error('Error creating offer from template:', error);
-      alert('Failed to create offer: ' + error.message);
+      toastError('Failed to create offer: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -166,12 +168,12 @@ export default function NewRoleplayPage() {
 
   const handleTranscriptUpload = async () => {
     if (!transcriptText.trim() && !transcriptFile) {
-      alert('Please provide a transcript or upload a file');
+      toastError('Please provide a transcript or upload a file');
       return;
     }
 
     if (!selectedOfferId) {
-      alert('Please select an offer first');
+      toastError('Please select an offer first');
       return;
     }
 
@@ -222,7 +224,7 @@ export default function NewRoleplayPage() {
       router.push(`/dashboard/roleplay/${sessionData.session.id}`);
     } catch (error: any) {
       console.error('Error processing transcript:', error);
-      alert('Failed to process transcript: ' + error.message);
+      toastError('Failed to process transcript: ' + error.message);
     } finally {
       setUploadingTranscript(false);
     }
@@ -230,7 +232,7 @@ export default function NewRoleplayPage() {
 
   const handleStart = async () => {
     if (!selectedOfferId) {
-      alert('Please select an offer');
+      toastError('Please select an offer');
       return;
     }
 
@@ -272,7 +274,7 @@ export default function NewRoleplayPage() {
       router.push(`/dashboard/roleplay/${data.session.id}`);
     } catch (error: any) {
       console.error('Error starting roleplay:', error);
-      alert('Failed to start roleplay: ' + error.message);
+      toastError('Failed to start roleplay: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -285,6 +287,19 @@ export default function NewRoleplayPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard/roleplay">Roleplay</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>New session</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       <div className="mb-4 sm:mb-6">
         <h1 className="text-2xl sm:text-3xl font-bold">Start New Roleplay</h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-1">

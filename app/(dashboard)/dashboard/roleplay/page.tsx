@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Play, Clock, TrendingUp, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 
 interface RoleplaySession {
   id: string;
@@ -159,13 +160,20 @@ export default function RoleplayPage() {
         {loading ? (
           <div className="text-center py-8 text-muted-foreground">Loading sessions...</div>
         ) : sessions.length === 0 ? (
-          <div className="text-center py-12">
-            <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground mb-4">No roleplay sessions yet</p>
-            <Link href="/dashboard/roleplay/new">
-              <Button>Start Your First Roleplay</Button>
-            </Link>
-          </div>
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <MessageSquare className="size-6" />
+              </EmptyMedia>
+              <EmptyTitle>No roleplay sessions yet</EmptyTitle>
+              <EmptyDescription>Start your first AI roleplay to practice and get scored.</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Link href="/dashboard/roleplay/new">
+                <Button>Start Your First Roleplay</Button>
+              </Link>
+            </EmptyContent>
+          </Empty>
         ) : (
           <div className="space-y-3">
             {sessions.map((session) => (

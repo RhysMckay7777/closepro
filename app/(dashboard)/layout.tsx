@@ -8,6 +8,8 @@ import { useSession } from '@/lib/auth-client';
 import { useUser } from '@/contexts/user-context';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { TourProvider, TourOverlay, TourStepCard, TourAutoStart } from '@/components/tour';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 export default function DashboardLayout({
   children,
@@ -65,8 +67,10 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background relative">
-      {/* Decorative background elements */}
+    <TourProvider>
+      <TourAutoStart />
+      <div className="flex h-screen overflow-hidden bg-background relative">
+        {/* Decorative background elements */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/5 via-transparent to-transparent pointer-events-none" />
       <div className="absolute inset-0 bg-grid-white/[0.02] pointer-events-none" />
 
@@ -112,9 +116,13 @@ export default function DashboardLayout({
           onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
         />
         <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
         </main>
       </div>
-    </div>
+      <TourOverlay />
+      <TourStepCard />
+    </TourProvider>
   );
 }

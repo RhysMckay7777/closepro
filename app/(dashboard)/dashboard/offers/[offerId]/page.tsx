@@ -7,6 +7,9 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Plus, ArrowLeft, Edit, Play, User } from 'lucide-react';
 import Link from 'next/link';
+import { toastError } from '@/lib/toast';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
+import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 
 interface Offer {
   id: string;
@@ -51,7 +54,7 @@ export default function OfferDetailsPage() {
       setOffer(data.offer);
     } catch (error) {
       console.error('Error fetching offer:', error);
-      alert('Failed to load offer');
+      toastError('Failed to load offer');
       router.push('/dashboard/offers');
     }
   };
@@ -90,7 +93,7 @@ export default function OfferDetailsPage() {
       setProspects(data.prospects || []);
     } catch (error: any) {
       console.error('Error generating prospects:', error);
-      alert(error.message || 'Failed to generate prospects');
+      toastError(error.message || 'Failed to generate prospects');
     } finally {
       setGenerating(false);
     }
@@ -132,6 +135,19 @@ export default function OfferDetailsPage() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/dashboard/offers">Offers</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{offer.name}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
@@ -196,9 +212,23 @@ export default function OfferDetailsPage() {
           </Card>
         ) : prospects.length === 0 ? (
           <Card className="p-6">
-            <div className="text-center text-muted-foreground">
-              No prospects yet. Click "Create New Prospect" to get started.
-            </div>
+            <Empty>
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <User className="size-6" />
+                </EmptyMedia>
+                <EmptyTitle>No prospects yet</EmptyTitle>
+                <EmptyDescription>Create prospect profiles for this offer to use in roleplays.</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Link href={`/dashboard/offers/${offerId}/prospects/new`}>
+                  <Button>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create New Prospect
+                  </Button>
+                </Link>
+              </EmptyContent>
+            </Empty>
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

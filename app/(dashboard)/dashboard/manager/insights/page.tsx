@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Lightbulb, AlertCircle, Target } from 'lucide-react';
 import Link from 'next/link';
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from '@/components/ui/empty';
 
 export default function ManagerInsightsPage() {
   const [loading, setLoading] = useState(true);
@@ -140,9 +141,16 @@ export default function ManagerInsightsPage() {
 
       {/* Insights List */}
       {insights.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Lightbulb className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-          <p className="text-muted-foreground">No insights available yet</p>
+        <Card className="p-12">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Lightbulb className="size-6" />
+              </EmptyMedia>
+              <EmptyTitle>No insights available yet</EmptyTitle>
+              <EmptyDescription>Insights will appear here as your team completes calls and roleplays.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
         </Card>
       ) : (
         <div className="space-y-3 sm:space-y-4">

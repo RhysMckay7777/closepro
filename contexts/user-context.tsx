@@ -8,12 +8,14 @@ interface UserProfile {
   email: string;
   avatar: string | null;
   id?: string;
+  isTourCompleted?: boolean;
 }
 
 interface UserContextType {
   user: UserProfile | null;
   loading: boolean;
   refetch: () => Promise<void>;
+  markTourComplete: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -46,7 +48,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           try {
             const cacheData: CacheData = JSON.parse(cached);
             const now = Date.now();
-            
+
             // Use cache if it's still valid
             if (now - cacheData.timestamp < CACHE_DURATION) {
               setUser(cacheData.data);
@@ -68,6 +70,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           email: data.email,
           avatar: data.profilePhoto,
           id: data.id,
+          isTourCompleted: data.isTourCompleted ?? false,
         };
 
         // Cache the result
@@ -92,7 +95,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       console.error('Error fetching user profile:', error);
-      
+
       // Fallback to cache on error
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
@@ -124,8 +127,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await fetchUserProfile(true);
   };
 
+  const markTourComplete = async () => {
+    if (!session?.user) return;
+    try {
+      const res = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isTourCompleted: true }),
+      });
+      if (res.ok) await fetchUserProfile(true);
+    } catch (e) {
+      console.error('Failed to mark tour complete:', e);
+    }
+  };
+
   return (
-    <UserContext.Provider value={{ user, loading, refetch }}>
+    <UserContext.Provider value={{ user, loading, refetch, markTourComplete }}>
       {children}
     </UserContext.Provider>
   );

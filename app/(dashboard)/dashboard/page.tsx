@@ -83,7 +83,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-8">
       {/* Greeting Card */}
-      <div>
+      <div data-tour="dashboard-greeting">
         <div className="space-y-1">
           <div className="text-2xl sm:text-3xl lg:text-4xl font-serif font-semibold text-primary/90">
             Welcome Back, <span className="text-2xl sm:text-3xl lg:text-4xl font-serif font-semibold text-foreground inline-block">
