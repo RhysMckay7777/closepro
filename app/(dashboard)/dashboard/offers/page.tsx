@@ -5,17 +5,19 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Edit, Trash2, Package } from 'lucide-react';
+import { Plus, Package } from 'lucide-react';
 import Link from 'next/link';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
-import { toastError } from '@/lib/toast';
-import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 
 interface Offer {
   id: string;
   name: string;
   offerCategory: string;
   priceRange: string;
+  coreOfferPrice?: string;
   deliveryModel: string;
   isTemplate: boolean;
   isActive: boolean;
@@ -25,7 +27,6 @@ interface Offer {
 
 export default function OffersPage() {
   const router = useRouter();
-  const { openDialog, ConfirmDialog } = useConfirmDialog();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,25 +45,6 @@ export default function OffersPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleDelete = (offerId: string) => {
-    openDialog({
-      title: 'Delete offer?',
-      description: 'Are you sure you want to delete this offer? This cannot be undone.',
-      confirmLabel: 'Delete',
-      variant: 'destructive',
-      onConfirm: async () => {
-        try {
-          const response = await fetch(`/api/offers/${offerId}`, { method: 'DELETE' });
-          if (!response.ok) throw new Error('Failed to delete offer');
-          setOffers((prev) => prev.filter((o) => o.id !== offerId));
-        } catch (error) {
-          console.error('Error deleting offer:', error);
-          toastError('Failed to delete offer');
-        }
-      },
-    });
   };
 
   const getCategoryLabel = (category: string) => {
@@ -95,9 +77,7 @@ export default function OffersPage() {
   }
 
   return (
-    <>
-      <ConfirmDialog />
-      <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
         {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -136,57 +116,47 @@ export default function OffersPage() {
           </Empty>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {offers.map((offer) => (
-            <Card key={offer.id} className="p-6 hover:shadow-lg transition-shadow">
-              <Link href={`/dashboard/offers/${offer.id}`}>
-                <div className="flex items-start justify-between mb-4 cursor-pointer">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-lg mb-2">{offer.name}</h3>
-                    <div className="flex flex-wrap gap-2 mb-3">
+        <Card>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Offer Name</TableHead>
+                  <TableHead>Offer Type</TableHead>
+                  <TableHead>Delivery Model</TableHead>
+                  <TableHead>Core Offer Price</TableHead>
+                  <TableHead></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {offers.map((offer) => (
+                  <TableRow
+                    key={offer.id}
+                    className="cursor-pointer hover:bg-accent/50"
+                    onClick={() => router.push(`/dashboard/offers/${offer.id}`)}
+                  >
+                    <TableCell className="font-medium">{offer.name}</TableCell>
+                    <TableCell>
                       <Badge variant="outline">{getCategoryLabel(offer.offerCategory)}</Badge>
-                      <Badge variant="secondary">{getDeliveryLabel(offer.deliveryModel)}</Badge>
-                      {offer.isTemplate && (
-                        <Badge variant="default">Template</Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Price: {offer.priceRange}
-                    </p>
-                    {offer.prospectCount !== undefined && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {offer.prospectCount} prospect{offer.prospectCount !== 1 ? 's' : ''}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </Link>
-
-              <div className="flex gap-2 pt-4 border-t">
-                <Link href={`/dashboard/offers/${offer.id}`} className="flex-1">
-                  <Button variant="default" size="sm" className="w-full">
-                    View Prospects
-                  </Button>
-                </Link>
-                <Link href={`/dashboard/offers/${offer.id}/edit`}>
-                  <Button variant="outline" size="sm">
-                    <Edit className="h-4 w-4" />
-                  </Button>
-                </Link>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleDelete(offer.id)}
-                  className="text-destructive hover:text-destructive"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+                    </TableCell>
+                    <TableCell>{getDeliveryLabel(offer.deliveryModel)}</TableCell>
+                    <TableCell>
+                      {offer.coreOfferPrice || offer.priceRange || '—'}
+                    </TableCell>
+                    <TableCell>
+                      <Link href={`/dashboard/offers/${offer.id}`} onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="sm">
+                          View Offer
+                        </Button>
+                      </Link>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </Card>
       )}
-      </div>
-    </>
+    </div>
   );
 }

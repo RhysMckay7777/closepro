@@ -75,12 +75,7 @@ const navSections: NavSection[] = [
     title: 'Training',
     items: [
       {
-        title: 'Call Analysis',
-        href: '/dashboard/calls/review',
-        icon: Mic,
-      },
-      {
-        title: 'Live Call Reporting',
+        title: 'Calls',
         href: '/dashboard/calls',
         icon: Mic,
       },

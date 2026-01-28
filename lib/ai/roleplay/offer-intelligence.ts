@@ -104,39 +104,220 @@ Best Fit: ${offer.bestFitNotes || 'Not specified'}`;
 }
 
 /**
- * Determine default sales style based on offer category
+ * Category-specific behavior rules for AI roleplay and analysis
  */
-export function getDefaultSalesStyle(offer: OfferProfile): {
+export interface CategoryBehaviorRules {
+  // Sales approach
   tone: 'emotional' | 'logical' | 'hybrid';
   emphasis: string[];
-} {
-  switch (offer.offerCategory) {
+  
+  // Objection handling
+  objectionInterpretation: {
+    commonPatterns: string[];
+    responseStyle: 'validation-first' | 'credibility-first' | 'logic-first' | 'adaptive';
+  };
+  
+  // Scoring adjustments
+  scoringExpectations: {
+    valueScoreWeight: number; // 0-1, how much value matters
+    trustScoreWeight: number; // 0-1, how much trust matters
+    fitScoreWeight: number; // 0-1, how much fit matters
+    logisticsScoreWeight: number; // 0-1, how much logistics matters
+  };
+  
+  // Difficulty interpretation
+  difficultyInterpretation: {
+    baselineExpectation: number; // Expected score for "realistic" difficulty
+    adjustmentFactors: string[]; // What to consider when adjusting expectations
+  };
+  
+  // Authority stance
+  authorityStance: 'advisee' | 'peer' | 'advisor' | 'adaptive';
+  
+  // Insights generation
+  insightFocus: string[]; // What to emphasize in coaching insights
+}
+
+/**
+ * Get category-specific behavior rules
+ */
+export function getCategoryBehaviorRules(category: OfferCategory, customerStage?: 'aspiring' | 'current' | 'mixed'): CategoryBehaviorRules {
+  switch (category) {
     case 'b2c_health':
+      return {
+        tone: 'emotional',
+        emphasis: ['transformation', 'identity', 'feelings', 'life change', 'pain relief'],
+        objectionInterpretation: {
+          commonPatterns: [
+            'I\'ve tried everything before',
+            'I don\'t have time',
+            'I\'m not sure I can stick with it',
+            'It\'s too expensive for me right now'
+          ],
+          responseStyle: 'validation-first',
+        },
+        scoringExpectations: {
+          valueScoreWeight: 0.3,
+          trustScoreWeight: 0.4,
+          fitScoreWeight: 0.2,
+          logisticsScoreWeight: 0.1,
+        },
+        difficultyInterpretation: {
+          baselineExpectation: 65,
+          adjustmentFactors: ['pain intensity', 'identity alignment', 'past failures', 'support system'],
+        },
+        authorityStance: 'advisee',
+        insightFocus: ['emotional connection', 'identity shift', 'pain acknowledgment', 'validation'],
+      };
+    
     case 'b2c_relationships':
       return {
         tone: 'emotional',
-        emphasis: ['transformation', 'identity', 'feelings', 'life change'],
+        emphasis: ['validation', 'sensitivity', 'emotional safety', 'therapeutic approach', 'understanding'],
+        objectionInterpretation: {
+          commonPatterns: [
+            'I\'m too old/too set in my ways',
+            'Relationships should happen naturally',
+            'I\'m worried about appearing desperate',
+            'I\'ve been hurt before'
+          ],
+          responseStyle: 'validation-first',
+        },
+        scoringExpectations: {
+          valueScoreWeight: 0.25,
+          trustScoreWeight: 0.5,
+          fitScoreWeight: 0.15,
+          logisticsScoreWeight: 0.1,
+        },
+        difficultyInterpretation: {
+          baselineExpectation: 60,
+          adjustmentFactors: ['past trauma', 'trust issues', 'self-worth', 'readiness for change'],
+        },
+        authorityStance: 'advisor', // Therapist-adjacent authority
+        insightFocus: ['validation', 'emotional safety', 'trust building', 'sensitivity', 'therapeutic approach'],
+      };
+    
+    case 'b2c_wealth':
+      return {
+        tone: 'hybrid',
+        emphasis: ['ROI', 'credibility', 'proof', 'skepticism handling', 'practical steps'],
+        objectionInterpretation: {
+          commonPatterns: [
+            'Too good to be true',
+            'I\'ve been burned before',
+            'How do I know this will work?',
+            'I don\'t have the money right now'
+          ],
+          responseStyle: 'credibility-first',
+        },
+        scoringExpectations: {
+          valueScoreWeight: 0.4,
+          trustScoreWeight: 0.35,
+          fitScoreWeight: 0.15,
+          logisticsScoreWeight: 0.1,
+        },
+        difficultyInterpretation: {
+          baselineExpectation: 70,
+          adjustmentFactors: ['skepticism level', 'past failures', 'proof requirements', 'financial constraints'],
+        },
+        authorityStance: 'peer',
+        insightFocus: ['credibility building', 'proof presentation', 'ROI clarity', 'skepticism handling'],
+      };
+    
+    case 'mixed_wealth':
+      return {
+        tone: 'hybrid',
+        emphasis: customerStage === 'aspiring' 
+          ? ['emotional freedom', 'identity shift', 'practical path', 'proof']
+          : ['ROI', 'scalability', 'systems', 'credibility'],
+        objectionInterpretation: {
+          commonPatterns: [
+            'I\'m not sure I can learn this',
+            'I don\'t have clients to practice with',
+            'What if I fail?',
+            'How do I know this works?'
+          ],
+          responseStyle: 'adaptive',
+        },
+        scoringExpectations: {
+          valueScoreWeight: customerStage === 'aspiring' ? 0.35 : 0.4,
+          trustScoreWeight: customerStage === 'aspiring' ? 0.3 : 0.35,
+          fitScoreWeight: 0.2,
+          logisticsScoreWeight: 0.15,
+        },
+        difficultyInterpretation: {
+          baselineExpectation: customerStage === 'aspiring' ? 65 : 70,
+          adjustmentFactors: ['customer stage', 'experience level', 'proof needs', 'coachability'],
+        },
+        authorityStance: 'adaptive',
+        insightFocus: customerStage === 'aspiring'
+          ? ['confidence building', 'proof', 'practical steps', 'identity shift']
+          : ['ROI', 'systems', 'scalability', 'credibility'],
       };
     
     case 'b2b_services':
       return {
         tone: 'logical',
-        emphasis: ['ROI', 'process', 'implementation', 'metrics'],
-      };
-    
-    case 'b2c_wealth':
-    case 'mixed_wealth':
-      return {
-        tone: 'hybrid',
-        emphasis: ['freedom', 'earnings path', 'practical steps', 'identity + logic'],
+        emphasis: ['ROI', 'process', 'implementation', 'metrics', 'technical depth', 'authority'],
+        objectionInterpretation: {
+          commonPatterns: [
+            'We\'ve tried consultants before',
+            'How do we measure ROI?',
+            'What if it doesn\'t work?',
+            'We need to see the process first'
+          ],
+          responseStyle: 'logic-first',
+        },
+        scoringExpectations: {
+          valueScoreWeight: 0.35,
+          trustScoreWeight: 0.3,
+          fitScoreWeight: 0.25,
+          logisticsScoreWeight: 0.1,
+        },
+        difficultyInterpretation: {
+          baselineExpectation: 75,
+          adjustmentFactors: ['technical requirements', 'ROI clarity', 'implementation complexity', 'authority level'],
+        },
+        authorityStance: 'advisor',
+        insightFocus: ['technical depth', 'ROI clarity', 'process explanation', 'authority demonstration', 'implementation details'],
       };
     
     default:
       return {
         tone: 'hybrid',
         emphasis: ['value', 'transformation'],
+        objectionInterpretation: {
+          commonPatterns: [],
+          responseStyle: 'adaptive',
+        },
+        scoringExpectations: {
+          valueScoreWeight: 0.3,
+          trustScoreWeight: 0.3,
+          fitScoreWeight: 0.2,
+          logisticsScoreWeight: 0.2,
+        },
+        difficultyInterpretation: {
+          baselineExpectation: 65,
+          adjustmentFactors: [],
+        },
+        authorityStance: 'peer',
+        insightFocus: ['value', 'transformation'],
       };
   }
+}
+
+/**
+ * Determine default sales style based on offer category (legacy function, kept for backward compatibility)
+ */
+export function getDefaultSalesStyle(offer: OfferProfile): {
+  tone: 'emotional' | 'logical' | 'hybrid';
+  emphasis: string[];
+} {
+  const rules = getCategoryBehaviorRules(offer.offerCategory);
+  return {
+    tone: rules.tone,
+    emphasis: rules.emphasis,
+  };
 }
 
 /**

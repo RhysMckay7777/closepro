@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { organizations, users, userOrganizations } from '@/db/schema';
 import { auth } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
+import { createSeedData } from '@/lib/seed-data';
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,6 +51,14 @@ export async function POST(request: NextRequest) {
       role: 'admin',
       isPrimary: true, // This is their primary organization
     });
+
+    // Create seed data: 5 default offers with 4 prospects each
+    try {
+      await createSeedData(org.id, session.user.id);
+    } catch (seedError) {
+      console.error('Error creating seed data:', seedError);
+      // Don't fail organization creation if seed data fails
+    }
 
     return NextResponse.json(org);
   } catch (error) {

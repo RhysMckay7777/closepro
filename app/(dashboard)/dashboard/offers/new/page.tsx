@@ -16,28 +16,45 @@ import Link from 'next/link';
 import { toastError } from '@/lib/toast';
 
 const offerSchema = z.object({
+  // Top Section
   name: z.string().min(1, 'Offer name is required'),
   offerCategory: z.string().min(1, 'Offer category is required'),
-  whoItsFor: z.string().min(1, 'Who it\'s for is required'),
-  coreOutcome: z.string().min(1, 'Core outcome is required'),
-  mechanismHighLevel: z.string().min(1, 'How it works is required'),
   deliveryModel: z.string().min(1, 'Delivery model is required'),
-  priceRange: z.string().min(1, 'Price range is required'),
-  primaryProblemsSolved: z.array(z.string()).refine(
-    (arr) => arr.filter((p) => p.trim()).length >= 3,
-    'Please provide at least 3 problems this offer solves'
-  ),
-  effortRequired: z.string().optional(),
-  riskReversal: z.string().optional(),
+  coreOfferPrice: z.string().min(1, 'Core offer price is required'),
+  
+  // Section 1 - ICP
+  whoItsFor: z.string().min(1, 'Who it\'s for is required'),
   customerStage: z.string().optional(),
-  proofLevel: z.string().optional(),
-  timeToResult: z.string().optional(),
+  
+  // Section 2 - Core Problems
+  coreProblems: z.string().min(1, 'Core problems are required'),
+  
+  // Section 3 - Desired Outcome
+  desiredOutcome: z.string().min(1, 'Desired outcome is required'),
+  tangibleOutcomes: z.string().optional(),
+  emotionalOutcomes: z.string().optional(),
+  
+  // Section 4 - Deliverables
+  deliverables: z.string().optional(),
+  
+  // Section 5 - Cost Profile
+  paymentOptions: z.string().optional(),
   timePerWeek: z.string().optional(),
-  commonObjections: z.array(z.string()).optional(),
-  funnelContext: z.string().optional(),
-  paymentOptions: z.object({ payInFull: z.boolean(), paymentPlans: z.array(z.any()) }).optional(),
-  downsellOptions: z.array(z.string()).optional(),
-  riskReversalDetails: z.string().optional(),
+  estimatedTimeToResults: z.string().optional(),
+  effortRequired: z.string().optional(),
+  
+  // Section 6 - Proof & Risk Reversal
+  caseStudyStrength: z.string().optional(),
+  guaranteesRefundTerms: z.string().optional(),
+  
+  // Section 7 - Funnel Context
+  primaryFunnelSource: z.string().optional(),
+  funnelContextAdditional: z.string().optional(),
+  
+  // Legacy fields for backward compatibility
+  coreOutcome: z.string().optional(),
+  mechanismHighLevel: z.string().optional(),
+  priceRange: z.string().optional(),
 });
 
 type OfferFormData = z.infer<typeof offerSchema>;
@@ -50,23 +67,26 @@ export default function NewOfferPage() {
     defaultValues: {
       name: '',
       offerCategory: '',
+      deliveryModel: '',
+      coreOfferPrice: '',
       whoItsFor: '',
+      customerStage: '',
+      coreProblems: '',
+      desiredOutcome: '',
+      tangibleOutcomes: '',
+      emotionalOutcomes: '',
+      deliverables: '',
+      paymentOptions: '',
+      timePerWeek: '',
+      estimatedTimeToResults: '',
+      effortRequired: 'medium',
+      caseStudyStrength: '',
+      guaranteesRefundTerms: '',
+      primaryFunnelSource: '',
+      funnelContextAdditional: '',
       coreOutcome: '',
       mechanismHighLevel: '',
-      deliveryModel: '',
       priceRange: '',
-      primaryProblemsSolved: ['', '', ''],
-      effortRequired: 'medium',
-      riskReversal: 'none',
-      customerStage: '',
-      proofLevel: '',
-      timeToResult: '',
-      timePerWeek: '',
-      commonObjections: [''],
-      funnelContext: '',
-      paymentOptions: { payInFull: true, paymentPlans: [] },
-      downsellOptions: [''],
-      riskReversalDetails: '',
     },
   });
 
@@ -104,17 +124,6 @@ export default function NewOfferPage() {
     }
   });
 
-  const addProblemField = () => {
-    const current = form.getValues('primaryProblemsSolved');
-    form.setValue('primaryProblemsSolved', [...current, '']);
-  };
-
-  const updateProblem = (index: number, value: string) => {
-    const current = form.getValues('primaryProblemsSolved');
-    const updated = [...current];
-    updated[index] = value;
-    form.setValue('primaryProblemsSolved', updated);
-  };
 
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
@@ -140,9 +149,9 @@ export default function NewOfferPage() {
               </p>
             </div>
           )}
-          {/* Basic Info */}
+          {/* Top Section - Offer Overview */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Basic Information</h2>
+            <h2 className="text-xl font-semibold">Offer Overview</h2>
             
             <div className="space-y-2">
               <Label htmlFor="name">Offer Name *</Label>
@@ -156,9 +165,9 @@ export default function NewOfferPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="offerCategory">Offer Category *</Label>
+                <Label htmlFor="offerCategory">Offer Type *</Label>
                 <Select
                   value={form.watch('offerCategory')}
                   onValueChange={(value) => form.setValue('offerCategory', value)}
@@ -168,10 +177,10 @@ export default function NewOfferPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="b2c_health">B2C Health</SelectItem>
-                    <SelectItem value="b2c_wealth">B2C Wealth</SelectItem>
                     <SelectItem value="b2c_relationships">B2C Relationships</SelectItem>
-                    <SelectItem value="b2b_services">B2B Services</SelectItem>
+                    <SelectItem value="b2c_wealth">B2C Wealth</SelectItem>
                     <SelectItem value="mixed_wealth">Mixed Wealth</SelectItem>
+                    <SelectItem value="b2b_services">B2B Services</SelectItem>
                   </SelectContent>
                 </Select>
                 {form.formState.errors.offerCategory && (
@@ -199,20 +208,32 @@ export default function NewOfferPage() {
                   <p className="text-sm text-destructive">{form.formState.errors.deliveryModel.message}</p>
                 )}
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="coreOfferPrice">Core Offer Price *</Label>
+                <Input
+                  id="coreOfferPrice"
+                  {...form.register('coreOfferPrice')}
+                  placeholder="e.g., £5,000"
+                />
+                {form.formState.errors.coreOfferPrice && (
+                  <p className="text-sm text-destructive">{form.formState.errors.coreOfferPrice.message}</p>
+                )}
+              </div>
             </div>
           </div>
 
-          {/* Target & Outcome */}
+          {/* Section 1 - Ideal Customer Profile (ICP) */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Target & Outcome</h2>
+            <h2 className="text-xl font-semibold">Section 1 - Ideal Customer Profile (ICP)</h2>
             
             <div className="space-y-2">
-              <Label htmlFor="whoItsFor">Who It's For (ICP) *</Label>
+              <Label htmlFor="whoItsFor">Who Is This Offer For? *</Label>
               <Textarea
                 id="whoItsFor"
                 {...form.register('whoItsFor')}
-                placeholder="e.g., Men 35+ with families who want to lose 20lbs in 12 weeks"
-                rows={2}
+                placeholder="Description of the ideal customer's position and life/business context"
+                rows={3}
               />
               {form.formState.errors.whoItsFor && (
                 <p className="text-sm text-destructive">{form.formState.errors.whoItsFor.message}</p>
@@ -220,285 +241,217 @@ export default function NewOfferPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="coreOutcome">Core Outcome / Transformation *</Label>
-              <Textarea
-                id="coreOutcome"
-                {...form.register('coreOutcome')}
-                placeholder="e.g., Complete body transformation with sustainable habits"
-                rows={2}
-              />
-              {form.formState.errors.coreOutcome && (
-                <p className="text-sm text-destructive">{form.formState.errors.coreOutcome.message}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="mechanismHighLevel">How It Works *</Label>
-              <Textarea
-                id="mechanismHighLevel"
-                {...form.register('mechanismHighLevel')}
-                placeholder="e.g., Personalized coaching, meal plans, and accountability system"
-                rows={2}
-              />
-              {form.formState.errors.mechanismHighLevel && (
-                <p className="text-sm text-destructive">{form.formState.errors.mechanismHighLevel.message}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Pricing */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Pricing & Effort</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="priceRange">Price Range *</Label>
-                <Input
-                  id="priceRange"
-                  {...form.register('priceRange')}
-                  placeholder="e.g., 5000-25000"
-                />
-                {form.formState.errors.priceRange && (
-                  <p className="text-sm text-destructive">{form.formState.errors.priceRange.message}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="effortRequired">Effort Required</Label>
-                <Select
-                  value={form.watch('effortRequired') || 'medium'}
-                  onValueChange={(value) => form.setValue('effortRequired', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="riskReversal">Risk Reversal</Label>
+              <Label htmlFor="customerStage">Customer Stage</Label>
               <Select
-                value={form.watch('riskReversal') || 'none'}
-                onValueChange={(value) => form.setValue('riskReversal', value)}
+                value={form.watch('customerStage') || ''}
+                onValueChange={(value) => form.setValue('customerStage', value)}
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select stage" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="refund">Refund Policy</SelectItem>
-                  <SelectItem value="guarantee">Guarantee</SelectItem>
-                  <SelectItem value="conditional">Conditional Guarantee</SelectItem>
+                  <SelectItem value="aspiring">Aspiring (new / just starting)</SelectItem>
+                  <SelectItem value="current">Current (already doing it, stuck)</SelectItem>
+                  <SelectItem value="mixed">Mixed (customers can be a mix of the above)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {/* Problems Solved */}
+          {/* Section 2 - Core Problems */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Problems Solved *</h2>
+            <h2 className="text-xl font-semibold">Section 2 - Core Problems</h2>
             <p className="text-sm text-muted-foreground">
-              List at least 3 primary problems this offer solves
+              Define the felt problems the prospect already experiences. Problems should be written from the prospect&apos;s perspective.
             </p>
             
-            {form.watch('primaryProblemsSolved').map((problem, index) => (
-              <div key={index} className="space-y-2">
-                <Label>Problem {index + 1}</Label>
-                <Input
-                  value={problem}
-                  onChange={(e) => updateProblem(index, e.target.value)}
-                  placeholder="e.g., Lack of time to exercise"
-                />
-              </div>
-            ))}
-            {form.formState.errors.primaryProblemsSolved && (
-              <p className="text-sm text-destructive">{form.formState.errors.primaryProblemsSolved.message}</p>
-            )}
-            
-            <Button
-              type="button"
-              variant="outline"
-              onClick={addProblemField}
-            >
-              Add Another Problem
-            </Button>
-          </div>
-
-          {/* Customer Stage & Proof */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Customer Stage & Proof</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="customerStage">Customer Stage</Label>
-                <Select
-                  value={form.watch('customerStage') || ''}
-                  onValueChange={(value) => form.setValue('customerStage', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select stage" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="aspiring">Aspiring (starting from zero)</SelectItem>
-                    <SelectItem value="current">Current (already doing it, stuck)</SelectItem>
-                    <SelectItem value="mixed">Mixed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="proofLevel">Proof Level</Label>
-                <Select
-                  value={form.watch('proofLevel') || ''}
-                  onValueChange={(value) => form.setValue('proofLevel', value)}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select proof level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="strong">Strong (many case studies/testimonials)</SelectItem>
-                    <SelectItem value="moderate">Moderate (some proof available)</SelectItem>
-                    <SelectItem value="light">Light (limited proof)</SelectItem>
-                    <SelectItem value="new">New / Minimal (just starting)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="coreProblems">Core Problems This Offer Solves *</Label>
+              <Textarea
+                id="coreProblems"
+                {...form.register('coreProblems')}
+                placeholder="What problems does this prospect have that the offer is designed to solve? Write from the prospect's perspective."
+                rows={5}
+              />
+              {form.formState.errors.coreProblems && (
+                <p className="text-sm text-destructive">{form.formState.errors.coreProblems.message}</p>
+              )}
             </div>
           </div>
 
-          {/* Cost Profile */}
+          {/* Section 3 - Desired Outcome & Transformation */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Cost Profile</h2>
-            <p className="text-sm text-muted-foreground">
-              What does it take for a customer to get results?
-            </p>
+            <h2 className="text-xl font-semibold">Section 3 - Desired Outcome & Transformation</h2>
             
+            <div className="space-y-2">
+              <Label htmlFor="desiredOutcome">Core Outcome & Timeline *</Label>
+              <Textarea
+                id="desiredOutcome"
+                {...form.register('desiredOutcome')}
+                placeholder="What result does the prospect achieve and in what timeframe?"
+                rows={2}
+              />
+              {form.formState.errors.desiredOutcome && (
+                <p className="text-sm text-destructive">{form.formState.errors.desiredOutcome.message}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="tangibleOutcomes">Tangible Outcomes</Label>
+              <Textarea
+                id="tangibleOutcomes"
+                {...form.register('tangibleOutcomes')}
+                placeholder="Measurable or concrete results (e.g., weight loss, revenue increase, specific metrics)"
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="emotionalOutcomes">Emotional Outcomes</Label>
+              <Textarea
+                id="emotionalOutcomes"
+                {...form.register('emotionalOutcomes')}
+                placeholder="Confidence, relief, certainty, identity shift, etc."
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {/* Section 4 - Offer Deliverables */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Section 4 - Offer Deliverables</h2>
+            
+            <div className="space-y-2">
+              <Label htmlFor="deliverables">Deliverables</Label>
+              <Textarea
+                id="deliverables"
+                {...form.register('deliverables')}
+                placeholder="What does the customer actually receive? (e.g., calls, coaching, software access, audits, templates, support)"
+                rows={3}
+              />
+            </div>
+          </div>
+
+          {/* Section 5 - Cost Profile */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Section 5 - Cost Profile</h2>
+            
+            <div className="space-y-2">
+              <Label htmlFor="paymentOptions">Payment Options</Label>
+              <Textarea
+                id="paymentOptions"
+                {...form.register('paymentOptions')}
+                placeholder="One-pay, payment plans, deposits (descriptive only)"
+                rows={2}
+              />
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="timePerWeek">Time Per Week Required</Label>
                 <Input
                   id="timePerWeek"
                   {...form.register('timePerWeek')}
-                  placeholder="e.g., 5-10 hours"
+                  placeholder="e.g., 5-10 hours or number/range"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="timeToResult">Estimated Time to Reach Results</Label>
+                <Label htmlFor="estimatedTimeToResults">Estimated Time to Results</Label>
                 <Input
-                  id="timeToResult"
-                  {...form.register('timeToResult')}
+                  id="estimatedTimeToResults"
+                  {...form.register('estimatedTimeToResults')}
                   placeholder="e.g., 12-16 weeks"
                 />
               </div>
             </div>
-          </div>
 
-          {/* Common Objections */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Common Objections</h2>
-            <p className="text-sm text-muted-foreground">
-              What objections do you most commonly hear?
-            </p>
-            
-            {(form.watch('commonObjections') || ['']).map((objection, index) => (
-              <div key={index} className="space-y-2">
-                <Label>Objection {index + 1}</Label>
-                <Input
-                  value={objection}
-                  onChange={(e) => {
-                    const current = form.getValues('commonObjections') || [''];
-                    const updated = [...current];
-                    updated[index] = e.target.value;
-                    form.setValue('commonObjections', updated);
-                  }}
-                  placeholder="e.g., Too expensive"
-                />
-              </div>
-            ))}
-            
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                const current = form.getValues('commonObjections') || [''];
-                form.setValue('commonObjections', [...current, '']);
-              }}
-            >
-              Add Another Objection
-            </Button>
-          </div>
-
-          {/* Down Sell Options */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Down Sell Options</h2>
-            <p className="text-sm text-muted-foreground">
-              Alternative offers or payment plans available if prospect can't commit to main offer
-            </p>
-            
-            {(form.watch('downsellOptions') || ['']).map((option, index) => (
-              <div key={index} className="space-y-2">
-                <Label>Down Sell Option {index + 1}</Label>
-                <Input
-                  value={option}
-                  onChange={(e) => {
-                    const current = form.getValues('downsellOptions') || [''];
-                    const updated = [...current];
-                    updated[index] = e.target.value;
-                    form.setValue('downsellOptions', updated);
-                  }}
-                  placeholder="e.g., Payment plan: 3 installments of $3,333"
-                />
-              </div>
-            ))}
-            
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                const current = form.getValues('downsellOptions') || [''];
-                form.setValue('downsellOptions', [...current, '']);
-              }}
-            >
-              Add Another Down Sell Option
-            </Button>
-          </div>
-
-          {/* Funnel Context */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Funnel Context</h2>
-            <p className="text-sm text-muted-foreground">
-              Where do most of your calls come from?
-            </p>
-            
             <div className="space-y-2">
-              <Label htmlFor="funnelContext">Funnel Source</Label>
+              <Label htmlFor="effortRequired">Effort Level</Label>
               <Select
-                value={form.watch('funnelContext') || ''}
-                onValueChange={(value) => form.setValue('funnelContext', value)}
+                value={form.watch('effortRequired') || 'medium'}
+                onValueChange={(value) => form.setValue('effortRequired', value)}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select funnel context" />
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cold_outbound_direct">Cold outbound → straight to call</SelectItem>
-                  <SelectItem value="cold_outbound_discovery">Cold outbound → discovery → call</SelectItem>
-                  <SelectItem value="cold_ads">Cold ads</SelectItem>
-                  <SelectItem value="warm_inbound">Warm inbound</SelectItem>
-                  <SelectItem value="content_educated">Content-educated inbound</SelectItem>
-                  <SelectItem value="referral">Referral</SelectItem>
-                  <SelectItem value="tripwire">Tripwire → call</SelectItem>
-                  <SelectItem value="existing_customer">Existing customer / upsell</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
+
+          {/* Section 6 - Proof & Risk Reversal */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Section 6 - Proof & Risk Reversal</h2>
+            
+            <div className="space-y-2">
+              <Label htmlFor="caseStudyStrength">Case Study / Proof Strength</Label>
+              <Select
+                value={form.watch('caseStudyStrength') || ''}
+                onValueChange={(value) => form.setValue('caseStudyStrength', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select proof strength" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="weak">Weak</SelectItem>
+                  <SelectItem value="moderate">Moderate</SelectItem>
+                  <SelectItem value="strong">Strong</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="guaranteesRefundTerms">Guarantees / Refund Terms</Label>
+              <Textarea
+                id="guaranteesRefundTerms"
+                {...form.register('guaranteesRefundTerms')}
+                placeholder="Describe any guarantees or refund terms"
+                rows={2}
+              />
+            </div>
+          </div>
+
+          {/* Section 7 - Funnel Context */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Section 7 - Funnel Context</h2>
+            
+            <div className="space-y-2">
+              <Label htmlFor="primaryFunnelSource">Primary Funnel Source</Label>
+              <Select
+                value={form.watch('primaryFunnelSource') || ''}
+                onValueChange={(value) => form.setValue('primaryFunnelSource', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select funnel source" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cold_outbound">Cold outbound</SelectItem>
+                  <SelectItem value="cold_ads">Cold ads</SelectItem>
+                  <SelectItem value="warm_inbound">Warm inbound</SelectItem>
+                  <SelectItem value="content_driven_inbound">Content-driven inbound</SelectItem>
+                  <SelectItem value="referral">Referral</SelectItem>
+                  <SelectItem value="existing_customer">Existing customer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="funnelContextAdditional">Additional Context</Label>
+              <Textarea
+                id="funnelContextAdditional"
+                {...form.register('funnelContextAdditional')}
+                placeholder="Any nuance needed for AI interpretation"
+                rows={2}
+              />
+            </div>
+          </div>
+
 
           {/* Actions */}
           <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">

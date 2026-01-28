@@ -12,6 +12,12 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'incomplete',
   'paused'
 ]);
+export const callTypeEnum = pgEnum('call_type', ['closing_call', 'follow_up', 'no_show']);
+export const callResultEnum = pgEnum('call_result', ['no_show', 'closed', 'lost', 'unqualified', 'follow_up', 'deposit']);
+export const offerCategoryEnum = pgEnum('offer_category', ['b2c_health', 'b2c_relationships', 'b2c_wealth', 'mixed_wealth', 'b2b_services']);
+export const customerStageEnum = pgEnum('customer_stage', ['aspiring', 'current', 'mixed']);
+export const caseStudyStrengthEnum = pgEnum('case_study_strength', ['none', 'weak', 'moderate', 'strong']);
+export const primaryFunnelSourceEnum = pgEnum('primary_funnel_source', ['cold_outbound', 'cold_ads', 'warm_inbound', 'content_driven_inbound', 'referral', 'existing_customer']);
 
 // Users table
 export const users = pgTable('users', {
@@ -248,6 +254,22 @@ export const salesCalls = pgTable('sales_calls', {
   transcript: text('transcript'), // Full transcript text
   transcriptJson: text('transcript_json'), // JSON with speaker diarization and timestamps
   metadata: text('metadata'), // JSON string for additional data (deal stage, outcome, etc.)
+  
+  // Calls system fields
+  offerId: uuid('offer_id').references(() => offers.id, { onDelete: 'set null' }),
+  offerType: offerCategoryEnum('offer_type'),
+  callType: callTypeEnum('call_type'),
+  result: callResultEnum('result'),
+  qualified: boolean('qualified'),
+  cashCollected: integer('cash_collected'), // Amount in cents
+  revenueGenerated: integer('revenue_generated'), // Amount in cents
+  depositTaken: boolean('deposit_taken'),
+  reasonForOutcome: text('reason_for_outcome'), // Mandatory short text field
+  analysisIntent: text('analysis_intent'), // 'update_figures' | 'analysis_only'
+  wasConfirmed: boolean('was_confirmed'), // For no-shows
+  bookingSource: text('booking_source'), // For no-shows
+  originalCallId: uuid('original_call_id').references(() => salesCalls.id, { onDelete: 'set null' }), // For follow-ups
+  
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
   completedAt: timestamp('completed_at'),
@@ -290,7 +312,7 @@ export const offers = pgTable('offers', {
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), // Creator
   name: text('name').notNull(), // Offer name/title
-  offerCategory: text('offer_category').notNull(), // 'b2c_health', 'b2c_wealth', 'b2c_relationships', 'b2b_services', 'mixed_wealth'
+  offerCategory: offerCategoryEnum('offer_category').notNull(), // Enum: b2c_health, b2c_relationships, b2c_wealth, mixed_wealth, b2b_services
   whoItsFor: text('who_its_for').notNull(), // ICP definition
   coreOutcome: text('core_outcome').notNull(), // Transformation/result
   mechanismHighLevel: text('mechanism_high_level').notNull(), // How it works
@@ -298,8 +320,27 @@ export const offers = pgTable('offers', {
   supportChannels: text('support_channels'), // JSON array
   touchpointsFrequency: text('touchpoints_frequency'),
   implementationResponsibility: text('implementation_responsibility'), // 'prospect_heavy', 'provider_heavy', 'balanced'
-  priceRange: text('price_range').notNull(), // e.g., "5000-25000"
-  paymentOptions: text('payment_options'), // JSON
+  
+  // Updated fields
+  coreOfferPrice: text('core_offer_price'), // Single price (replaces priceRange)
+  priceRange: text('price_range'), // Keep for backward compatibility, will be migrated
+  
+  // New fields per spec
+  customerStage: customerStageEnum('customer_stage'), // 'aspiring', 'current', 'mixed'
+  coreProblems: text('core_problems'), // Free text (replaces primaryProblemsSolved structure)
+  desiredOutcome: text('desired_outcome'), // Core Outcome & Timeline
+  tangibleOutcomes: text('tangible_outcomes'), // Measurable results
+  emotionalOutcomes: text('emotional_outcomes'), // Confidence, relief, etc.
+  deliverables: text('deliverables'), // What customer receives
+  paymentOptions: text('payment_options'), // Descriptive text (not JSON)
+  timePerWeek: text('time_per_week'), // Number or range
+  estimatedTimeToResults: text('estimated_time_to_results'), // Free text
+  caseStudyStrength: caseStudyStrengthEnum('case_study_strength'), // 'none', 'weak', 'moderate', 'strong'
+  guaranteesRefundTerms: text('guarantees_refund_terms'), // Free text
+  primaryFunnelSource: primaryFunnelSourceEnum('primary_funnel_source'), // Enum
+  funnelContextAdditional: text('funnel_context_additional'), // Additional context
+  
+  // Legacy fields (keep for backward compatibility)
   timeToResult: text('time_to_result'),
   effortRequired: text('effort_required'), // 'low', 'medium', 'high'
   primaryProblemsSolved: text('primary_problems_solved'), // JSON array
@@ -313,6 +354,7 @@ export const offers = pgTable('offers', {
   disqualifiers: text('disqualifiers'), // JSON array
   softDisqualifiers: text('soft_disqualifiers'), // JSON array
   bestFitNotes: text('best_fit_notes'),
+  
   isTemplate: boolean('is_template').notNull().default(false), // Practice templates
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -435,6 +477,14 @@ export const salesCallsRelations = relations(salesCalls, ({ one, many }) => ({
   user: one(users, {
     fields: [salesCalls.userId],
     references: [users.id],
+  }),
+  offer: one(offers, {
+    fields: [salesCalls.offerId],
+    references: [offers.id],
+  }),
+  originalCall: one(salesCalls, {
+    fields: [salesCalls.originalCallId],
+    references: [salesCalls.id],
   }),
   analysis: one(callAnalysis, {
     fields: [salesCalls.id],

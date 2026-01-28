@@ -8,7 +8,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Slider } from '@/components/ui/slider';
+import { Badge } from '@/components/ui/badge';
 import { Loader2, ArrowLeft, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
 import { toastError } from '@/lib/toast';
@@ -26,28 +27,40 @@ function NewProspectAvatarContent() {
       router.push('/dashboard/offers');
     }
   }, [offerId, router]);
-  // Helper to map High/Medium/Low to 1-10
-  const mapLevelToScore = (level: 'high' | 'medium' | 'low'): number => {
-    switch (level) {
-      case 'high': return 8;
-      case 'medium': return 5;
-      case 'low': return 2;
-      default: return 5;
-    }
-  };
 
   const [formData, setFormData] = useState({
     name: '',
-    positionAlignment: 'medium' as 'high' | 'medium' | 'low',
     problems: [''],
-    painLevel: 'medium' as 'high' | 'medium' | 'low',
-    ambitionLevel: 'medium' as 'high' | 'medium' | 'low',
-    perceivedNeedForHelp: 'medium' as 'high' | 'medium' | 'low',
-    authorityLevel: 'peer' as 'advisee' | 'peer' | 'advisor',
-    funnelContext: 'warm_inbound',
-    executionResistance: 'medium' as 'fully_able' | 'partial' | 'extreme' | 'auto',
     positionDescription: '',
+    // 5 sliders (1-10 each)
+    positionProblemAlignment: 5, // 1-10
+    painAmbitionIntensity: 5, // 1-10 (combines pain and ambition)
+    perceivedNeedForHelpAuthority: 5, // 1-10 (combines perceived need and authority)
+    funnelContext: 5, // 1-10
+    abilityToProceed: 5, // 1-10 (execution resistance)
   });
+
+  // Calculate total difficulty score (0-50)
+  const calculateDifficultyScore = () => {
+    return (
+      formData.positionProblemAlignment +
+      formData.painAmbitionIntensity +
+      formData.perceivedNeedForHelpAuthority +
+      formData.funnelContext +
+      formData.abilityToProceed
+    );
+  };
+
+  // Get difficulty tier label
+  const getDifficultyTier = (score: number): string => {
+    if (score >= 43) return 'Easy';
+    if (score >= 37) return 'Realistic';
+    if (score >= 31) return 'Hard';
+    return 'Elite';
+  };
+
+  const difficultyScore = calculateDifficultyScore();
+  const difficultyTier = getDifficultyTier(difficultyScore);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,53 +78,22 @@ function NewProspectAvatarContent() {
 
     setLoading(true);
     try {
-      // Map levels to scores
-      const positionProblemAlignment = mapLevelToScore(formData.positionAlignment);
+      // Use slider values directly
+      const positionProblemAlignment = formData.positionProblemAlignment;
+      const painAmbitionIntensity = formData.painAmbitionIntensity;
+      const perceivedNeedForHelp = formData.perceivedNeedForHelpAuthority;
+      const funnelContext = formData.funnelContext;
+      const executionResistance = formData.abilityToProceed;
 
-      // Pain/Ambition: use the higher of the two
-      const painScore = mapLevelToScore(formData.painLevel);
-      const ambitionScore = mapLevelToScore(formData.ambitionLevel);
-      const painAmbitionIntensity = Math.max(painScore, ambitionScore);
-
-      // Perceived need for help - map based on authority level
-      const baseNeedScore = mapLevelToScore(formData.perceivedNeedForHelp);
-      let perceivedNeedForHelp = baseNeedScore;
-
-      // Adjust based on authority level (API will handle final calculation)
-      if (formData.authorityLevel === 'advisor') {
-        perceivedNeedForHelp = Math.max(1, Math.min(3, baseNeedScore));
-      } else if (formData.authorityLevel === 'peer') {
-        perceivedNeedForHelp = Math.max(4, Math.min(7, baseNeedScore));
+      // Map perceivedNeedForHelpAuthority to authorityLevel for API compatibility
+      // Low (1-3) = advisor, Medium (4-7) = peer, High (8-10) = advisee
+      let authorityLevel: 'advisee' | 'peer' | 'advisor';
+      if (perceivedNeedForHelp <= 3) {
+        authorityLevel = 'advisor';
+      } else if (perceivedNeedForHelp <= 7) {
+        authorityLevel = 'peer';
       } else {
-        // advisee
-        perceivedNeedForHelp = Math.max(8, Math.min(10, baseNeedScore));
-      }
-
-      // Map funnel context to score
-      const funnelContextMap: Record<string, number> = {
-        'cold_outbound_direct': 1,
-        'cold_outbound_discovery': 2,
-        'cold_ads': 3,
-        'warm_inbound': 5,
-        'content_educated': 7,
-        'referral': 9,
-        'tripwire': 6,
-        'existing_customer': 10,
-      };
-      const funnelContext = funnelContextMap[formData.funnelContext] || 5;
-
-      // Map execution resistance
-      let executionResistance: number;
-      if (formData.executionResistance === 'auto') {
-        // Default to medium (5) - could be enhanced with offer-based calculation
-        executionResistance = 5;
-      } else {
-        const executionResistanceMap: Record<string, number> = {
-          'fully_able': 9, // 8-10 range, use 9 as midpoint
-          'partial': 6, // 5-7 range, use 6 as midpoint
-          'extreme': 2, // 1-4 range, use 2 as midpoint
-        };
-        executionResistance = executionResistanceMap[formData.executionResistance] || 5;
+        authorityLevel = 'advisee';
       }
 
       if (!offerId) {
@@ -129,7 +111,7 @@ function NewProspectAvatarContent() {
           positionProblemAlignment,
           painAmbitionIntensity,
           perceivedNeedForHelp,
-          authorityLevel: formData.authorityLevel,
+          authorityLevel,
           funnelContext,
           executionResistance,
           positionDescription: formData.positionDescription,
@@ -186,27 +168,44 @@ function NewProspectAvatarContent() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="positionDescription">Position Description</Label>
+              <Label htmlFor="positionDescription">Prospect Description</Label>
               <Textarea
                 id="positionDescription"
                 value={formData.positionDescription}
                 onChange={(e) => setFormData({ ...formData, positionDescription: e.target.value })}
-                placeholder="Describe the prospect's current situation relative to the offer"
-                rows={3}
+                placeholder="Describe the prospect's current position as it relates to your offer, and the current problems that they are facing (the more detailed the better, because this is how the AI will play your prospect)"
+                rows={5}
               />
+              <p className="text-xs text-muted-foreground">
+                Include demographics, constraints, and relevant context. The more detailed, the better the AI will play this prospect.
+              </p>
             </div>
           </div>
 
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Prospect Difficulty Profile</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-semibold">Prospect Difficulty Profile</h2>
+              <div className="text-right">
+                <div className="text-2xl font-bold">
+                  Difficulty Score: {difficultyScore} / 50
+                </div>
+                <Badge variant={
+                  difficultyTier === 'Easy' ? 'default' :
+                    difficultyTier === 'Realistic' ? 'secondary' :
+                      difficultyTier === 'Hard' ? 'outline' : 'destructive'
+                }>
+                  {difficultyTier}
+                </Badge>
+              </div>
+            </div>
             <p className="text-sm text-muted-foreground">
-              These inputs are converted into numeric scores (1–10 per dimension) for the 40-point difficulty model
+              Adjust the sliders below to set difficulty scores (1–10 per dimension) for the 50-point difficulty model
             </p>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
+            <div className="space-y-6">
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="positionAlignment">Position Alignment (Relative to the Offer)</Label>
+                  <Label htmlFor="positionProblemAlignment">Position + Problem Alignment</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -220,30 +219,26 @@ function NewProspectAvatarContent() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Select
-                  value={formData.positionAlignment}
-                  onValueChange={(value: 'high' | 'medium' | 'low') =>
-                    setFormData({ ...formData, positionAlignment: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="high">High - Perfect ICP match</SelectItem>
-                    <SelectItem value="medium">Medium - Partial fit</SelectItem>
-                    <SelectItem value="low">Low - Weak fit</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  How close is this prospect to the ideal customer for this offer?
-                </p>
+                <div className="px-2">
+                  <Slider
+                    value={[formData.positionProblemAlignment]}
+                    onValueChange={(value) => setFormData({ ...formData, positionProblemAlignment: value[0] })}
+                    min={1}
+                    max={10}
+                    step={1}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>1 (Low)</span>
+                    <span className="font-medium">{formData.positionProblemAlignment}</span>
+                    <span>10 (High)</span>
+                  </div>
+                </div>
               </div>
 
               <div className="space-y-2">
                 <Label>Problems (Offer-Relevant)</Label>
                 <p className="text-xs text-muted-foreground mb-2">
-                  What problems does this prospect have that the offer is designed to solve?
+                  What problems does this prospect have that the offer is designed to solve? (You can also include these in the description above)
                 </p>
                 {formData.problems.map((problem, index) => (
                   <div key={index} className="flex gap-2">
@@ -281,97 +276,67 @@ function NewProspectAvatarContent() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="painLevel">Pain Level</Label>
-                  <Select
-                    value={formData.painLevel}
-                    onValueChange={(value: 'high' | 'medium' | 'low') =>
-                      setFormData({ ...formData, painLevel: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    How much pain does the prospect feel from these problems?
-                  </p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="painAmbitionIntensity">Pain / Ambition Intensity</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        Combined measure of how much pain the prospect feels from their problems and how strong their desire is to reach their desired result. Use the higher of pain or ambition.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="ambitionLevel">Ambition Level</Label>
-                  <Select
-                    value={formData.ambitionLevel}
-                    onValueChange={(value: 'high' | 'medium' | 'low') =>
-                      setFormData({ ...formData, ambitionLevel: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    How strong is the prospect&apos;s desire to reach their desired result?
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="perceivedNeedForHelp">Perceived Need for Help</Label>
-                  <Select
-                    value={formData.perceivedNeedForHelp}
-                    onValueChange={(value: 'high' | 'medium' | 'low') =>
-                      setFormData({ ...formData, perceivedNeedForHelp: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="high">High</SelectItem>
-                      <SelectItem value="medium">Medium</SelectItem>
-                      <SelectItem value="low">Low</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">
-                    How aware is the prospect that they need external help?
-                  </p>
+                <div className="px-2">
+                  <Slider
+                    value={[formData.painAmbitionIntensity]}
+                    onValueChange={(value) => setFormData({ ...formData, painAmbitionIntensity: value[0] })}
+                    min={1}
+                    max={10}
+                    step={1}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>1 (Low)</span>
+                    <span className="font-medium">{formData.painAmbitionIntensity}</span>
+                    <span>10 (High)</span>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="authorityLevel">Authority Level (Relative to Seller)</Label>
-                <Select
-                  value={formData.authorityLevel}
-                  onValueChange={(value: 'advisee' | 'peer' | 'advisor') =>
-                    setFormData({ ...formData, authorityLevel: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="advisee">Advisee (Low authority – easy)</SelectItem>
-                    <SelectItem value="peer">Peer (Medium authority)</SelectItem>
-                    <SelectItem value="advisor">Advisor (High authority – difficult)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  How does the prospect see themselves relative to the closer?
-                </p>
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Label htmlFor="perceivedNeedForHelpAuthority">Perceived Need for Help / Authority Stance</Label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">
+                        Combines how aware the prospect is that they need external help with their authority stance relative to the seller. Low (1-3) = advisor (high authority), Medium (4-7) = peer, High (8-10) = advisee (low authority, easy).
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <div className="px-2">
+                  <Slider
+                    value={[formData.perceivedNeedForHelpAuthority]}
+                    onValueChange={(value) => setFormData({ ...formData, perceivedNeedForHelpAuthority: value[0] })}
+                    min={1}
+                    max={10}
+                    step={1}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>1 (Advisor)</span>
+                    <span className="font-medium">{formData.perceivedNeedForHelpAuthority}</span>
+                    <span>10 (Advisee)</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Label htmlFor="funnelContext">Funnel Context</Label>
                   <Tooltip>
@@ -387,32 +352,25 @@ function NewProspectAvatarContent() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Select
-                  value={formData.funnelContext}
-                  onValueChange={(value) => setFormData({ ...formData, funnelContext: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cold_outbound_direct">Cold outbound → straight to call</SelectItem>
-                    <SelectItem value="cold_outbound_discovery">Cold outbound → discovery → call</SelectItem>
-                    <SelectItem value="cold_ads">Cold ads</SelectItem>
-                    <SelectItem value="warm_inbound">Warm inbound</SelectItem>
-                    <SelectItem value="content_educated">Content-educated inbound</SelectItem>
-                    <SelectItem value="referral">Referral</SelectItem>
-                    <SelectItem value="tripwire">Tripwire → call</SelectItem>
-                    <SelectItem value="existing_customer">Upsell / existing customer</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  How did this prospect come onto the call?
-                </p>
+                <div className="px-2">
+                  <Slider
+                    value={[formData.funnelContext]}
+                    onValueChange={(value) => setFormData({ ...formData, funnelContext: value[0] })}
+                    min={1}
+                    max={10}
+                    step={1}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>1 (Cold)</span>
+                    <span className="font-medium">{formData.funnelContext}</span>
+                    <span>10 (Warm)</span>
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="executionResistance">Execution Resistance (Ability to Proceed)</Label>
+                  <Label htmlFor="abilityToProceed">Ability to Proceed</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -427,26 +385,20 @@ function NewProspectAvatarContent() {
                     </TooltipContent>
                   </Tooltip>
                 </div>
-                <Select
-                  value={formData.executionResistance}
-                  onValueChange={(value: 'fully_able' | 'partial' | 'extreme' | 'auto') =>
-                    setFormData({ ...formData, executionResistance: value })
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto-calculate (default)</SelectItem>
-                    <SelectItem value="fully_able">Fully Able (8-10) - Has money, time, authority</SelectItem>
-                    <SelectItem value="partial">Partial Ability (5-7) - Needs reprioritization</SelectItem>
-                    <SelectItem value="extreme">Extreme Resistance (1-4) - Severe constraints</SelectItem>
-                  </SelectContent>
-                </Select>
-                <p className="text-xs text-muted-foreground">
-                  Measures whether the prospect has practical ability to act (money, time, effort capacity, decision authority).
-                  This is logistical, not emotional.
-                </p>
+                <div className="px-2">
+                  <Slider
+                    value={[formData.abilityToProceed]}
+                    onValueChange={(value) => setFormData({ ...formData, abilityToProceed: value[0] })}
+                    min={1}
+                    max={10}
+                    step={1}
+                  />
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>1 (Extreme Resistance)</span>
+                    <span className="font-medium">{formData.abilityToProceed}</span>
+                    <span>10 (Fully Able)</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

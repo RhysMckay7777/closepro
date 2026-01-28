@@ -86,10 +86,12 @@ export interface CallAnalysisResult {
  */
 export async function analyzeCall(
   transcript: string,
-  transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> }
+  transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> },
+  offerCategory?: 'b2c_health' | 'b2c_relationships' | 'b2c_wealth' | 'mixed_wealth' | 'b2b_services',
+  customerStage?: 'aspiring' | 'current' | 'mixed'
 ): Promise<CallAnalysisResult> {
-  // Build structured prompt
-  const prompt = buildAnalysisPrompt(transcript, transcriptJson);
+  // Build structured prompt with category context
+  const prompt = buildAnalysisPrompt(transcript, transcriptJson, offerCategory, customerStage);
   const systemPrompt = `You are an expert sales coach analyzing sales calls. You evaluate calls across 4 pillars (Value, Trust, Fit, Logistics) and 10 skill categories with 40+ sub-skills. Provide structured, actionable feedback. Always return valid JSON.`;
 
   // Try Groq first (cheaper, faster) if enabled, otherwise try Anthropic
@@ -116,7 +118,7 @@ export async function analyzeCall(
       // Remove markdown code blocks if present
       jsonText = jsonText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
       const analysis = JSON.parse(jsonText) as CallAnalysisResult;
-      return normalizeAnalysis(analysis);
+      return normalizeAnalysis(analysis, offerCategory, customerStage);
     } catch (error: any) {
       console.error('Groq analysis error:', error);
       // Fall through to try Anthropic if available
@@ -153,7 +155,7 @@ export async function analyzeCall(
       const jsonText = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : text;
       
       const analysis = JSON.parse(jsonText) as CallAnalysisResult;
-      return normalizeAnalysis(analysis);
+      return normalizeAnalysis(analysis, offerCategory, customerStage);
     } catch (error: any) {
       console.error('Anthropic analysis error:', error);
       throw new Error(`Analysis failed: ${error.message || 'Unknown error'}`);
@@ -168,9 +170,33 @@ export async function analyzeCall(
  */
 function buildAnalysisPrompt(
   transcript: string,
-  transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> }
+  transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> },
+  offerCategory?: 'b2c_health' | 'b2c_relationships' | 'b2c_wealth' | 'mixed_wealth' | 'b2b_services',
+  customerStage?: 'aspiring' | 'current' | 'mixed'
 ): string {
+  // Import category rules
+  const { getCategoryBehaviorRules } = require('./roleplay/offer-intelligence');
+  const categoryContext = offerCategory ? getCategoryBehaviorRules(offerCategory, customerStage) : null;
+  
+  const categoryGuidance = categoryContext ? `
+OFFER CATEGORY CONTEXT:
+Category: ${offerCategory}
+Sales Approach: ${categoryContext.tone} (${categoryContext.emphasis.join(', ')})
+Scoring Weights: Value ${categoryContext.scoringExpectations.valueScoreWeight}, Trust ${categoryContext.scoringExpectations.trustScoreWeight}, Fit ${categoryContext.scoringExpectations.fitScoreWeight}, Logistics ${categoryContext.scoringExpectations.logisticsScoreWeight}
+Expected Baseline Score: ${categoryContext.difficultyInterpretation.baselineExpectation} for "realistic" difficulty
+Objection Patterns: ${categoryContext.objectionInterpretation.commonPatterns.join(', ')}
+Insight Focus: ${categoryContext.insightFocus.join(', ')}
+
+When scoring, adjust expectations based on category:
+- Weight pillars according to category importance
+- Interpret objections through category lens
+- Generate insights that emphasize category-specific factors
+- Consider baseline expectations when evaluating performance
+` : '';
+
   return `Analyze this sales call transcript and provide a comprehensive evaluation.
+${categoryGuidance}
+TRANSCRIPT:
 
 TRANSCRIPT:
 ${transcript.length > 6000 ? transcript.substring(0, 6000) + '\n... (truncated for faster analysis)' : transcript}
@@ -285,10 +311,14 @@ Return your analysis as JSON in this exact format:
 /**
  * Normalize and validate analysis results
  */
-function normalizeAnalysis(analysis: any): CallAnalysisResult {
+function normalizeAnalysis(analysis: any, offerCategory?: 'b2c_health' | 'b2c_relationships' | 'b2c_wealth' | 'mixed_wealth' | 'b2b_services', customerStage?: 'aspiring' | 'current' | 'mixed'): CallAnalysisResult {
   // Ensure all scores are 0-100
   const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
+  // Apply category-specific scoring adjustments if category is provided
+  const { getCategoryBehaviorRules } = require('./roleplay/offer-intelligence');
+  const categoryRules = offerCategory ? getCategoryBehaviorRules(offerCategory, customerStage) : null;
+  
   // Normalize prospect difficulty if present
   let prospectDifficulty: ProspectDifficultyAssessment | undefined;
   if (analysis.prospectDifficulty) {
@@ -305,16 +335,43 @@ function normalizeAnalysis(analysis: any): CallAnalysisResult {
     };
   }
 
+  // Normalize pillars with category-specific weights
+  const valuePillar = normalizePillar(analysis.value);
+  const trustPillar = normalizePillar(analysis.trust);
+  const fitPillar = normalizePillar(analysis.fit);
+  const logisticsPillar = normalizePillar(analysis.logistics);
+
+  // Calculate weighted overall score if category rules exist
+  let overallScore = clamp(analysis.overallScore || 0);
+  if (categoryRules) {
+    const weightedScore = 
+      valuePillar.score * categoryRules.scoringExpectations.valueScoreWeight +
+      trustPillar.score * categoryRules.scoringExpectations.trustScoreWeight +
+      fitPillar.score * categoryRules.scoringExpectations.fitScoreWeight +
+      logisticsPillar.score * categoryRules.scoringExpectations.logisticsScoreWeight;
+    overallScore = clamp(weightedScore);
+  }
+
+  // Enhance coaching recommendations with category-specific insights
+  let coachingRecommendations = Array.isArray(analysis.coachingRecommendations) 
+    ? analysis.coachingRecommendations 
+    : [];
+  
+  if (categoryRules && coachingRecommendations.length > 0) {
+    coachingRecommendations = coachingRecommendations.map((rec: any) => ({
+      ...rec,
+      explanation: `${rec.explanation} ${categoryRules.insightFocus.length > 0 ? `Consider focusing on: ${categoryRules.insightFocus.join(', ')}.` : ''}`,
+    }));
+  }
+
   return {
-    overallScore: clamp(analysis.overallScore || 0),
-    value: normalizePillar(analysis.value),
-    trust: normalizePillar(analysis.trust),
-    fit: normalizePillar(analysis.fit),
-    logistics: normalizePillar(analysis.logistics),
+    overallScore,
+    value: valuePillar,
+    trust: trustPillar,
+    fit: fitPillar,
+    logistics: logisticsPillar,
     skillScores: Array.isArray(analysis.skillScores) ? analysis.skillScores : [],
-    coachingRecommendations: Array.isArray(analysis.coachingRecommendations) 
-      ? analysis.coachingRecommendations 
-      : [],
+    coachingRecommendations,
     timestampedFeedback: Array.isArray(analysis.timestampedFeedback)
       ? analysis.timestampedFeedback
       : [],

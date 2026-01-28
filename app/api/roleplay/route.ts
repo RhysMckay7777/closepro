@@ -77,24 +77,28 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(roleplaySessions.createdAt))
       .limit(50);
 
-    // Get offer names for sessions
+    // Get offer names and types for sessions
     const offerIds = [...new Set(sessions.map(s => s.offerId).filter(Boolean))];
     const offersMap = new Map();
     if (offerIds.length > 0) {
       const offersList = await db
-        .select({ id: offers.id, name: offers.name })
+        .select({ id: offers.id, name: offers.name, offerCategory: offers.offerCategory })
         .from(offers)
         .where(eq(offers.id, offerIds[0] as string));
       
       for (const offer of offersList) {
-        offersMap.set(offer.id, offer.name);
+        offersMap.set(offer.id, { name: offer.name, category: offer.offerCategory });
       }
     }
 
-    const sessionsWithOffers = sessions.map(s => ({
-      ...s,
-      offerName: offersMap.get(s.offerId) || 'Unknown Offer',
-    }));
+    const sessionsWithOffers = sessions.map(s => {
+      const offer = offersMap.get(s.offerId);
+      return {
+        ...s,
+        offerName: offer?.name || 'Unknown Offer',
+        offerType: offer?.category || 'Unknown',
+      };
+    });
 
     return NextResponse.json({ sessions: sessionsWithOffers });
   } catch (error: any) {

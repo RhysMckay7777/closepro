@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Play, Clock, TrendingUp, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 interface RoleplaySession {
   id: string;
@@ -18,6 +19,7 @@ interface RoleplaySession {
   actualDifficultyTier: string | null;
   overallScore: number | null;
   offerName: string;
+  offerType?: string;
   startedAt: string;
   completedAt: string | null;
   createdAt: string;
@@ -155,70 +157,84 @@ export default function RoleplayPage() {
       </div>
 
       {/* Sessions List */}
-      <Card className="p-4 sm:p-6">
-        <h2 className="text-xl font-semibold mb-4">Recent Sessions</h2>
-        {loading ? (
-          <div className="text-center py-8 text-muted-foreground">Loading sessions...</div>
-        ) : sessions.length === 0 ? (
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <MessageSquare className="size-6" />
-              </EmptyMedia>
-              <EmptyTitle>No roleplay sessions yet</EmptyTitle>
-              <EmptyDescription>Start your first AI roleplay to practice and get scored.</EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-              <Link href="/dashboard/roleplay/new">
-                <Button>Start Your First Roleplay</Button>
-              </Link>
-            </EmptyContent>
-          </Empty>
-        ) : (
-          <div className="space-y-3">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                className="flex items-center justify-between p-4 border rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
-                onClick={() => {
-                  if (session.status === 'completed' && session.overallScore !== null) {
-                    router.push(`/dashboard/roleplay/${session.id}/results`);
-                  } else {
-                    router.push(`/dashboard/roleplay/${session.id}`);
-                  }
-                }}
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-2">
-                    <h3 className="font-semibold">{session.offerName}</h3>
-                    {getStatusBadge(session.status)}
-                    {session.actualDifficultyTier && (
-                      <span className={`text-sm font-medium ${getDifficultyColor(session.actualDifficultyTier)}`}>
-                        {session.actualDifficultyTier.toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span>{formatDate(session.startedAt)}</span>
-                    {session.overallScore !== null && (
-                      <span className="font-medium text-foreground">
-                        Score: {session.overallScore}/100
-                      </span>
-                    )}
-                    <span className="capitalize">{session.inputMode}</span>
-                  </div>
-                </div>
-                <Button variant="ghost" size="sm">
-                  {session.status === 'in_progress' 
-                    ? 'Continue' 
-                    : session.overallScore !== null 
-                    ? 'View Results' 
-                    : 'View'}
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
+      <Card>
+        <div className="overflow-x-auto">
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading sessions...</div>
+          ) : sessions.length === 0 ? (
+            <div className="p-8 sm:p-12">
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <MessageSquare className="size-6" />
+                  </EmptyMedia>
+                  <EmptyTitle>No roleplay sessions yet</EmptyTitle>
+                  <EmptyDescription>Start your first AI roleplay to practice and get scored.</EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Link href="/dashboard/roleplay/new">
+                    <Button>Start Your First Roleplay</Button>
+                  </Link>
+                </EmptyContent>
+              </Empty>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>Offer Name</TableHead>
+                  <TableHead>Offer Type</TableHead>
+                  <TableHead>Prospect Difficulty</TableHead>
+                  <TableHead>Score</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sessions.map((session) => (
+                  <TableRow
+                    key={session.id}
+                    className="cursor-pointer hover:bg-accent/50"
+                    onClick={() => {
+                      if (session.status === 'completed' && session.overallScore !== null) {
+                        router.push(`/dashboard/roleplay/${session.id}/results`);
+                      } else {
+                        router.push(`/dashboard/roleplay/${session.id}`);
+                      }
+                    }}
+                  >
+                    <TableCell>
+                      {new Date(session.startedAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      })}
+                    </TableCell>
+                    <TableCell className="font-medium">{session.offerName}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{getOfferTypeLabel(session.offerType)}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      {session.actualDifficultyTier ? (
+                        <Badge variant={getDifficultyBadgeVariant(session.actualDifficultyTier)}>
+                          {session.actualDifficultyTier.charAt(0).toUpperCase() + session.actualDifficultyTier.slice(1)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {session.overallScore !== null && session.overallScore !== undefined ? (
+                        <span className="font-medium">{session.overallScore}/100</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
       </Card>
     </div>
   );
