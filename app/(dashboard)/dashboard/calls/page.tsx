@@ -35,7 +35,7 @@ export default function CallsPage() {
   const [callTypeFilter, setCallTypeFilter] = useState<string>('all');
   const [resultFilter, setResultFilter] = useState<string>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('all');
-  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set([sortedMonthKeys[0]])); // Expand first month by default
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set()); // First month expanded via useEffect when calls load
 
   useEffect(() => {
     fetchCalls();
