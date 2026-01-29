@@ -41,16 +41,6 @@ export default function CallsPage() {
     fetchCalls();
   }, []);
 
-  // Expand first month by default when calls are loaded
-  useEffect(() => {
-    if (filteredCalls.length > 0 && expandedMonths.size === 0) {
-      const firstMonthKey = sortedMonthKeys[0];
-      if (firstMonthKey) {
-        setExpandedMonths(new Set([firstMonthKey]));
-      }
-    }
-  }, [filteredCalls.length]);
-
   const fetchCalls = async () => {
     try {
       const response = await fetch('/api/calls');
@@ -199,6 +189,16 @@ export default function CallsPage() {
 
   // Sort months descending (newest first)
   const sortedMonthKeys = Object.keys(filteredGroupedCalls).sort().reverse();
+
+  // Expand first month by default when calls are loaded (must be after filteredCalls/sortedMonthKeys are defined)
+  useEffect(() => {
+    if (filteredCalls.length > 0 && expandedMonths.size === 0) {
+      const firstMonthKey = sortedMonthKeys[0];
+      if (firstMonthKey) {
+        setExpandedMonths(new Set([firstMonthKey]));
+      }
+    }
+  }, [filteredCalls.length, expandedMonths.size]);
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
