@@ -180,6 +180,40 @@ export default function NewCallPage() {
     }
   };
 
+  const handleUploadSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile) {
+      toastError('Please select an audio file');
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      formData.append('metadata', JSON.stringify({ addToFigures }));
+      const response = await fetch('/api/calls/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Upload failed');
+      }
+      const data = await response.json();
+      toastSuccess('Call uploaded. Analysis in progress...');
+      if (data.callId) {
+        router.push(`/dashboard/calls/${data.callId}`);
+      } else {
+        router.push('/dashboard/calls');
+      }
+    } catch (err: unknown) {
+      console.error('Upload error:', err);
+      toastError(err instanceof Error ? err.message : 'Failed to upload call');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const getOfferTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       b2c_health: 'B2C Health',
