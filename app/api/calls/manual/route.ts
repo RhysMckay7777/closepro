@@ -43,6 +43,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const validResults = ['no_show', 'closed', 'lost', 'unqualified', 'follow_up', 'deposit'] as const;
+    if (!validResults.includes(result)) {
+      return NextResponse.json(
+        { error: `Invalid result. Must be one of: ${validResults.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    const validOfferTypes = ['b2c_health', 'b2c_relationships', 'b2c_wealth', 'mixed_wealth', 'b2b_services'] as const;
+    if (offerType != null && offerType !== '' && !validOfferTypes.includes(offerType)) {
+      return NextResponse.json(
+        { error: `Invalid offer type. Must be one of: ${validOfferTypes.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    const validCallTypes = ['closing_call', 'follow_up', 'no_show'] as const;
+    if (callType != null && callType !== '' && !validCallTypes.includes(callType)) {
+      return NextResponse.json(
+        { error: `Invalid call type. Must be one of: ${validCallTypes.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
     // Get user's organization
     const user = await db
       .select()
@@ -89,9 +113,9 @@ export async function POST(request: NextRequest) {
       fileUrl: '',
       status: 'manual',
       offerId: offerId || null,
-      offerType: offerType || null,
-      callType: callType || null,
-      result: result || null,
+      offerType: offerType && validOfferTypes.includes(offerType) ? offerType : null,
+      callType: callType && validCallTypes.includes(callType) ? callType : null,
+      result,
       qualified: qualified ?? null,
       cashCollected: cashCollected != null ? Number(cashCollected) : null,
       revenueGenerated: revenueGenerated != null ? Number(revenueGenerated) : null,
@@ -105,8 +129,16 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
   } catch (error: unknown) {
     console.error('Error logging manual call:', error);
+    const msg = error instanceof Error ? error.message : 'Failed to log call';
+    const code = (error as { code?: string })?.code;
+    if (code === '42703' || (typeof msg === 'string' && (msg.includes('invalid input value') || msg.includes('enum')))) {
+      return NextResponse.json(
+        { error: 'Database schema may be out of date. Please run migrations.' },
+        { status: 500 }
+      );
+    }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to log call' },
+      { error: msg },
       { status: 500 }
     );
   }

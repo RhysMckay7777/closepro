@@ -66,6 +66,11 @@ export default function NewCallPage() {
   const [addToFigures, setAddToFigures] = useState(true);
   const [uploading, setUploading] = useState(false);
 
+  // Paste transcript form state
+  const [transcriptText, setTranscriptText] = useState('');
+  const [addToFiguresTranscript, setAddToFiguresTranscript] = useState(true);
+  const [transcriptSubmitting, setTranscriptSubmitting] = useState(false);
+
   useEffect(() => {
     fetchOffers();
   }, []);
@@ -214,6 +219,41 @@ export default function NewCallPage() {
     }
   };
 
+  const handleTranscriptSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transcriptText.trim()) {
+      toastError('Please paste or enter the transcript');
+      return;
+    }
+    setTranscriptSubmitting(true);
+    try {
+      const response = await fetch('/api/calls/transcript', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transcript: transcriptText.trim(),
+          addToFigures: addToFiguresTranscript,
+        }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to create call from transcript');
+      }
+      const data = await response.json();
+      toastSuccess('Transcript saved. Analysis in progress...');
+      if (data.callId) {
+        router.push(`/dashboard/calls/${data.callId}`);
+      } else {
+        router.push('/dashboard/calls');
+      }
+    } catch (err: unknown) {
+      console.error('Transcript submit error:', err);
+      toastError(err instanceof Error ? err.message : 'Failed to create call from transcript');
+    } finally {
+      setTranscriptSubmitting(false);
+    }
+  };
+
   const getOfferTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
       b2c_health: 'B2C Health',
@@ -241,8 +281,9 @@ export default function NewCallPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="upload">Upload & Analyze</TabsTrigger>
+          <TabsTrigger value="transcript">Paste transcript</TabsTrigger>
           <TabsTrigger value="manual">Manual Log</TabsTrigger>
           <TabsTrigger value="no-show">No-Show</TabsTrigger>
           <TabsTrigger value="follow-up">Follow-Up</TabsTrigger>
@@ -294,6 +335,63 @@ export default function NewCallPage() {
                       <>
                         <Upload className="h-4 w-4 mr-2" />
                         Upload & Analyze
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="transcript">
+          <Card>
+            <CardHeader>
+              <CardTitle>Paste transcript</CardTitle>
+              <CardDescription>
+                Paste or type a call transcript for AI analysis. No audio file needed.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleTranscriptSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="transcript-text">Transcript *</Label>
+                  <Textarea
+                    id="transcript-text"
+                    value={transcriptText}
+                    onChange={(e) => setTranscriptText(e.target.value)}
+                    placeholder="Paste your call transcript here. You can use lines like [Speaker A] or Speaker 1: to separate speakers."
+                    rows={12}
+                    className="font-mono text-sm"
+                    required
+                  />
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="transcript-add-to-figures"
+                    checked={addToFiguresTranscript}
+                    onCheckedChange={(checked) => setAddToFiguresTranscript(checked === true)}
+                  />
+                  <Label htmlFor="transcript-add-to-figures" className="font-normal cursor-pointer">
+                    Add to sales figures (include outcome in Performance → Figures)
+                  </Label>
+                </div>
+                <div className="flex gap-3">
+                  <Link href="/dashboard/calls" className="flex-1">
+                    <Button type="button" variant="outline" className="w-full">
+                      Cancel
+                    </Button>
+                  </Link>
+                  <Button type="submit" disabled={transcriptSubmitting || !transcriptText.trim()} className="flex-1">
+                    {transcriptSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="h-4 w-4 mr-2" />
+                        Analyze transcript
                       </>
                     )}
                   </Button>

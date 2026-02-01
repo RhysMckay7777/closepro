@@ -248,16 +248,26 @@ async function generateImageDev(options: GenerateImageOptions): Promise<Generate
 }
 
 /**
- * Build a prompt for a professional headshot like RepArena-style prospect photos:
- * business attire (collared shirt, blazer), subtle colored background, photorealistic.
+ * Build a prompt for a realistic human headshot (not stiff corporate).
+ * Optional context (e.g. position/role) adds variety and alignment with the prospect.
  */
-export function buildProspectAvatarPrompt(name?: string): string {
+export function buildProspectAvatarPrompt(
+  name?: string,
+  context?: string | null
+): string {
   const base =
-    'Professional headshot portrait, business attire, collared shirt and blazer or smart casual, ' +
-    'warm confident expression, soft colored background (e.g. green, blue, or neutral), ' +
-    'photorealistic, high quality, corporate sales professional, shoulders and face, diverse';
-  if (name) {
-    return `${base}, person named ${name}`;
+    'Photorealistic headshot portrait, natural lighting, realistic skin and expression, ' +
+    'approachable and diverse, head and shoulders, neutral or soft background, ' +
+    'high quality photo, professional but natural, not stiff or corporate';
+  const parts = [base];
+  if (name?.trim()) {
+    parts.push(`person named ${name.trim()}`);
   }
-  return base;
+  if (context?.trim()) {
+    const safe = context.trim().slice(0, 80).replace(/[^\w\s,.-]/g, '');
+    if (safe) {
+      parts.push(`person who could be ${safe}`);
+    }
+  }
+  return parts.join(', ');
 }

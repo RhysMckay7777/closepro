@@ -61,7 +61,7 @@ export async function POST(
       );
     }
 
-    const prompt = buildProspectAvatarPrompt(prospect.name);
+    const prompt = buildProspectAvatarPrompt(prospect.name, prospect.positionDescription ?? undefined);
     const { url } = await generateImage({
       prompt,
       num: 1,

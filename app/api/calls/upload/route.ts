@@ -7,8 +7,9 @@ import { eq, and } from 'drizzle-orm';
 import { canPerformAction, incrementUsage } from '@/lib/subscription';
 import { transcribeAudioFile } from '@/lib/ai/transcription';
 import { shouldBypassSubscription } from '@/lib/dev-mode';
-import { analyzeCall } from '@/lib/ai/analysis';
-import { callAnalysis } from '@/db/schema';
+import { analyzeCallAsync } from '@/lib/calls/analyze-call';
+
+export const maxDuration = 120; // Allow up to 2 minutes for transcription (large files / slow Deepgram)
 
 /**
  * Upload a sales call audio file
@@ -106,10 +107,12 @@ export async function POST(request: NextRequest) {
     let transcriptionResult;
     try {
       transcriptionResult = await transcribeAudioFile(audioBuffer, file.name);
-    } catch (transcriptionError: any) {
+    } catch (transcriptionError: unknown) {
       console.error('Transcription error:', transcriptionError);
+      const msg = transcriptionError instanceof Error ? transcriptionError.message : 'Transcription failed';
+      const isConfig = typeof msg === 'string' && (msg.includes('configured') || msg.includes('API') || msg.includes('key'));
       return NextResponse.json(
-        { error: `Transcription failed: ${transcriptionError.message}` },
+        { error: isConfig ? `Transcription not available: ${msg}. Set DEEPGRAM_API_KEY or ASSEMBLYAI_API_KEY.` : `Transcription failed: ${msg}` },
         { status: 500 }
       );
     }
@@ -157,105 +160,15 @@ export async function POST(request: NextRequest) {
       status: 'analyzing',
       message: 'Call uploaded and transcribed. Analysis in progress...',
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error uploading call:', error);
+    let msg = error instanceof Error ? error.message : 'Failed to upload call';
+    if (typeof msg === 'string' && (msg.includes('timeout') || msg.includes('TIMEOUT') || msg.includes('aborted'))) {
+      msg = 'Upload timed out. Try a shorter file or use Paste transcript instead.';
+    }
     return NextResponse.json(
-      { error: error.message || 'Failed to upload call' },
+      { error: msg },
       { status: 500 }
     );
-  }
-}
-
-/**
- * Analyze call in background (non-blocking)
- */
-async function analyzeCallAsync(
-  callId: string,
-  transcript: string,
-  transcriptJson: any
-) {
-  try {
-    const analysisResult = await analyzeCall(transcript, transcriptJson);
-
-    // Enhance coaching recommendations with execution resistance context if applicable
-    let enhancedRecommendations = [...(analysisResult.coachingRecommendations || [])];
-    if (analysisResult.prospectDifficulty?.executionResistance !== undefined) {
-      const execResistance = analysisResult.prospectDifficulty.executionResistance;
-      if (execResistance <= 4) {
-        // Add note about execution resistance
-        enhancedRecommendations.push({
-          priority: 'medium' as const,
-          category: 'Prospect Difficulty',
-          issue: `Prospect had extreme execution resistance (${execResistance}/10) - severe money/time/authority constraints`,
-          explanation: 'This call was difficult due to structural blockers, not just sales skill. Execution resistance increases difficulty but does not excuse poor performance - both should be addressed.',
-          action: 'Flag this as a lead quality issue. Consider qualifying for execution ability earlier in the funnel.',
-        });
-      } else if (execResistance <= 7) {
-        enhancedRecommendations.push({
-          priority: 'low' as const,
-          category: 'Prospect Difficulty',
-          issue: `Prospect had partial execution ability (${execResistance}/10)`,
-          explanation: 'Prospect may need payment plans, time restructuring, or prioritization reframing.',
-          action: 'Consider offering flexible payment options or helping prospect reprioritize.',
-        });
-      }
-    }
-
-    // Save analysis to database
-    await db
-      .insert(callAnalysis)
-      .values({
-        callId,
-        overallScore: analysisResult.overallScore,
-        valueScore: analysisResult.value.score,
-        trustScore: analysisResult.trust.score,
-        fitScore: analysisResult.fit.score,
-        logisticsScore: analysisResult.logistics.score,
-        valueDetails: JSON.stringify(analysisResult.value),
-        trustDetails: JSON.stringify(analysisResult.trust),
-        fitDetails: JSON.stringify(analysisResult.fit),
-        logisticsDetails: JSON.stringify(analysisResult.logistics),
-        skillScores: JSON.stringify(analysisResult.skillScores),
-        coachingRecommendations: JSON.stringify(enhancedRecommendations),
-        timestampedFeedback: JSON.stringify(analysisResult.timestampedFeedback),
-      });
-
-    // If analysisIntent is update_figures, write AI-suggested outcome to salesCalls
-    const [callRow] = await db.select({ analysisIntent: salesCalls.analysisIntent }).from(salesCalls).where(eq(salesCalls.id, callId)).limit(1);
-    const outcome = analysisResult.outcome;
-    const hasOutcome = outcome && (
-      outcome.result != null ||
-      outcome.qualified !== undefined ||
-      outcome.cashCollected != null ||
-      outcome.revenueGenerated != null ||
-      (outcome.reasonForOutcome != null && outcome.reasonForOutcome.trim() !== '')
-    );
-    if (callRow?.analysisIntent === 'update_figures' && hasOutcome) {
-      const updatePayload: Record<string, unknown> = {
-        status: 'completed',
-        completedAt: new Date(),
-      };
-      if (outcome!.result) updatePayload.result = outcome!.result;
-      if (outcome!.qualified !== undefined) updatePayload.qualified = outcome!.qualified;
-      if (outcome!.cashCollected !== undefined) updatePayload.cashCollected = outcome!.cashCollected;
-      if (outcome!.revenueGenerated !== undefined) updatePayload.revenueGenerated = outcome!.revenueGenerated;
-      if (outcome!.reasonForOutcome?.trim()) updatePayload.reasonForOutcome = outcome!.reasonForOutcome.trim();
-      await db.update(salesCalls).set(updatePayload as any).where(eq(salesCalls.id, callId));
-    } else {
-      await db
-        .update(salesCalls)
-        .set({
-          status: 'completed',
-          completedAt: new Date(),
-        })
-        .where(eq(salesCalls.id, callId));
-    }
-  } catch (error: any) {
-    console.error('Background analysis error:', error);
-    // Mark as failed
-    await db
-      .update(salesCalls)
-      .set({ status: 'failed' })
-      .where(eq(salesCalls.id, callId));
   }
 }

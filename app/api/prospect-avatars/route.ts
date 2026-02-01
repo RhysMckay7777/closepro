@@ -6,6 +6,7 @@ import { prospectAvatars, offers } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { users, userOrganizations } from '@/db/schema';
 import { calculateDifficultyIndex, mapDifficultySelectionToProfile } from '@/lib/ai/roleplay/prospect-avatar';
+import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
 
 /**
  * GET - List all prospect avatars for a specific offer
@@ -115,6 +116,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
+      offerId,
       name,
       positionProblemAlignment,
       painAmbitionIntensity,
@@ -133,40 +135,42 @@ export async function POST(request: NextRequest) {
       isTemplate = false,
     } = body;
 
-    // Get user's primary organization
-    const user = await db
+    if (!offerId) {
+      return NextResponse.json(
+        { error: 'offerId is required' },
+        { status: 400 }
+      );
+    }
+
+    // Fetch offer and verify user has access
+    const offer = await db
       .select()
-      .from(users)
-      .where(eq(users.id, session.user.id))
+      .from(offers)
+      .where(eq(offers.id, offerId))
       .limit(1);
 
-    if (!user[0]) {
+    if (!offer[0]) {
       return NextResponse.json(
-        { error: 'User not found' },
+        { error: 'Offer not found' },
         { status: 404 }
       );
     }
 
-    // Get primary organization
     const userOrg = await db
       .select()
       .from(userOrganizations)
-      .where(
-        and(
-          eq(userOrganizations.userId, session.user.id),
-          eq(userOrganizations.isPrimary, true)
-        )
-      )
-      .limit(1);
+      .where(eq(userOrganizations.userId, session.user.id))
+      .limit(10);
 
-    const organizationId = userOrg[0]?.organizationId || user[0].organizationId;
-
-    if (!organizationId) {
+    const userOrgIds = userOrg.map(uo => uo.organizationId);
+    if (!userOrgIds.includes(offer[0].organizationId)) {
       return NextResponse.json(
-        { error: 'No organization found. Please create an organization first.' },
-        { status: 400 }
+        { error: 'Access denied to this offer' },
+        { status: 403 }
       );
     }
+
+    const organizationId = offer[0].organizationId;
 
     // Validate required fields
     if (!name || positionProblemAlignment === undefined || painAmbitionIntensity === undefined ||
@@ -194,8 +198,8 @@ export async function POST(request: NextRequest) {
     const [newAvatar] = await db
       .insert(prospectAvatars)
       .values({
-        organizationId: offer[0].organizationId,
-        offerId: offerId,
+        organizationId,
+        offerId,
         userId: session.user.id,
         name,
         sourceType,
@@ -218,6 +222,22 @@ export async function POST(request: NextRequest) {
         isActive: true,
       })
       .returning();
+
+    // Fire-and-forget: generate human portrait when NanoBanana is configured (create still succeeds if it fails)
+    if (newAvatar && isNanoBananaConfigured()) {
+      (async () => {
+        try {
+          const prompt = buildProspectAvatarPrompt(newAvatar.name, newAvatar.positionDescription ?? undefined);
+          const { url } = await generateImage({ prompt, num: 1, image_size: '1:1' });
+          await db
+            .update(prospectAvatars)
+            .set({ avatarUrl: url, updatedAt: new Date() })
+            .where(eq(prospectAvatars.id, newAvatar.id));
+        } catch (err) {
+          console.error('[prospect-avatars] Background avatar generation failed:', err);
+        }
+      })();
+    }
 
     return NextResponse.json({
       avatar: newAvatar,
