@@ -20,6 +20,7 @@ interface FiguresData {
   cashCollected: number;
   revenueGenerated: number;
   cashCollectedPct: number;
+  schemaHint?: string;
 }
 
 const MONTHS = [
@@ -117,7 +118,10 @@ export default function FiguresPage() {
             Month-by-month sales reality: booked, showed, qualified, closed, revenue
           </p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <Button variant="outline" size="sm" onClick={fetchFigures} disabled={loading} className="shrink-0">
+            {loading && figures ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
+          </Button>
           <Select value={month} onValueChange={setMonth}>
             <SelectTrigger className="w-[140px]">
               <SelectValue placeholder="Month" />
@@ -144,6 +148,15 @@ export default function FiguresPage() {
           </Select>
         </div>
       </div>
+
+      {figures?.schemaHint && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>
+            {figures.schemaHint} Figures will stay at zero until migrations are run.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {loading && figures && (
         <div className="flex items-center justify-center py-4">
@@ -272,6 +285,14 @@ export default function FiguresPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* How cash/revenue get into figures */}
+          <Alert className="border-primary/30 bg-primary/5">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Cash collected &amp; revenue:</strong> These come from each call&apos;s outcome. Open a completed call → <strong>Edit outcome</strong> → set Result, Cash collected ($), and Revenue generated ($). The AI may fill these from the transcript; if not, add them there so this page updates.
+            </AlertDescription>
+          </Alert>
 
           <Alert>
             <AlertCircle className="h-4 w-4" />

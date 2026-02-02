@@ -122,9 +122,9 @@ export async function DELETE(
       );
     }
 
-    // Verify call belongs to user
+    // Verify call belongs to user (explicit columns for DBs without offer_id etc.)
     const call = await db
-      .select()
+      .select({ id: salesCalls.id })
       .from(salesCalls)
       .where(
         and(

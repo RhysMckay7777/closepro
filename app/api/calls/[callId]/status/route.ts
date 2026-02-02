@@ -28,17 +28,58 @@ export async function GET(
       );
     }
 
-    // Get call
-    const call = await db
-      .select()
-      .from(salesCalls)
-      .where(
-        and(
-          eq(salesCalls.id, callId),
-          eq(salesCalls.userId, session.user.id)
-        )
-      )
-      .limit(1);
+    const baseSelect = {
+      id: salesCalls.id,
+      organizationId: salesCalls.organizationId,
+      userId: salesCalls.userId,
+      fileName: salesCalls.fileName,
+      fileUrl: salesCalls.fileUrl,
+      fileSize: salesCalls.fileSize,
+      duration: salesCalls.duration,
+      status: salesCalls.status,
+      transcript: salesCalls.transcript,
+      transcriptJson: salesCalls.transcriptJson,
+      metadata: salesCalls.metadata,
+      createdAt: salesCalls.createdAt,
+      updatedAt: salesCalls.updatedAt,
+      completedAt: salesCalls.completedAt,
+    };
+    const whereClause = and(
+      eq(salesCalls.id, callId),
+      eq(salesCalls.userId, session.user.id)
+    );
+
+    let call: Array<Record<string, unknown>>;
+    try {
+      call = await db
+        .select({
+          ...baseSelect,
+          result: salesCalls.result,
+          qualified: salesCalls.qualified,
+          cashCollected: salesCalls.cashCollected,
+          revenueGenerated: salesCalls.revenueGenerated,
+          reasonForOutcome: salesCalls.reasonForOutcome,
+        })
+        .from(salesCalls)
+        .where(whereClause)
+        .limit(1);
+    } catch (err: unknown) {
+      const e = err as { code?: string; message?: string };
+      const isMissingColumn = e?.code === '42703' || (typeof e?.message === 'string' && e.message.includes('does not exist') && e.message.includes('column'));
+      if (!isMissingColumn) throw err;
+      call = await db
+        .select(baseSelect)
+        .from(salesCalls)
+        .where(whereClause)
+        .limit(1);
+      if (call[0]) {
+        (call[0] as Record<string, unknown>).result = null;
+        (call[0] as Record<string, unknown>).qualified = null;
+        (call[0] as Record<string, unknown>).cashCollected = null;
+        (call[0] as Record<string, unknown>).revenueGenerated = null;
+        (call[0] as Record<string, unknown>).reasonForOutcome = null;
+      }
+    }
 
     if (!call[0]) {
       return NextResponse.json(

@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls, users, userOrganizations } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { canPerformAction, incrementUsage } from '@/lib/subscription';
 import { shouldBypassSubscription } from '@/lib/dev-mode';
 import { analyzeCallAsync } from '@/lib/calls/analyze-call';
@@ -158,41 +158,74 @@ export async function POST(request: NextRequest) {
     const callMetadata = { addToFigures };
 
     const trimmedTranscript = transcript.trim();
-    const [call] = await db
-      .insert(salesCalls)
-      .values({
-        organizationId,
-        userId: session.user.id,
-        fileName,
-        fileUrl: '',
-        fileSize: null,
-        duration: null,
-        transcript: trimmedTranscript,
-        transcriptJson: JSON.stringify(transcriptJson),
-        status: 'analyzing',
-        metadata: JSON.stringify(callMetadata),
-        analysisIntent,
-      })
-      .returning();
+    const metadataStr = JSON.stringify(callMetadata);
+    const transcriptJsonStr = JSON.stringify(transcriptJson);
+
+    let callId: string;
+
+    try {
+      const [call] = await db
+        .insert(salesCalls)
+        .values({
+          organizationId,
+          userId: session.user.id,
+          fileName,
+          fileUrl: '',
+          fileSize: null,
+          duration: null,
+          transcript: trimmedTranscript,
+          transcriptJson: transcriptJsonStr,
+          status: 'analyzing',
+          metadata: metadataStr,
+          analysisIntent,
+        })
+        .returning();
+
+      callId = call.id;
+    } catch (insertError: unknown) {
+      const err = insertError as { code?: string; cause?: { code?: string }; message?: string };
+      const code = err?.code ?? err?.cause?.code;
+      const msg = typeof err?.message === 'string' ? err.message : '';
+      const isMissingColumn = code === '42703' || (msg.includes('does not exist') && msg.includes('column'));
+      if (isMissingColumn) {
+        // DB missing columns (e.g. offer_id, analysis_intent) – insert only base columns from migration 0000
+        const rows = await db.execute<{ id: string }>(sql`
+          INSERT INTO sales_calls (organization_id, user_id, file_name, file_url, file_size, duration, transcript, transcript_json, status, metadata)
+          VALUES (${organizationId}, ${session.user.id}, ${fileName}, '', null, null, ${trimmedTranscript}, ${transcriptJsonStr}, 'analyzing', ${metadataStr})
+          RETURNING id
+        `);
+        const row = Array.isArray(rows) ? rows[0] : (rows as { rows?: { id: string }[] })?.rows?.[0];
+        if (!row?.id) {
+          throw new Error('Database schema is out of date. Run: npm run db:migrate');
+        }
+        callId = row.id;
+      } else {
+        throw insertError;
+      }
+    }
 
     if (!shouldBypassSubscription()) {
       await incrementUsage(organizationId, 'calls');
     }
 
-    analyzeCallAsync(call.id, trimmedTranscript, transcriptJson).catch(
+    analyzeCallAsync(callId, trimmedTranscript, transcriptJson).catch(
       (err) => console.error('Background analysis error (transcript):', err)
     );
 
     return NextResponse.json({
-      callId: call.id,
+      callId,
       status: 'analyzing',
       message: 'Transcript saved. Analysis in progress...',
     }, { status: 201 });
   } catch (error: unknown) {
     console.error('Error creating call from transcript:', error);
+    const code = (error as { code?: string })?.code;
     const msg = error instanceof Error ? error.message : 'Failed to create call from transcript';
+    const userMessage = code === '42703'
+      ? 'Database schema is out of date. Run: npm run db:migrate'
+      : msg;
     return NextResponse.json(
-      { error: msg },
+      { error: userMessage },
       { status: 500 }
     );
   }

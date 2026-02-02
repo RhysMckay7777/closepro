@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { Loader2, ArrowLeft, Upload, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { toastError, toastSuccess } from '@/lib/toast';
@@ -296,9 +297,15 @@ export default function NewCallPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="upload">Upload & Analyze</TabsTrigger>
+          <TabsTrigger value="upload" className="flex items-center gap-2">
+            Upload & Analyze
+            <Badge variant="secondary" className="text-xs font-normal">Coming soon</Badge>
+          </TabsTrigger>
           <TabsTrigger value="transcript">Paste / upload transcript</TabsTrigger>
-          <TabsTrigger value="manual">Manual Log</TabsTrigger>
+          <TabsTrigger value="manual" className="flex items-center gap-2">
+            Manual Log
+            <Badge variant="secondary" className="text-xs font-normal">Coming soon</Badge>
+          </TabsTrigger>
           <TabsTrigger value="no-show">No-Show</TabsTrigger>
           <TabsTrigger value="follow-up">Follow-Up</TabsTrigger>
         </TabsList>
@@ -312,48 +319,13 @@ export default function NewCallPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleUploadSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="upload-file">Audio file *</Label>
-                  <Input
-                    id="upload-file"
-                    type="file"
-                    accept="audio/mpeg,audio/mp3,audio/wav,audio/m4a,audio/webm,.mp3,.wav,.m4a,.webm"
-                    onChange={(e) => setUploadFile(e.target.files?.[0] ?? null)}
-                    required
-                  />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="upload-add-to-figures"
-                    checked={addToFigures}
-                    onCheckedChange={(checked) => setAddToFigures(checked === true)}
-                  />
-                  <Label htmlFor="upload-add-to-figures" className="font-normal cursor-pointer">
-                    Add to sales figures (include outcome in Performance → Figures)
-                  </Label>
-                </div>
-                <div className="flex gap-3">
-                  <Link href="/dashboard/calls" className="flex-1">
-                    <Button type="button" variant="outline" className="w-full">
-                      Cancel
-                    </Button>
-                  </Link>
-                  <Button type="submit" disabled={uploading || !uploadFile} className="flex-1">
-                    {uploading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Uploading...
-                      </>
-                    ) : (
-                      <>
-                        <Upload className="h-4 w-4 mr-2" />
-                        Upload & Analyze
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </form>
+              <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-8 text-center">
+                <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                <p className="font-medium text-muted-foreground">Coming soon</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Audio upload and analysis will be available here soon. Use &quot;Paste / upload transcript&quot; in the meantime.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -449,163 +421,13 @@ export default function NewCallPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {offers.length === 0 && (
-                <p className="text-sm text-muted-foreground mb-4">
-                  Create an offer first to log calls.
+              <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-8 text-center">
+                <FileText className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
+                <p className="font-medium text-muted-foreground">Coming soon</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Manual call logging will be available here soon. Use &quot;Paste / upload transcript&quot; or edit outcome on a completed call to update figures.
                 </p>
-              )}
-              <form onSubmit={handleManualSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="manual-date">Date *</Label>
-                    <Input
-                      id="manual-date"
-                      type="date"
-                      value={manualForm.date}
-                      onChange={(e) => setManualForm({ ...manualForm, date: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="manual-offer">Offer Name *</Label>
-                    <Select
-                      value={manualForm.offerId}
-                      onValueChange={(value) => {
-                        const offer = offers.find((o) => o.id === value);
-                        setManualForm({
-                          ...manualForm,
-                          offerId: value,
-                          offerType: offer?.offerCategory || '',
-                        });
-                      }}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select an offer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {offers.map((offer) => (
-                          <SelectItem key={offer.id} value={offer.id}>
-                            {offer.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="manual-call-type">Call Type *</Label>
-                    <Select
-                      value={manualForm.callType}
-                      onValueChange={(value) => setManualForm({ ...manualForm, callType: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="closing_call">Closing Call</SelectItem>
-                        <SelectItem value="follow_up">Follow-Up</SelectItem>
-                        <SelectItem value="no_show">No-Show</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="manual-result">Result *</Label>
-                    <Select
-                      value={manualForm.result}
-                      onValueChange={(value) => setManualForm({ ...manualForm, result: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select result" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="closed">Closed</SelectItem>
-                        <SelectItem value="lost">Lost</SelectItem>
-                        <SelectItem value="unqualified">Unqualified</SelectItem>
-                        <SelectItem value="deposit">Deposit</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="manual-reason">Reason for outcome *</Label>
-                  <Textarea
-                    id="manual-reason"
-                    value={manualForm.reasonForOutcome}
-                    onChange={(e) => setManualForm({ ...manualForm, reasonForOutcome: e.target.value })}
-                    placeholder="Why did this call end this way? What objections came up? How did we handle them?"
-                    rows={3}
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="manual-qualified"
-                      checked={manualForm.qualified}
-                      onCheckedChange={(checked) => setManualForm({ ...manualForm, qualified: checked === true })}
-                    />
-                    <Label htmlFor="manual-qualified">Qualified</Label>
-                  </div>
-                </div>
-
-                {manualForm.result === 'closed' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="manual-cash">Cash Collected (£)</Label>
-                      <Input
-                        id="manual-cash"
-                        type="number"
-                        value={manualForm.cashCollected}
-                        onChange={(e) => setManualForm({ ...manualForm, cashCollected: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="manual-revenue">Revenue Generated (£)</Label>
-                      <Input
-                        id="manual-revenue"
-                        type="number"
-                        value={manualForm.revenueGenerated}
-                        onChange={(e) => setManualForm({ ...manualForm, revenueGenerated: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2 pt-8">
-                        <Checkbox
-                          id="manual-deposit"
-                          checked={manualForm.depositTaken}
-                          onCheckedChange={(checked) => setManualForm({ ...manualForm, depositTaken: checked === true })}
-                        />
-                        <Label htmlFor="manual-deposit">Deposit Taken</Label>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-3">
-                  <Link href="/dashboard/calls" className="flex-1">
-                    <Button type="button" variant="outline" className="w-full">
-                      Cancel
-                    </Button>
-                  </Link>
-                  <Button type="submit" disabled={loading} className="flex-1">
-                    {loading ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Logging...
-                      </>
-                    ) : (
-                      'Log Call'
-                    )}
-                  </Button>
-                </div>
-              </form>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

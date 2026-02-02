@@ -6,8 +6,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil } from 'lucide-react';
 import Link from 'next/link';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { toastError, toastSuccess } from '@/lib/toast';
 
 export default function CallDetailPage() {
   const params = useParams();
@@ -17,6 +23,13 @@ export default function CallDetailPage() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editingOutcome, setEditingOutcome] = useState(false);
+  const [savingOutcome, setSavingOutcome] = useState(false);
+  const [editResult, setEditResult] = useState<string>('');
+  const [editQualified, setEditQualified] = useState(false);
+  const [editCash, setEditCash] = useState('');
+  const [editRevenue, setEditRevenue] = useState('');
+  const [editReason, setEditReason] = useState('');
 
   useEffect(() => {
     if (!callId) return;
@@ -31,6 +44,7 @@ export default function CallDetailPage() {
         const data = await response.json();
         setCall(data.call);
         setAnalysis(data.analysis);
+        setEditingOutcome(false);
 
         // If still processing, poll for updates
         if (data.status !== 'completed' && data.status !== 'failed') {
@@ -58,6 +72,62 @@ export default function CallDetailPage() {
 
     fetchCall();
   }, [callId]);
+
+  const refetchCall = async () => {
+    if (!callId) return;
+    try {
+      const res = await fetch(`/api/calls/${callId}/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setCall(data.call);
+        setAnalysis(data.analysis);
+      }
+    } catch {
+      // ignore
+    }
+  };
+
+  const openOutcomeEdit = () => {
+    setEditResult(call?.result ?? '');
+    setEditQualified(call?.qualified === true);
+    setEditCash(call?.cashCollected != null ? String((call.cashCollected / 100).toFixed(2)) : '');
+    setEditRevenue(call?.revenueGenerated != null ? String((call.revenueGenerated / 100).toFixed(2)) : '');
+    setEditReason(call?.reasonForOutcome ?? '');
+    setEditingOutcome(true);
+  };
+
+  const handleSaveOutcome = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cashDollars = parseFloat(editCash) || 0;
+    const revenueDollars = parseFloat(editRevenue) || 0;
+    setSavingOutcome(true);
+    try {
+      const res = await fetch(`/api/calls/${callId}/outcome`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(editResult && VALID_RESULTS.includes(editResult as (typeof VALID_RESULTS)[number]) && { result: editResult }),
+          qualified: editQualified,
+          cashCollected: Math.round(cashDollars * 100),
+          revenueGenerated: Math.round(revenueDollars * 100),
+          ...(editReason.trim() && { reasonForOutcome: editReason.trim() }),
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to update outcome');
+      }
+      toastSuccess('Outcome saved. Figures will update.');
+      await refetchCall();
+      setEditingOutcome(false);
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : 'Failed to save outcome');
+    } finally {
+      setSavingOutcome(false);
+    }
+  };
+
+  const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit'] as const;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -233,12 +303,154 @@ export default function CallDetailPage() {
         </div>
       )}
 
+      {/* Sales figures outcome – completed calls only */}
+      {call.status === 'completed' && (
+        <>
+          {(
+            call.result == null &&
+            call.cashCollected == null &&
+            call.revenueGenerated == null
+          ) && (
+            <Alert className="border-primary/30 bg-primary/5">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                <strong>Add this call to your figures:</strong> Set the deal outcome below (result, cash collected, revenue) so it shows in Performance → Figures. The AI may have filled these; if not, click Edit outcome and enter the amounts.
+              </AlertDescription>
+            </Alert>
+          )}
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5 text-green-500" />
+                  <CardTitle className="font-serif">Sales figures outcome</CardTitle>
+                </div>
+                {!editingOutcome && (
+                  <Button type="button" variant="outline" size="sm" onClick={openOutcomeEdit}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit outcome
+                  </Button>
+                )}
+              </div>
+              <CardDescription>
+                Used for Figures (cash collected, revenue). Set result and amounts so this call is included in Performance → Figures.
+              </CardDescription>
+            </CardHeader>
+          <CardContent>
+            {editingOutcome ? (
+              <form onSubmit={handleSaveOutcome} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="outcome-result">Result</Label>
+                    <Select value={editResult || undefined} onValueChange={setEditResult}>
+                      <SelectTrigger id="outcome-result">
+                        <SelectValue placeholder="Select result" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {VALID_RESULTS.map((r) => (
+                          <SelectItem key={r} value={r}>{r.replace('_', ' ')}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center gap-2 pt-8">
+                    <Checkbox
+                      id="outcome-qualified"
+                      checked={editQualified}
+                      onCheckedChange={(v) => setEditQualified(v === true)}
+                    />
+                    <Label htmlFor="outcome-qualified">Qualified</Label>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="outcome-cash">Cash collected ($)</Label>
+                    <Input
+                      id="outcome-cash"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="0"
+                      value={editCash}
+                      onChange={(e) => setEditCash(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="outcome-revenue">Revenue generated ($)</Label>
+                    <Input
+                      id="outcome-revenue"
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      placeholder="0"
+                      value={editRevenue}
+                      onChange={(e) => setEditRevenue(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="outcome-reason">Reason for outcome</Label>
+                  <Textarea
+                    id="outcome-reason"
+                    placeholder="e.g. Prospect agreed to £3,600 program; 3-month payment plan."
+                    rows={2}
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={savingOutcome}>
+                    {savingOutcome ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save outcome'}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setEditingOutcome(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Result:</span>{' '}
+                  {call.result ? call.result.replace('_', ' ') : '—'}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Qualified:</span>{' '}
+                  {call.qualified === true ? 'Yes' : call.qualified === false ? 'No' : '—'}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Cash collected:</span>{' '}
+                  {call.cashCollected != null ? `$${(call.cashCollected / 100).toLocaleString()}` : '—'}
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Revenue generated:</span>{' '}
+                  {call.revenueGenerated != null ? `$${(call.revenueGenerated / 100).toLocaleString()}` : '—'}
+                </div>
+                {call.reasonForOutcome && (
+                  <div className="sm:col-span-2">
+                    <span className="text-muted-foreground">Reason:</span> {call.reasonForOutcome}
+                  </div>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+        </>
+      )}
+
       {/* Failed State */}
       {call.status === 'failed' && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
-            Call processing failed. Please try uploading again.
+            {(() => {
+              try {
+                const meta = typeof call.metadata === 'string' ? JSON.parse(call.metadata) : call.metadata;
+                if (meta?.failureReason) return meta.failureReason;
+              } catch {
+                // ignore invalid metadata
+              }
+              return 'Call processing failed. Please try uploading again.';
+            })()}
           </AlertDescription>
         </Alert>
       )}

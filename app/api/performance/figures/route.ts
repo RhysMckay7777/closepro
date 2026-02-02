@@ -3,9 +3,9 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls } from '@/db/schema';
-import { eq, or, and, isNull } from 'drizzle-orm';
+import { eq, or, and, isNull, sql } from 'drizzle-orm';
 
-function emptyFigures(month: string) {
+function emptyFigures(month: string, schemaHint?: boolean) {
   return {
     month,
     callsBooked: 0,
@@ -18,7 +18,15 @@ function emptyFigures(month: string) {
     cashCollected: 0,
     revenueGenerated: 0,
     cashCollectedPct: 0,
+    ...(schemaHint && { schemaHint: 'Run "npm run db:migrate" so figures can read call data.' }),
   };
+}
+
+function isMissingColumnError(err: unknown): boolean {
+  const e = err as { code?: string; cause?: { code?: string }; message?: string };
+  const code = e?.code ?? e?.cause?.code;
+  const msg = typeof e?.message === 'string' ? e.message : '';
+  return code === '42703' || (msg.includes('does not exist') && msg.includes('column'));
 }
 
 /**
@@ -93,11 +101,41 @@ export async function GET(request: NextRequest) {
           )
         );
     } catch (dbError: unknown) {
-      const code = (dbError as { code?: string })?.code;
-      if (code === '42703') {
-        return NextResponse.json(emptyFigures(monthParam));
+      if (!isMissingColumnError(dbError)) throw dbError;
+      // Log so you can see which column is missing (check terminal when loading Figures)
+      const e = dbError as { code?: string; message?: string };
+      console.error('Figures API: missing column (run migrations against same DB as app):', e?.code, e?.message);
+      // Try raw SQL in case Drizzle is out of sync with DB
+      try {
+        const raw = await db.execute<{
+          call_date: Date | null;
+          created_at: Date;
+          original_call_id: string | null;
+          result: string | null;
+          qualified: boolean | null;
+          cash_collected: number | null;
+          revenue_generated: number | null;
+        }>(sql`
+          SELECT call_date, created_at, original_call_id, result, qualified, cash_collected, revenue_generated
+          FROM sales_calls
+          WHERE user_id = ${userId}
+          AND (status = 'manual' OR (status = 'completed' AND (analysis_intent = 'update_figures' OR analysis_intent IS NULL)))
+        `);
+        const rawRows = Array.isArray(raw) ? raw : (raw as { rows?: typeof raw })?.rows ?? [];
+        rows = rawRows.map((r: Record<string, unknown>) => ({
+          callDate: r.call_date ?? null,
+          createdAt: r.created_at as Date,
+          originalCallId: r.original_call_id ?? null,
+          result: r.result ?? null,
+          qualified: r.qualified ?? null,
+          cashCollected: r.cash_collected ?? null,
+          revenueGenerated: r.revenue_generated ?? null,
+        }));
+      } catch (rawErr: unknown) {
+        const re = rawErr as { code?: string; message?: string };
+        console.error('Figures API: raw query also failed:', re?.code, re?.message);
+        return NextResponse.json(emptyFigures(monthParam, true));
       }
-      throw dbError;
     }
 
     const dateFor = (row: { callDate: Date | null; createdAt: Date }) =>

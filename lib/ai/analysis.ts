@@ -286,6 +286,15 @@ EVALUATION FRAMEWORK:
    - Type: strength, weakness, opportunity, warning
    - Relevant transcript segment
 
+6. OUTCOME (for sales figures – important):
+   Infer from the transcript whether an agreement was reached and what money was involved.
+   - result: "closed" if they bought/committed, "deposit" if only deposit taken, "lost" / "unqualified" / "no_show" otherwise.
+   - qualified: true if prospect was a fit and moved forward (or closed), false otherwise.
+   - cashCollected: amount actually collected on this call IN CENTS (e.g. $50 → 5000, $1,200 → 120000). If the transcript mentions a payment, deposit, or "they paid", extract the number and convert to cents. If no amount is mentioned but they closed, use 0 or a reasonable estimate from context.
+   - revenueGenerated: total value of the deal IN CENTS (e.g. full program price, including payment plans). If the transcript states the deal size or program price, use that in cents. If only a deposit is mentioned, revenueGenerated can equal cashCollected or the stated total.
+   - reasonForOutcome: one sentence on why this outcome (e.g. "Prospect agreed to $X program; paid deposit $Y.").
+   Always include the "outcome" object. When result is "closed" or "deposit" you MUST set cashCollected and/or revenueGenerated in CENTS from numbers mentioned in the transcript (e.g. "$500" → 50000, "£200" → 20000). Use 0 only when no amount is stated anywhere.
+
 Return your analysis as JSON in this exact format:
 {
   "overallScore": 75,
@@ -407,18 +416,21 @@ function normalizeAnalysis(analysis: any, offerCategory?: 'b2c_health' | 'b2c_re
     }));
   }
 
-  // Normalize optional outcome suggestion
+  // Normalize optional outcome suggestion (accept camelCase or snake_case from AI)
   const validResults = ['no_show', 'closed', 'lost', 'unqualified', 'deposit'] as const;
   let outcome: CallOutcomeSuggestion | undefined;
   if (analysis.outcome && typeof analysis.outcome === 'object') {
     const o = analysis.outcome as Record<string, unknown>;
     const result = typeof o.result === 'string' && validResults.includes(o.result as any) ? o.result : undefined;
+    const cashCollectedRaw = o.cashCollected ?? o.cash_collected;
+    const revenueGeneratedRaw = o.revenueGenerated ?? o.revenue_generated;
+    const reasonRaw = o.reasonForOutcome ?? o.reason_for_outcome;
     outcome = {
       result,
       qualified: typeof o.qualified === 'boolean' ? o.qualified : undefined,
-      cashCollected: typeof o.cashCollected === 'number' && o.cashCollected >= 0 ? Math.round(o.cashCollected) : undefined,
-      revenueGenerated: typeof o.revenueGenerated === 'number' && o.revenueGenerated >= 0 ? Math.round(o.revenueGenerated) : undefined,
-      reasonForOutcome: typeof o.reasonForOutcome === 'string' ? o.reasonForOutcome.trim().slice(0, 2000) : undefined,
+      cashCollected: typeof cashCollectedRaw === 'number' && cashCollectedRaw >= 0 ? Math.round(cashCollectedRaw) : undefined,
+      revenueGenerated: typeof revenueGeneratedRaw === 'number' && revenueGeneratedRaw >= 0 ? Math.round(revenueGeneratedRaw) : undefined,
+      reasonForOutcome: typeof reasonRaw === 'string' ? String(reasonRaw).trim().slice(0, 2000) : undefined,
     };
     if (!result && outcome.qualified === undefined && outcome.cashCollected === undefined && outcome.revenueGenerated === undefined && !outcome.reasonForOutcome) {
       outcome = undefined;
