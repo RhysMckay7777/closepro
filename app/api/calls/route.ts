@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, users, organizations, userOrganizations } from '@/db/schema';
+import { salesCalls, users, organizations, userOrganizations, offers } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 
 /**
- * Get all calls for the current user
+ * Get all calls for the current user.
+ * Query: forFollowUp=true returns minimal list for follow-up dropdown: id, prospectName, offerName, createdAt.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +22,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get user and organization
     const user = await db
       .select()
       .from(users)
@@ -35,7 +35,6 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get organization
     let organizationId = user[0].organizationId;
     if (!organizationId) {
       const firstOrg = await db
@@ -43,7 +42,6 @@ export async function GET(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, user[0].id))
         .limit(1);
-      
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found' },
@@ -53,7 +51,33 @@ export async function GET(request: NextRequest) {
       organizationId = firstOrg[0].organizationId;
     }
 
-    // Get all calls for this organization
+    const { searchParams } = new URL(request.url);
+    const forFollowUp = searchParams.get('forFollowUp') === 'true';
+
+    if (forFollowUp) {
+      const list = await db
+        .select({
+          id: salesCalls.id,
+          prospectName: salesCalls.prospectName,
+          offerId: salesCalls.offerId,
+          createdAt: salesCalls.createdAt,
+          offerName: offers.name,
+        })
+        .from(salesCalls)
+        .leftJoin(offers, eq(salesCalls.offerId, offers.id))
+        .where(eq(salesCalls.organizationId, organizationId))
+        .orderBy(desc(salesCalls.createdAt))
+        .limit(50);
+      return NextResponse.json({
+        calls: list.map((row) => ({
+          id: row.id,
+          prospectName: row.prospectName ?? '',
+          offerName: row.offerName ?? '—',
+          createdAt: row.createdAt.toISOString(),
+        })),
+      });
+    }
+
     const calls = await db
       .select({
         id: salesCalls.id,
@@ -63,14 +87,18 @@ export async function GET(request: NextRequest) {
         createdAt: salesCalls.createdAt,
         completedAt: salesCalls.completedAt,
         userId: salesCalls.userId,
+        prospectName: salesCalls.prospectName,
+        offerId: salesCalls.offerId,
         userName: users.name,
         userEmail: users.email,
+        offerName: offers.name,
       })
       .from(salesCalls)
       .innerJoin(users, eq(salesCalls.userId, users.id))
+      .leftJoin(offers, eq(salesCalls.offerId, offers.id))
       .where(eq(salesCalls.organizationId, organizationId))
       .orderBy(desc(salesCalls.createdAt))
-      .limit(50); // Get last 50 calls
+      .limit(50);
 
     return NextResponse.json({
       calls: calls.map(call => ({

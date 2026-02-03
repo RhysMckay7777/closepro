@@ -36,12 +36,16 @@ export async function PATCH(
       cashCollected,
       revenueGenerated,
       reasonForOutcome,
+      callDate: callDateRaw,
+      offerId,
+      prospectName,
+      callType,
+      commissionRatePct,
     } = body;
 
     const updatePayload: Record<string, unknown> = {};
     if (typeof resultRaw === 'string' && VALID_RESULTS.includes(resultRaw as typeof VALID_RESULTS[number])) {
       updatePayload.result = resultRaw;
-      // Qualified from result: closed/lost → true, unqualified → false (unless client sends qualified explicitly)
       const qualifiedValue = typeof qualified === 'boolean'
         ? qualified
         : resultRaw === 'closed' || resultRaw === 'lost'
@@ -64,10 +68,28 @@ export async function PATCH(
     if (typeof reasonForOutcome === 'string') {
       updatePayload.reasonForOutcome = reasonForOutcome.trim().slice(0, 2000) || null;
     }
+    if (callDateRaw !== undefined) {
+      const d = new Date(callDateRaw);
+      updatePayload.callDate = isNaN(d.getTime()) ? null : d;
+    }
+    if (typeof offerId === 'string') {
+      updatePayload.offerId = offerId.trim() || null;
+    }
+    if (typeof prospectName === 'string') {
+      updatePayload.prospectName = prospectName.trim().slice(0, 500) || null;
+    }
+    if (typeof callType === 'string' && ['closing_call', 'follow_up'].includes(callType)) {
+      updatePayload.callType = callType;
+    }
+    if (typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100) {
+      updatePayload.commissionRatePct = Math.round(commissionRatePct);
+    } else if (commissionRatePct === null) {
+      updatePayload.commissionRatePct = null;
+    }
 
     if (Object.keys(updatePayload).length === 0) {
       return NextResponse.json(
-        { error: 'Provide at least one of: result, qualified, cashCollected, revenueGenerated, reasonForOutcome' },
+        { error: 'Provide at least one of: result, qualified, cashCollected, revenueGenerated, reasonForOutcome, callDate, offerId, prospectName, callType, commissionRatePct' },
         { status: 400 }
       );
     }

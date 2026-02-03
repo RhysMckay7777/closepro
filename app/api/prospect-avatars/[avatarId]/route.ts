@@ -131,6 +131,7 @@ export async function PATCH(
     if (body.executionResistance !== undefined) updateData.executionResistance = body.executionResistance;
     if (body.avatarUrl !== undefined) updateData.avatarUrl = body.avatarUrl;
     if (body.positionDescription !== undefined) updateData.positionDescription = body.positionDescription;
+    if (body.voiceStyle !== undefined) updateData.voiceStyle = typeof body.voiceStyle === 'string' ? body.voiceStyle.trim().slice(0, 200) || null : null;
     if (body.problems !== undefined) updateData.problems = JSON.stringify(body.problems);
     if (body.painDrivers !== undefined) updateData.painDrivers = JSON.stringify(body.painDrivers);
     if (body.ambitionDrivers !== undefined) updateData.ambitionDrivers = JSON.stringify(body.ambitionDrivers);

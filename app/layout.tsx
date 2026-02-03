@@ -83,19 +83,19 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-        disableTransitionOnChange
-      >
-        <UserProvider>
-          <body suppressHydrationWarning className={`${sans.variable} ${serif.variable} ${mono.variable} antialiased`}>
+      <body suppressHydrationWarning className={`${sans.variable} ${serif.variable} ${mono.variable} antialiased`}>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          <UserProvider>
             {children}
             <Toaster />
-          </body>
-        </UserProvider>
-      </ThemeProvider>
+          </UserProvider>
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

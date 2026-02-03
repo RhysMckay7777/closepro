@@ -168,7 +168,7 @@ function NewProspectAvatarContent() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="positionDescription">Prospect Description</Label>
+              <Label htmlFor="positionDescription">Profile overview</Label>
               <Textarea
                 id="positionDescription"
                 value={formData.positionDescription}

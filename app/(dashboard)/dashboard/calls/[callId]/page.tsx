@@ -23,12 +23,18 @@ export default function CallDetailPage() {
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [offers, setOffers] = useState<Array<{ id: string; name: string }>>([]);
   const [editingOutcome, setEditingOutcome] = useState(false);
   const [savingOutcome, setSavingOutcome] = useState(false);
+  const [editCallDate, setEditCallDate] = useState('');
+  const [editOfferId, setEditOfferId] = useState('');
+  const [editProspectName, setEditProspectName] = useState('');
+  const [editCallType, setEditCallType] = useState<string>('closing_call');
   const [editResult, setEditResult] = useState<string>('');
   const [editQualified, setEditQualified] = useState(false);
   const [editCash, setEditCash] = useState('');
   const [editRevenue, setEditRevenue] = useState('');
+  const [editCommissionRatePct, setEditCommissionRatePct] = useState('');
   const [editReason, setEditReason] = useState('');
 
   useEffect(() => {
@@ -88,10 +94,16 @@ export default function CallDetailPage() {
   };
 
   const openOutcomeEdit = () => {
+    const d = call?.callDate ? new Date(call.callDate) : new Date();
+    setEditCallDate(isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
+    setEditOfferId(call?.offerId ?? '');
+    setEditProspectName(call?.prospectName ?? '');
+    setEditCallType(call?.callType === 'follow_up' ? 'follow_up' : 'closing_call');
     setEditResult(call?.result ?? '');
     setEditQualified(call?.qualified === true);
     setEditCash(call?.cashCollected != null ? String((call.cashCollected / 100).toFixed(2)) : '');
     setEditRevenue(call?.revenueGenerated != null ? String((call.revenueGenerated / 100).toFixed(2)) : '');
+    setEditCommissionRatePct(call?.commissionRatePct != null ? String(call.commissionRatePct) : '');
     setEditReason(call?.reasonForOutcome ?? '');
     setEditingOutcome(true);
   };
@@ -102,16 +114,25 @@ export default function CallDetailPage() {
     const revenueDollars = parseFloat(editRevenue) || 0;
     setSavingOutcome(true);
     try {
+      const body: Record<string, unknown> = {
+        ...(editResult && VALID_RESULTS.includes(editResult as (typeof VALID_RESULTS)[number]) && { result: editResult }),
+        qualified: editQualified,
+        cashCollected: Math.round(cashDollars * 100),
+        revenueGenerated: Math.round(revenueDollars * 100),
+        ...(editReason.trim() && { reasonForOutcome: editReason.trim() }),
+      };
+      if (editCallDate) body.callDate = editCallDate;
+      if (editOfferId) body.offerId = editOfferId;
+      if (editProspectName !== undefined) body.prospectName = editProspectName.trim() || null;
+      if (editCallType) body.callType = editCallType;
+      if (editCommissionRatePct !== '') {
+        const pct = parseFloat(editCommissionRatePct);
+        if (!isNaN(pct) && pct >= 0 && pct <= 100) body.commissionRatePct = pct;
+      }
       const res = await fetch(`/api/calls/${callId}/outcome`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(editResult && VALID_RESULTS.includes(editResult as (typeof VALID_RESULTS)[number]) && { result: editResult }),
-          qualified: editQualified,
-          cashCollected: Math.round(cashDollars * 100),
-          revenueGenerated: Math.round(revenueDollars * 100),
-          ...(editReason.trim() && { reasonForOutcome: editReason.trim() }),
-        }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -394,6 +415,19 @@ export default function CallDetailPage() {
                       onChange={(e) => setEditRevenue(e.target.value)}
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="outcome-commission">Commission rate (%)</Label>
+                    <Input
+                      id="outcome-commission"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      placeholder="e.g. 10"
+                      value={editCommissionRatePct}
+                      onChange={(e) => setEditCommissionRatePct(e.target.value)}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="outcome-reason">Reason for outcome</Label>
@@ -416,6 +450,17 @@ export default function CallDetailPage() {
               </form>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                {call.callDate && (
+                  <div>
+                    <span className="text-muted-foreground">Call date:</span>{' '}
+                    {new Date(call.callDate).toLocaleDateString()}
+                  </div>
+                )}
+                {call.prospectName && (
+                  <div>
+                    <span className="text-muted-foreground">Prospect:</span> {call.prospectName}
+                  </div>
+                )}
                 <div>
                   <span className="text-muted-foreground">Result:</span>{' '}
                   {call.result ? call.result.replace('_', ' ') : '—'}
@@ -432,6 +477,11 @@ export default function CallDetailPage() {
                   <span className="text-muted-foreground">Revenue generated:</span>{' '}
                   {call.revenueGenerated != null ? `$${(call.revenueGenerated / 100).toLocaleString()}` : '—'}
                 </div>
+                {call.commissionRatePct != null && (
+                  <div>
+                    <span className="text-muted-foreground">Commission rate:</span> {call.commissionRatePct}%
+                  </div>
+                )}
                 {call.reasonForOutcome && (
                   <div className="sm:col-span-2">
                     <span className="text-muted-foreground">Reason:</span> {call.reasonForOutcome}

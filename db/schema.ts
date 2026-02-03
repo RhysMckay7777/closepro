@@ -34,6 +34,7 @@ export const users = pgTable('users', {
   location: text('location'), // Location/city
   website: text('website'), // Personal website
   isTourCompleted: boolean('is_tour_completed').notNull().default(false),
+  commissionRatePct: integer('commission_rate_pct'), // Default commission % for figures (0-100)
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -270,6 +271,8 @@ export const salesCalls = pgTable('sales_calls', {
   bookingSource: text('booking_source'), // For no-shows
   originalCallId: uuid('original_call_id').references(() => salesCalls.id, { onDelete: 'set null' }), // For follow-ups
   callDate: timestamp('call_date'), // For manual backdating; figures use this for month attribution when set
+  prospectName: text('prospect_name'), // Prospect name (no-show, manual, transcript)
+  commissionRatePct: integer('commission_rate_pct'), // Per-call commission % override (0-100)
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -388,6 +391,7 @@ export const prospectAvatars = pgTable('prospect_avatars', {
   // Prospect Profile Details
   avatarUrl: text('avatar_url'), // Optional: NanoBanana or other human-style portrait URL
   positionDescription: text('position_description'), // Current situation
+  voiceStyle: text('voice_style'), // Optional: e.g. Professional, Friendly; ElevenLabs maps to voice ID
   problems: text('problems'), // JSON array
   painDrivers: text('pain_drivers'), // JSON array
   ambitionDrivers: text('ambition_drivers'), // JSON array

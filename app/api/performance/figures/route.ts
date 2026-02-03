@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls } from '@/db/schema';
+import { salesCalls, users, offers } from '@/db/schema';
 import { eq, or, and, isNull, sql } from 'drizzle-orm';
 
 function emptyFigures(month: string, schemaHint?: boolean) {
@@ -18,6 +18,18 @@ function emptyFigures(month: string, schemaHint?: boolean) {
     cashCollected: 0,
     revenueGenerated: 0,
     cashCollectedPct: 0,
+    commissionRatePct: null as number | null,
+    totalCommission: 0,
+    salesList: [] as Array<{
+      callId: string;
+      date: string;
+      offerName: string;
+      prospectName: string;
+      cashCollected: number;
+      revenueGenerated: number;
+      commissionPct: number;
+      commissionAmount: number;
+    }>,
     ...(schemaHint && { schemaHint: 'Run "npm run db:migrate" so figures can read call data.' }),
   };
 }
@@ -63,7 +75,16 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id;
 
+    let userCommissionPct: number | null = null;
+    try {
+      const u = await db.select({ commissionRatePct: users.commissionRatePct }).from(users).where(eq(users.id, userId)).limit(1);
+      userCommissionPct = u[0]?.commissionRatePct ?? null;
+    } catch {
+      // column may not exist yet
+    }
+
     let rows: Array<{
+      id?: string;
       callDate: Date | null;
       createdAt: Date;
       originalCallId: string | null;
@@ -71,11 +92,16 @@ export async function GET(request: NextRequest) {
       qualified: boolean | null;
       cashCollected: number | null;
       revenueGenerated: number | null;
+      prospectName?: string | null;
+      commissionRatePct?: number | null;
+      offerId?: string | null;
+      offerName?: string | null;
     }>;
 
     try {
       rows = await db
         .select({
+          id: salesCalls.id,
           callDate: salesCalls.callDate,
           createdAt: salesCalls.createdAt,
           originalCallId: salesCalls.originalCallId,
@@ -83,8 +109,13 @@ export async function GET(request: NextRequest) {
           qualified: salesCalls.qualified,
           cashCollected: salesCalls.cashCollected,
           revenueGenerated: salesCalls.revenueGenerated,
+          prospectName: salesCalls.prospectName,
+          commissionRatePct: salesCalls.commissionRatePct,
+          offerId: salesCalls.offerId,
+          offerName: offers.name,
         })
         .from(salesCalls)
+        .leftJoin(offers, eq(salesCalls.offerId, offers.id))
         .where(
           and(
             eq(salesCalls.userId, userId),
@@ -180,6 +211,25 @@ export async function GET(request: NextRequest) {
         ? Math.round((cashCollected / revenueGenerated) * 1000) / 10
         : 0;
 
+    const salesRows = monthRows.filter(
+      (r) => (r.result === 'closed' || r.result === 'deposit') && r.id
+    );
+    const salesList = salesRows.map((r) => {
+      const rev = r.revenueGenerated ?? 0;
+      const pct = r.commissionRatePct ?? userCommissionPct ?? 0;
+      return {
+        callId: r.id!,
+        date: dateFor(r).toISOString().slice(0, 10),
+        offerName: r.offerName ?? '—',
+        prospectName: r.prospectName ?? '',
+        cashCollected: r.cashCollected ?? 0,
+        revenueGenerated: rev,
+        commissionPct: pct,
+        commissionAmount: Math.round(rev * (pct / 100)),
+      };
+    });
+    const totalCommission = salesList.reduce((s, row) => s + row.commissionAmount, 0);
+
     return NextResponse.json({
       month: monthParam,
       callsBooked,
@@ -192,6 +242,9 @@ export async function GET(request: NextRequest) {
       cashCollected,
       revenueGenerated,
       cashCollectedPct,
+      commissionRatePct: userCommissionPct,
+      salesList,
+      totalCommission,
     });
   } catch (error) {
     console.error('Error fetching figures:', error);

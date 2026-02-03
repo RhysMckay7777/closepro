@@ -29,10 +29,12 @@ export async function POST(request: NextRequest) {
       callType,
       result,
       qualified,
+      prospectName,
       cashCollected,
       revenueGenerated,
       depositTaken,
       reasonForOutcome,
+      commissionRatePct,
       objections,
     } = body;
 
@@ -120,11 +122,13 @@ export async function POST(request: NextRequest) {
       callType: callType && validCallTypes.includes(callType) ? callType : null,
       result,
       qualified: qualifiedFromResult,
+      prospectName: typeof prospectName === 'string' ? prospectName.trim().slice(0, 500) || null : null,
       cashCollected: cashCollected != null ? Number(cashCollected) : null,
       revenueGenerated: revenueGenerated != null ? Number(revenueGenerated) : null,
       depositTaken: depositTaken ?? null,
       reasonForOutcome: reasonForOutcome || null,
       callDate,
+      commissionRatePct: typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100 ? Math.round(commissionRatePct) : null,
     });
 
     return NextResponse.json({

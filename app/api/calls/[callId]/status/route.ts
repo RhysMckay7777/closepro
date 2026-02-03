@@ -43,6 +43,11 @@ export async function GET(
       createdAt: salesCalls.createdAt,
       updatedAt: salesCalls.updatedAt,
       completedAt: salesCalls.completedAt,
+      callDate: salesCalls.callDate,
+      offerId: salesCalls.offerId,
+      callType: salesCalls.callType,
+      prospectName: salesCalls.prospectName,
+      commissionRatePct: salesCalls.commissionRatePct,
     };
     const whereClause = and(
       eq(salesCalls.id, callId),
@@ -78,6 +83,11 @@ export async function GET(
         (call[0] as Record<string, unknown>).cashCollected = null;
         (call[0] as Record<string, unknown>).revenueGenerated = null;
         (call[0] as Record<string, unknown>).reasonForOutcome = null;
+        (call[0] as Record<string, unknown>).callDate = null;
+        (call[0] as Record<string, unknown>).offerId = null;
+        (call[0] as Record<string, unknown>).callType = null;
+        (call[0] as Record<string, unknown>).prospectName = null;
+        (call[0] as Record<string, unknown>).commissionRatePct = null;
       }
     }
 

@@ -32,11 +32,13 @@ export default function NewCallPage() {
     date: new Date().toISOString().split('T')[0],
     offerId: '',
     offerType: '',
-    callType: 'closing_call',
+    callType: 'closing_call' as 'closing_call' | 'follow_up',
     result: '',
     qualified: false,
+    prospectName: '',
     cashCollected: '',
     revenueGenerated: '',
+    commissionRatePct: '',
     depositTaken: false,
     reasonForOutcome: '',
   });
@@ -46,12 +48,14 @@ export default function NewCallPage() {
     date: new Date().toISOString().split('T')[0],
     offerId: '',
     offerType: '',
+    prospectName: '',
     wasConfirmed: false,
     bookingSource: '',
     notes: '',
   });
 
-  // Follow-up form state
+  // Follow-up: list of recent calls for dropdown
+  const [followUpCalls, setFollowUpCalls] = useState<Array<{ id: string; prospectName: string; offerName: string; createdAt: string }>>([]);
   const [followUpForm, setFollowUpForm] = useState({
     originalCallId: '',
     followUpDate: new Date().toISOString().split('T')[0],
@@ -59,6 +63,7 @@ export default function NewCallPage() {
     reasonForOutcome: '',
     cashCollected: '',
     revenueGenerated: '',
+    commissionRatePct: '',
     depositTaken: false,
   });
 
@@ -76,6 +81,15 @@ export default function NewCallPage() {
   useEffect(() => {
     fetchOffers();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'follow-up') {
+      fetch('/api/calls?forFollowUp=true')
+        .then((r) => r.ok ? r.json() : { calls: [] })
+        .then((data) => setFollowUpCalls(data.calls || []))
+        .catch(() => setFollowUpCalls([]));
+    }
+  }, [activeTab]);
 
   const fetchOffers = async () => {
     try {
@@ -103,8 +117,10 @@ export default function NewCallPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...manualForm,
+          prospectName: manualForm.prospectName.trim() || undefined,
           cashCollected: manualForm.cashCollected ? parseInt(manualForm.cashCollected) * 100 : null,
           revenueGenerated: manualForm.revenueGenerated ? parseInt(manualForm.revenueGenerated) * 100 : null,
+          commissionRatePct: manualForm.commissionRatePct ? parseFloat(manualForm.commissionRatePct) : undefined,
         }),
       });
 
@@ -169,6 +185,7 @@ export default function NewCallPage() {
           ...followUpForm,
           cashCollected: followUpForm.cashCollected ? parseInt(followUpForm.cashCollected) * 100 : null,
           revenueGenerated: followUpForm.revenueGenerated ? parseInt(followUpForm.revenueGenerated) * 100 : null,
+          commissionRatePct: followUpForm.commissionRatePct ? parseFloat(followUpForm.commissionRatePct) : undefined,
         }),
       });
 
@@ -291,7 +308,7 @@ export default function NewCallPage() {
         </Link>
         <h1 className="text-2xl sm:text-3xl font-bold">Add New Call</h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-1">
-          Paste/upload a transcript, upload audio, or log manually. Transcript and upload both get AI analysis.
+          Paste/upload a transcript, upload audio, or log manually. Transcript and upload both get AI analysis. Or use the Upload & Analyze tab for audio files.
         </p>
       </div>
 
@@ -495,6 +512,16 @@ export default function NewCallPage() {
                   </div>
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="manual-prospect">Prospect name (optional)</Label>
+                  <Input
+                    id="manual-prospect"
+                    value={manualForm.prospectName}
+                    onChange={(e) => setManualForm({ ...manualForm, prospectName: e.target.value })}
+                    placeholder="e.g. James, Busy Dad"
+                  />
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="manual-call-type">Call Type *</Label>
@@ -674,6 +701,16 @@ export default function NewCallPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="no-show-prospect">Prospect name (optional)</Label>
+                  <Input
+                    id="no-show-prospect"
+                    value={noShowForm.prospectName}
+                    onChange={(e) => setNoShowForm({ ...noShowForm, prospectName: e.target.value })}
+                    placeholder="e.g. John Smith"
+                  />
+                </div>
+
+                <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="no-show-confirmed"
@@ -738,18 +775,23 @@ export default function NewCallPage() {
             <CardContent>
               <form onSubmit={handleFollowUpSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="follow-up-original">Original Call Date *</Label>
-                  <Input
-                    id="follow-up-original"
-                    type="text"
+                  <Label htmlFor="follow-up-original">Original call (Prospect – Offer) *</Label>
+                  <Select
                     value={followUpForm.originalCallId}
-                    onChange={(e) => setFollowUpForm({ ...followUpForm, originalCallId: e.target.value })}
-                    placeholder="Enter original call ID or select from list"
+                    onValueChange={(value) => setFollowUpForm({ ...followUpForm, originalCallId: value })}
                     required
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    This will be enhanced to show a dropdown of recent calls
-                  </p>
+                  >
+                    <SelectTrigger id="follow-up-original">
+                      <SelectValue placeholder="Select original call" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {followUpCalls.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.prospectName ? `${c.prospectName} – ${c.offerName}` : c.offerName || c.id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -795,7 +837,7 @@ export default function NewCallPage() {
                 </div>
 
                 {followUpForm.outcome === 'sale_made' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="follow-up-cash">Cash Collected (£)</Label>
                       <Input
@@ -812,6 +854,19 @@ export default function NewCallPage() {
                         type="number"
                         value={followUpForm.revenueGenerated}
                         onChange={(e) => setFollowUpForm({ ...followUpForm, revenueGenerated: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="follow-up-commission">Commission rate (%)</Label>
+                      <Input
+                        id="follow-up-commission"
+                        type="number"
+                        min={0}
+                        max={100}
+                        step={0.5}
+                        value={followUpForm.commissionRatePct}
+                        onChange={(e) => setFollowUpForm({ ...followUpForm, commissionRatePct: e.target.value })}
+                        placeholder="e.g. 10"
                       />
                     </div>
                     <div className="space-y-2">

@@ -12,6 +12,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { toastError } from '@/lib/toast';
 import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
+import { resolveProspectAvatarUrl } from '@/lib/prospect-avatar';
 
 interface Message {
   id?: string;
@@ -30,6 +31,13 @@ interface Session {
   offerName?: string;
 }
 
+interface ProspectAvatar {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  positionDescription?: string | null;
+}
+
 interface UserProfile {
   name: string;
   email: string;
@@ -43,6 +51,7 @@ function RoleplaySessionContent() {
   const sessionId = params.sessionId as string;
 
   const [session, setSession] = useState<Session | null>(null);
+  const [prospectAvatar, setProspectAvatar] = useState<ProspectAvatar | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,6 +60,9 @@ function RoleplaySessionContent() {
   const [activeSpeaker, setActiveSpeaker] = useState<'rep' | 'prospect' | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [cameraOn, setCameraOn] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const { openDialog, ConfirmDialog } = useConfirmDialog();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -116,14 +128,38 @@ function RoleplaySessionContent() {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  useEffect(() => {
+    if (cameraOn && streamRef.current && videoRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [cameraOn]);
+
   const fetchSession = async () => {
     try {
       const response = await fetch(`/api/roleplay/${sessionId}`);
       const data = await response.json();
       setSession(data.session);
       setMessages(data.messages || []);
+      setProspectAvatar(data.prospectAvatar ?? null);
     } catch (error) {
       console.error('Error fetching session:', error);
+    }
+  };
+
+  const toggleCamera = async () => {
+    if (cameraOn && streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+      setCameraOn(false);
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraOn(true);
+    } catch (err) {
+      console.error('Camera error:', err);
     }
   };
 
@@ -209,16 +245,48 @@ function RoleplaySessionContent() {
         setActiveSpeaker(null);
       }, 5000);
 
-      // Speak prospect response if voice mode
-      if (session?.inputMode === 'voice' && synthRef.current && !isMuted) {
-        synthRef.current.cancel(); // Cancel any ongoing speech
-        const utterance = new SpeechSynthesisUtterance(data.response);
-        utterance.rate = 0.9;
-        utterance.pitch = 1;
-        utterance.onend = () => {
-          setActiveSpeaker(null);
-        };
-        synthRef.current.speak(utterance);
+      // Speak prospect response if voice mode (ElevenLabs TTS if configured, else browser speechSynthesis)
+      if (session?.inputMode === 'voice' && !isMuted) {
+        if (synthRef.current) synthRef.current.cancel();
+        const speakText = data.response;
+        const onEnd = () => setActiveSpeaker(null);
+        try {
+          const ttsRes = await fetch('/api/tts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: speakText }),
+          });
+          if (ttsRes.ok && ttsRes.body) {
+            const blob = await ttsRes.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.onended = () => {
+              URL.revokeObjectURL(url);
+              onEnd();
+            };
+            audio.onerror = () => {
+              URL.revokeObjectURL(url);
+              fallbackSpeak(speakText, onEnd);
+            };
+            await audio.play();
+          } else {
+            fallbackSpeak(speakText, onEnd);
+          }
+        } catch {
+          fallbackSpeak(speakText, onEnd);
+        }
+      }
+
+      function fallbackSpeak(text: string, onEnd: () => void) {
+        if (synthRef.current) {
+          const utterance = new SpeechSynthesisUtterance(text);
+          utterance.rate = 0.9;
+          utterance.pitch = 1;
+          utterance.onend = onEnd;
+          synthRef.current.speak(utterance);
+        } else {
+          onEnd();
+        }
       }
     } catch (error: any) {
       console.error('Error sending message:', error);
@@ -319,6 +387,16 @@ function RoleplaySessionContent() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant={cameraOn ? 'default' : 'outline'}
+              size="sm"
+              onClick={toggleCamera}
+              className="gap-1"
+            >
+              <Video className="h-4 w-4" />
+              {cameraOn ? 'Camera on' : 'Turn on camera'}
+            </Button>
             {session?.status === 'in_progress' && (
               <Badge variant="default" className="bg-blue-500 text-xs">In Progress</Badge>
             )}
@@ -340,31 +418,46 @@ function RoleplaySessionContent() {
                 )}
               >
                 <div className="absolute inset-0 bg-linear-to-br from-primary/10 via-primary/5 to-transparent flex items-center justify-center">
-                  <div className="text-center z-10">
-                    <div className={cn(
-                      "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300 overflow-hidden",
-                      activeSpeaker === 'rep'
-                        ? "ring-4 ring-orange-500/30 scale-110"
-                        : ""
-                    )}>
-                      {userProfile?.profilePhoto ? (
-                        <Avatar className="w-full h-full">
-                          <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
-                          <AvatarFallback className="bg-primary/40 text-primary">
-                            {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
+                  <div className="text-center z-10 w-full h-full flex flex-col items-center justify-center">
+                    {cameraOn && videoRef.current ? (
+                      <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className={cn(
+                          "w-full h-full object-cover rounded-lg transition-all duration-300",
+                          activeSpeaker === 'rep' && "ring-4 ring-orange-500/30 scale-[1.02]"
+                        )}
+                      />
+                    ) : (
+                      <>
                         <div className={cn(
-                          "w-full h-full flex items-center justify-center",
-                          activeSpeaker === 'rep' ? "bg-primary/40" : "bg-primary/20"
+                          "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300 overflow-hidden",
+                          activeSpeaker === 'rep'
+                            ? "ring-4 ring-orange-500/30 scale-110"
+                            : ""
                         )}>
-                          <User className="h-12 w-12 text-primary" />
+                          {userProfile?.profilePhoto ? (
+                            <Avatar className="w-full h-full">
+                              <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                              <AvatarFallback className="bg-primary/40 text-primary">
+                                {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                          ) : (
+                            <div className={cn(
+                              "w-full h-full flex items-center justify-center",
+                              activeSpeaker === 'rep' ? "bg-primary/40" : "bg-primary/20"
+                            )}>
+                              <User className="h-12 w-12 text-primary" />
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                    <p className="font-semibold text-lg">{userProfile?.name || 'You'}</p>
-                    <p className="text-xs text-muted-foreground">Rep</p>
+                        <p className="font-semibold text-lg">{userProfile?.name || 'You'}</p>
+                        <p className="text-xs text-muted-foreground">Rep</p>
+                      </>
+                    )}
                     {isListening && (
                       <div className="mt-2 flex items-center justify-center gap-2">
                         <div className="flex gap-1">
@@ -384,7 +477,7 @@ function RoleplaySessionContent() {
                 )}
               </Card>
 
-              {/* Prospect (AI) */}
+              {/* Prospect (AI or selected avatar) */}
               <Card
                 className={cn(
                   "aspect-video relative overflow-hidden border-2 transition-all duration-300 bg-card",
@@ -396,15 +489,30 @@ function RoleplaySessionContent() {
                 <div className="absolute inset-0 bg-linear-to-br from-muted/10 via-muted/5 to-transparent flex items-center justify-center">
                   <div className="text-center z-10">
                     <div className={cn(
-                      "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300",
+                      "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300 overflow-hidden",
                       activeSpeaker === 'prospect'
-                        ? "bg-blue-500/20 ring-4 ring-blue-500/30 scale-110"
+                        ? "ring-4 ring-blue-500/30 scale-110"
                         : "bg-muted/20"
                     )}>
-                      <Bot className="h-12 w-12 text-foreground" />
+                      {prospectAvatar ? (
+                        <Avatar className="w-full h-full">
+                          <AvatarImage
+                            src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)}
+                            alt={prospectAvatar.name}
+                            className="object-cover"
+                          />
+                          <AvatarFallback className="bg-blue-500/20 text-blue-600">
+                            {prospectAvatar.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <Bot className="h-12 w-12 text-foreground" />
+                      )}
                     </div>
-                    <p className="font-semibold text-lg">AI Prospect</p>
-                    <p className="text-xs text-muted-foreground">Virtual Buyer</p>
+                    <p className="font-semibold text-lg">{prospectAvatar?.name ?? 'AI Prospect'}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
+                    </p>
                     {loading && (
                       <div className="mt-2 flex items-center justify-center gap-2">
                         <Loader2 className="h-4 w-4 animate-spin text-blue-500" />

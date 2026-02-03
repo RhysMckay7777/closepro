@@ -28,6 +28,7 @@ export default function EditProspectAvatarPage() {
     authorityPerceivedScore: 5,
     funnelContext: 5,
     positionDescription: '',
+    voiceStyle: '',
   });
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function EditProspectAvatarPage() {
         authorityPerceivedScore: score,
         funnelContext: avatar.funnelContext || 5,
         positionDescription: avatar.positionDescription || '',
+        voiceStyle: avatar.voiceStyle || '',
       });
     } catch (error) {
       console.error('Error fetching avatar:', error);
@@ -84,6 +86,7 @@ export default function EditProspectAvatarPage() {
           authorityLevel,
           funnelContext: formData.funnelContext,
           positionDescription: formData.positionDescription,
+          voiceStyle: formData.voiceStyle.trim() || undefined,
         }),
       });
 
@@ -141,12 +144,22 @@ export default function EditProspectAvatarPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="positionDescription">Position Description</Label>
+              <Label htmlFor="positionDescription">Profile overview</Label>
               <Textarea
                 id="positionDescription"
                 value={formData.positionDescription}
                 onChange={(e) => setFormData({ ...formData, positionDescription: e.target.value })}
+                placeholder="e.g. Busy dad, sceptical about coaching"
                 rows={3}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="voiceStyle">Voice style (optional)</Label>
+              <Input
+                id="voiceStyle"
+                value={formData.voiceStyle}
+                onChange={(e) => setFormData({ ...formData, voiceStyle: e.target.value })}
+                placeholder="e.g. Professional, Friendly (ElevenLabs maps to voice)"
               />
             </div>
           </div>

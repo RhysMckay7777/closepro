@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Play, Clock, TrendingUp, MessageSquare } from 'lucide-react';
+import { Plus, Play, Clock, TrendingUp, MessageSquare, Heart, Users, DollarSign, PieChart, Briefcase } from 'lucide-react';
 import Link from 'next/link';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 import { EmptyRoleplayIllustration } from '@/components/illustrations';
@@ -243,9 +243,17 @@ export default function RoleplayPage() {
                         year: 'numeric',
                       })}
                     </TableCell>
-                    <TableCell className="font-medium">{session.offerName}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{getOfferTypeLabel(session.offerType)}</Badge>
+                      <div className="font-medium">{session.offerName}</div>
+                      {session.offerType && getOfferTypeDescription(session.offerType) && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{getOfferTypeDescription(session.offerType)}</p>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        {getOfferTypeIcon(session.offerType)}
+                        <Badge variant="outline">{getOfferTypeLabel(session.offerType)}</Badge>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {session.actualDifficultyTier ? (

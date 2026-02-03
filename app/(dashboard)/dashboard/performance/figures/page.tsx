@@ -8,6 +8,17 @@ import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, DollarSign, AlertC
 import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
+interface SalesListItem {
+  callId: string;
+  date: string;
+  offerName: string;
+  prospectName: string;
+  cashCollected: number;
+  revenueGenerated: number;
+  commissionPct: number;
+  commissionAmount: number;
+}
+
 interface FiguresData {
   month: string;
   callsBooked: number;
@@ -20,6 +31,9 @@ interface FiguresData {
   cashCollected: number;
   revenueGenerated: number;
   cashCollectedPct: number;
+  commissionRatePct?: number | null;
+  totalCommission?: number;
+  salesList?: SalesListItem[];
   schemaHint?: string;
 }
 
@@ -285,6 +299,68 @@ export default function FiguresPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Commission: rate and total */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Commission rate</CardTitle>
+                <p className="text-xs text-muted-foreground">Your default commission % (set in profile if available)</p>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold">{figures.commissionRatePct != null ? `${figures.commissionRatePct}%` : '—'}</p>
+              </CardContent>
+            </Card>
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Total commission (month)</CardTitle>
+                <p className="text-xs text-muted-foreground">Sum of commission on sales (revenue × commission % per deal)</p>
+              </CardHeader>
+              <CardContent>
+                <p className="text-3xl font-bold">${((figures.totalCommission ?? 0) / 100).toLocaleString()}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Sales list: cash, revenue, offer, date, commission % per deal, commission amount */}
+          {figures.salesList && figures.salesList.length > 0 && (
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold">Sales this month (for commission)</CardTitle>
+                <p className="text-xs text-muted-foreground">Cash received, revenue generated, offer, date of sale, commission % per deal, commission amount</p>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b text-left text-muted-foreground">
+                        <th className="py-2 pr-4">Date</th>
+                        <th className="py-2 pr-4">Offer</th>
+                        <th className="py-2 pr-4">Prospect</th>
+                        <th className="py-2 pr-4 text-right">Cash</th>
+                        <th className="py-2 pr-4 text-right">Revenue</th>
+                        <th className="py-2 pr-4 text-right">Commission %</th>
+                        <th className="py-2 text-right">Commission $</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {figures.salesList.map((row) => (
+                        <tr key={row.callId} className="border-b border-border/50">
+                          <td className="py-2 pr-4">{row.date}</td>
+                          <td className="py-2 pr-4">{row.offerName}</td>
+                          <td className="py-2 pr-4">{row.prospectName || '—'}</td>
+                          <td className="py-2 pr-4 text-right">${(row.cashCollected / 100).toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-right">${(row.revenueGenerated / 100).toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-right">{row.commissionPct}%</td>
+                          <td className="py-2 text-right">${(row.commissionAmount / 100).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* How cash/revenue get into figures */}
           <Alert className="border-primary/30 bg-primary/5">

@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
       cashCollected,
       revenueGenerated,
       depositTaken,
+      commissionRatePct,
     } = body;
 
     if (!originalCallId || !outcome || !reasonForOutcome) {
@@ -113,6 +114,7 @@ export async function POST(request: NextRequest) {
         cashCollected: cashCollected || null,
         revenueGenerated: revenueGenerated || null,
         depositTaken: depositTaken || false,
+        commissionRatePct: typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100 ? Math.round(commissionRatePct) : null,
         completedAt: new Date(followUpDate),
       })
       .returning();
