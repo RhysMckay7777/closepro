@@ -82,14 +82,43 @@ function ProspectSelectionContent() {
     }
   }, [offerId]);
 
+  // On every load: fetch offer, then regenerate prospects (including pre-made), then fetch the new list
   useEffect(() => {
-    if (offerId) {
-      hasTriedGenerateRef.current = false; // Reset when offerId changes
-      fetchOffer();
-      fetchProspects();
-    } else {
+    if (!offerId) {
       router.push('/dashboard/roleplay/new');
+      return;
     }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      await fetchOffer();
+      if (cancelled) return;
+      try {
+        const res = await fetch(
+          `/api/offers/${offerId}/prospects/generate?regenerate=true`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ regenerate: true }) }
+        );
+        if (cancelled) return;
+        if (res.ok) {
+          await fetchProspects();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          toastError(err.error || 'Failed to regenerate prospects');
+          await fetchProspects(); // Still show whatever exists
+        }
+      } catch (e) {
+        if (!cancelled) {
+          console.error('Regenerate on load failed:', e);
+          toastError('Failed to regenerate prospects');
+          await fetchProspects();
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [offerId, router, fetchOffer, fetchProspects]);
 
   const handleGenerateProspects = useCallback(async () => {
@@ -259,7 +288,7 @@ function ProspectSelectionContent() {
     return firstSentence.slice(0, 40) + (firstSentence.length > 40 ? '…' : '');
   };
 
-  // Auto-generate 4 prospects if none exist and offer is new (must be before any early return)
+  // Fallback: if regenerate on load failed and we have no prospects, try one-time generate
   useEffect(() => {
     if (prospects.length === 0 && offerId && !loading && !hasTriedGenerateRef.current) {
       handleGenerateProspects();
@@ -271,7 +300,7 @@ function ProspectSelectionContent() {
       <div className="container mx-auto p-4 sm:p-6">
         <div className="text-center py-12">
           <Loader2 className="h-6 w-6 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading prospects...</p>
+          <p className="text-muted-foreground">Regenerating prospects...</p>
         </div>
       </div>
     );
