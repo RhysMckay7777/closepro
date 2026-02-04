@@ -52,7 +52,7 @@ export const metadata: Metadata = {
 const sans = Instrument_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
-  weight: ["400","500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
   style: ["normal", "italic"],
   display: "swap",
   preload: true,

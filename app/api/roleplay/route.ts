@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { roleplaySessions, offers, prospectAvatars } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { users, organizations, userOrganizations } from '@/db/schema';
-import { generateRandomProspectInBand, calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
+import { generateRandomProspectInBand, calculateDifficultyIndex, generateRandomProspectName } from '@/lib/ai/roleplay/prospect-avatar';
 
 /**
  * GET - List all roleplay sessions for user
@@ -213,7 +213,8 @@ export async function POST(request: NextRequest) {
     if (!prospectAvatarId && selectedDifficulty) {
       // Generate random prospect within difficulty band
       const prospectProfile = generateRandomProspectInBand(selectedDifficulty);
-      
+      const name = generateRandomProspectName();
+
       // Create prospect avatar scoped to the offer
       const [newAvatar] = await db
         .insert(prospectAvatars)
@@ -221,7 +222,7 @@ export async function POST(request: NextRequest) {
           organizationId: offer.organizationId,
           offerId: offerId,
           userId: session.user.id,
-          name: `Generated Prospect (${selectedDifficulty})`,
+          name,
           sourceType: 'auto_generated',
           positionProblemAlignment: prospectProfile.positionProblemAlignment,
           painAmbitionIntensity: prospectProfile.painAmbitionIntensity,

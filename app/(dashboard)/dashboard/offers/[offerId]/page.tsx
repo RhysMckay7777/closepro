@@ -48,7 +48,7 @@ export default function OfferDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const offerId = params.offerId as string;
-  
+
   const [offer, setOffer] = useState<Offer | null>(null);
   const [prospects, setProspects] = useState<Prospect[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,7 +79,7 @@ export default function OfferDetailsPage() {
       if (!response.ok) throw new Error('Failed to fetch prospects');
       const data = await response.json();
       setProspects(data.prospects || []);
-      
+
       // Auto-generate if no prospects exist
       if (data.prospects.length === 0) {
         await generateProspects();
@@ -99,12 +99,12 @@ export default function OfferDetailsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
       });
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to generate prospects');
       }
-      
+
       const data = await response.json();
       setProspects(data.prospects || []);
     } catch (error: any) {
@@ -126,12 +126,12 @@ export default function OfferDetailsPage() {
           body: JSON.stringify({ regenerate: true }),
         }
       );
-      
+
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to regenerate prospects');
       }
-      
+
       const data = await response.json();
       setProspects(data.prospects || []);
     } catch (error: any) {
@@ -360,7 +360,7 @@ export default function OfferDetailsPage() {
               <DialogContent className="sm:max-w-4xl p-0 gap-0 overflow-hidden">
                 {selectedProspect && (
                   <div className="flex flex-col sm:flex-row min-h-[420px]">
-                    <div className="relative w-full sm:w-1/3 min-h-[240px] sm:min-h-0 flex items-center justify-center bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-950/30 dark:to-green-900/20 p-8">
+                    <div className="relative w-full sm:w-1/3 min-h-[240px] sm:min-h-0 flex items-center justify-center bg-linear-to-br from-emerald-50 to-green-100 dark:from-emerald-950/30 dark:to-green-900/20 p-8">
                       <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.06]" style={{ backgroundImage: 'linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)', backgroundSize: '24px 24px' }} aria-hidden />
                       <Avatar className="size-40 sm:size-48 shrink-0 ring-4 ring-white/80 dark:ring-background/80 shadow-lg">
                         <AvatarImage src={resolveProspectAvatarUrl(selectedProspect.id, selectedProspect.name, selectedProspect.avatarUrl)} alt={selectedProspect.name} className="object-cover" />

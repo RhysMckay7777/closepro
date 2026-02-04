@@ -122,7 +122,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { status, overallScore, analysisId } = body;
+    const { status, overallScore, analysisId, pinnedMessageIds, notes } = body;
 
     // Verify session belongs to user
     const roleplay = await db
@@ -144,11 +144,25 @@ export async function PATCH(
     }
 
     // Update session
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
     if (status) updateData.status = status;
     if (overallScore !== undefined) updateData.overallScore = overallScore;
     if (analysisId) updateData.analysisId = analysisId;
     if (status === 'completed') updateData.completedAt = new Date();
+
+    // Merge pinnedMessageIds and notes into metadata
+    if (pinnedMessageIds !== undefined || notes !== undefined) {
+      const currentMetadata = roleplay[0].metadata
+        ? (JSON.parse(roleplay[0].metadata) as Record<string, unknown>)
+        : {};
+      if (pinnedMessageIds !== undefined) {
+        currentMetadata.pinnedMessageIds = Array.isArray(pinnedMessageIds) ? pinnedMessageIds : [];
+      }
+      if (notes !== undefined) {
+        currentMetadata.notes = typeof notes === 'string' ? notes : '';
+      }
+      updateData.metadata = JSON.stringify(currentMetadata);
+    }
 
     const [updated] = await db
       .update(roleplaySessions)

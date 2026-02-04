@@ -159,8 +159,11 @@ export default function EditProspectAvatarPage() {
                 id="voiceStyle"
                 value={formData.voiceStyle}
                 onChange={(e) => setFormData({ ...formData, voiceStyle: e.target.value })}
-                placeholder="e.g. Professional, Friendly (ElevenLabs maps to voice)"
+                placeholder="e.g. Professional, Friendly, or ElevenLabs voice ID"
               />
+              <p className="text-xs text-muted-foreground">
+                Enter an ElevenLabs voice ID (e.g., 21m00Tcm4TlvDq8ikWAM) or a style like &apos;Professional&apos;, &apos;Friendly&apos;, &apos;Authoritative&apos;. Leave empty to auto-select based on character.
+              </p>
             </div>
           </div>
 

@@ -189,6 +189,7 @@ export async function analyzeCall(
           if (!content) throw new Error('No response from Groq');
           let jsonText = content.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
           const analysis = JSON.parse(jsonText) as CallAnalysisResult;
+          console.info('Call analysis completed via Groq (Anthropic credits low or unavailable).');
           return normalizeAnalysis(analysis, offerCategory, customerStage);
         } catch (groqError: any) {
           console.error('Groq fallback error:', groqError);

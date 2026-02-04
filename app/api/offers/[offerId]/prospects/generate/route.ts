@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { generateRandomProspectInBand, getDefaultBioForDifficulty } from '@/lib/ai/roleplay/prospect-avatar';
+import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
 
 /**
@@ -90,10 +90,12 @@ export async function POST(
     // Generate 4 prospects: Easy, Realistic, Hard, Elite (with bios)
     const difficulties: Array<'easy' | 'realistic' | 'hard' | 'elite'> = ['easy', 'realistic', 'hard', 'elite'];
     const generatedProspects = [];
+    const usedNames = new Set<string>();
 
     for (const difficulty of difficulties) {
       const prospectProfile = generateRandomProspectInBand(difficulty);
-      const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier);
+      const name = generateRandomProspectName(usedNames);
+      const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier, name);
 
       const [newProspect] = await db
         .insert(prospectAvatars)
@@ -101,7 +103,7 @@ export async function POST(
           organizationId: offer[0].organizationId,
           offerId: offerId,
           userId: session.user.id,
-          name: `Auto-Generated ${difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} Prospect`,
+          name,
           sourceType: 'auto_generated',
           positionProblemAlignment: prospectProfile.positionProblemAlignment,
           painAmbitionIntensity: prospectProfile.painAmbitionIntensity,

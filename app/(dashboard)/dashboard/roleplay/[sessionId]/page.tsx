@@ -6,13 +6,14 @@ import { RoleplaySessionSkeleton } from '@/components/dashboard/skeletons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MessageSquare, MoreVertical, Loader2, User, Bot } from 'lucide-react';
+import { Mic, MicOff, Video, PhoneOff, MessageSquare, MoreVertical, Loader2, User, Bot, Pin, PinOff, Search } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { toastError } from '@/lib/toast';
 import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
 import { resolveProspectAvatarUrl } from '@/lib/prospect-avatar';
+import { getVoiceIdFromProspect } from '@/lib/ai/roleplay/voice-mapping';
 
 interface Message {
   id?: string;
@@ -29,6 +30,7 @@ interface Session {
   status: string;
   inputMode: string;
   offerName?: string;
+  metadata?: { pinnedMessageIds?: string[]; notes?: string } | null;
 }
 
 interface ProspectAvatar {
@@ -36,6 +38,7 @@ interface ProspectAvatar {
   name: string;
   avatarUrl?: string | null;
   positionDescription?: string | null;
+  voiceStyle?: string | null;
 }
 
 interface UserProfile {
@@ -59,6 +62,10 @@ function RoleplaySessionContent() {
   const [isListening, setIsListening] = useState(false);
   const [activeSpeaker, setActiveSpeaker] = useState<'rep' | 'prospect' | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
+  const [transcriptTab, setTranscriptTab] = useState<'transcript' | 'pinned' | 'notes'>('transcript');
+  const [transcriptSearch, setTranscriptSearch] = useState('');
+  const [pinnedMessageIds, setPinnedMessageIds] = useState<string[]>([]);
+  const [sessionNotes, setSessionNotes] = useState('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -141,9 +148,60 @@ function RoleplaySessionContent() {
       setSession(data.session);
       setMessages(data.messages || []);
       setProspectAvatar(data.prospectAvatar ?? null);
+      const meta = data.session?.metadata;
+      if (meta) {
+        try {
+          const parsed = typeof meta === 'string' ? JSON.parse(meta) : meta;
+          if (Array.isArray(parsed.pinnedMessageIds)) setPinnedMessageIds(parsed.pinnedMessageIds);
+          if (typeof parsed.notes === 'string') setSessionNotes(parsed.notes);
+        } catch {
+          // ignore
+        }
+      }
     } catch (error) {
       console.error('Error fetching session:', error);
     }
+  };
+
+  const persistPins = async (ids: string[]) => {
+    setPinnedMessageIds(ids);
+    try {
+      await fetch(`/api/roleplay/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinnedMessageIds: ids }),
+      });
+    } catch (e) {
+      console.error('Failed to persist pins', e);
+    }
+  };
+
+  const persistNotes = async (notes: string) => {
+    setSessionNotes(notes);
+    try {
+      await fetch(`/api/roleplay/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes }),
+      });
+    } catch (e) {
+      console.error('Failed to persist notes', e);
+    }
+  };
+
+  const togglePin = (messageId: string | undefined) => {
+    if (!messageId) return;
+    const next = pinnedMessageIds.includes(messageId)
+      ? pinnedMessageIds.filter((id) => id !== messageId)
+      : [...pinnedMessageIds, messageId];
+    persistPins(next);
+  };
+
+  const formatMessageTime = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    if (m > 0) return `${m}:${String(s % 60).padStart(2, '0')}`;
+    return `0:${String(s).padStart(2, '0')}`;
   };
 
   const toggleCamera = async () => {
@@ -228,13 +286,23 @@ function RoleplaySessionContent() {
 
       const data = await response.json();
       const prospectMessage: Message = {
+        id: data.prospectMessageId ?? undefined,
         role: 'prospect',
         content: data.response,
         timestamp: Date.now(),
         metadata: data.metadata,
       };
 
-      setMessages((prev) => [...prev, prospectMessage]);
+      setMessages((prev) => {
+        const withProspect = [...prev, prospectMessage];
+        const repIdx = withProspect.length - 2;
+        const prospectIdx = withProspect.length - 1;
+        if (data.repMessageId && repIdx >= 0)
+          withProspect[repIdx] = { ...withProspect[repIdx], id: data.repMessageId };
+        if (data.prospectMessageId && prospectIdx >= 0)
+          withProspect[prospectIdx] = { ...withProspect[prospectIdx], id: data.prospectMessageId };
+        return withProspect;
+      });
       setActiveSpeaker('prospect');
 
       // Clear active speaker after prospect finishes
@@ -251,12 +319,19 @@ function RoleplaySessionContent() {
         const speakText = data.response;
         const onEnd = () => setActiveSpeaker(null);
         try {
+          // Get voice ID from prospect avatar (matches character appearance)
+          const voiceId = prospectAvatar ? getVoiceIdFromProspect(prospectAvatar) : undefined;
           const ttsRes = await fetch('/api/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ text: speakText }),
+            body: JSON.stringify({
+              text: speakText,
+              voiceId: voiceId,
+            }),
           });
-          if (ttsRes.ok && ttsRes.body) {
+
+          // Check if response is successful audio (200) or needs fallback (503 with fallback flag)
+          if (ttsRes.ok && ttsRes.headers.get('content-type')?.includes('audio')) {
             const blob = await ttsRes.blob();
             const url = URL.createObjectURL(blob);
             const audio = new Audio(url);
@@ -270,7 +345,20 @@ function RoleplaySessionContent() {
             };
             await audio.play();
           } else {
-            fallbackSpeak(speakText, onEnd);
+            // Check for explicit fallback flag in JSON response (503 from ElevenLabs auth/quota issues)
+            try {
+              const errorData = await ttsRes.json().catch(() => null);
+              if (errorData?.fallback) {
+                // Explicit fallback requested (ElevenLabs unavailable)
+                fallbackSpeak(speakText, onEnd);
+              } else {
+                // Other error, still fallback to browser speech
+                fallbackSpeak(speakText, onEnd);
+              }
+            } catch {
+              // Response not JSON, fallback to browser speech
+              fallbackSpeak(speakText, onEnd);
+            }
           }
         } catch {
           fallbackSpeak(speakText, onEnd);
@@ -365,226 +453,315 @@ function RoleplaySessionContent() {
   return (
     <>
       <ConfirmDialog />
-      <div className="fixed inset-0 flex flex-col bg-background overflow-hidden z-50">
-        {/* Minimal Header - Arena Mode */}
-        <div className="border-b bg-card/80 backdrop-blur-md p-3 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
+      <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-gradient-to-b from-stone-950 via-stone-900 to-stone-950">
+        {/* Minimal floating header */}
+        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 pointer-events-none">
+          <div className="pointer-events-auto">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => router.push('/dashboard/roleplay')}
-              className="gap-2"
+              className="gap-2 text-muted-foreground hover:text-foreground rounded-full"
             >
               <PhoneOff className="h-4 w-4" />
-              Exit Arena
+              Exit
             </Button>
-            <div className="h-4 w-px bg-border" />
-            <div>
-              <h1 className="text-sm font-semibold">{session?.offerName || 'Roleplay Session'}</h1>
-              <p className="text-xs text-muted-foreground">
-                {session?.inputMode === 'voice' ? 'Voice Mode' : 'Text Mode'} • {messages.length} messages
-              </p>
-            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant={cameraOn ? 'default' : 'outline'}
-              size="sm"
-              onClick={toggleCamera}
-              className="gap-1"
-            >
-              <Video className="h-4 w-4" />
-              {cameraOn ? 'Camera on' : 'Turn on camera'}
-            </Button>
+          <div className="absolute left-1/2 -transtone-x-1/2 flex items-center gap-2 pointer-events-none">
+            <span className="text-sm font-medium text-foreground/90">{session?.offerName || 'Roleplay'}</span>
             {session?.status === 'in_progress' && (
-              <Badge variant="default" className="bg-blue-500 text-xs">In Progress</Badge>
+              <span className="flex items-center gap-1.5 text-xs text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Live
+              </span>
             )}
+          </div>
+          <div className="pointer-events-auto">
+            <Button
+              variant={showTranscript ? 'secondary' : 'ghost'}
+              size="icon"
+              onClick={() => setShowTranscript(!showTranscript)}
+              className="rounded-full h-9 w-9"
+              title={showTranscript ? 'Hide transcript' : 'Show transcript'}
+            >
+              <MessageSquare className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden bg-linear-to-br from-background via-background to-muted/10">
-          {/* Video Grid Area (Left) */}
-          <div className="flex-1 flex items-center justify-center p-6">
-            <div className="grid grid-cols-2 gap-4 w-full max-w-4xl">
-              {/* Rep (You) */}
-              <Card
+        {/* Focus stage: prospect center, you PiP bottom-right */}
+        <div className="flex-1 flex overflow-hidden relative min-h-0">
+          <div className="flex-1 flex flex-col items-center justify-center p-6 pt-20 pb-32">
+            {/* Prospect as main focus */}
+            <div
+              className={cn(
+                "flex flex-col items-center text-center transition-all duration-300",
+                activeSpeaker === 'prospect' && "scale-[1.02]"
+              )}
+            >
+              <div
                 className={cn(
-                  "aspect-video relative overflow-hidden border-2 transition-all duration-300 bg-card",
-                  activeSpeaker === 'rep'
-                    ? "border-orange-500 shadow-2xl shadow-orange-500/50 scale-[1.02] ring-4 ring-orange-500/20"
-                    : "border-border/50"
-                )}
-              >
-                <div className="absolute inset-0 bg-linear-to-br from-primary/10 via-primary/5 to-transparent flex items-center justify-center">
-                  <div className="text-center z-10 w-full h-full flex flex-col items-center justify-center">
-                    {cameraOn && videoRef.current ? (
-                      <video
-                        ref={videoRef}
-                        autoPlay
-                        playsInline
-                        muted
-                        className={cn(
-                          "w-full h-full object-cover rounded-lg transition-all duration-300",
-                          activeSpeaker === 'rep' && "ring-4 ring-orange-500/30 scale-[1.02]"
-                        )}
-                      />
-                    ) : (
-                      <>
-                        <div className={cn(
-                          "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300 overflow-hidden",
-                          activeSpeaker === 'rep'
-                            ? "ring-4 ring-orange-500/30 scale-110"
-                            : ""
-                        )}>
-                          {userProfile?.profilePhoto ? (
-                            <Avatar className="w-full h-full">
-                              <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
-                              <AvatarFallback className="bg-primary/40 text-primary">
-                                {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                          ) : (
-                            <div className={cn(
-                              "w-full h-full flex items-center justify-center",
-                              activeSpeaker === 'rep' ? "bg-primary/40" : "bg-primary/20"
-                            )}>
-                              <User className="h-12 w-12 text-primary" />
-                            </div>
-                          )}
-                        </div>
-                        <p className="font-semibold text-lg">{userProfile?.name || 'You'}</p>
-                        <p className="text-xs text-muted-foreground">Rep</p>
-                      </>
-                    )}
-                    {isListening && (
-                      <div className="mt-2 flex items-center justify-center gap-2">
-                        <div className="flex gap-1">
-                          <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse"></div>
-                          <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                          <div className="w-2 h-2 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                        </div>
-                        <span className="text-xs text-orange-400 font-medium">Listening...</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {activeSpeaker === 'rep' && (
-                  <div className="absolute top-3 right-3 z-20">
-                    <div className="w-4 h-4 bg-orange-400 rounded-full animate-pulse ring-2 ring-orange-400/50"></div>
-                  </div>
-                )}
-              </Card>
-
-              {/* Prospect (AI or selected avatar) */}
-              <Card
-                className={cn(
-                  "aspect-video relative overflow-hidden border-2 transition-all duration-300 bg-card",
+                  "relative rounded-full overflow-hidden transition-all duration-300",
                   activeSpeaker === 'prospect'
-                    ? "border-blue-500 shadow-2xl shadow-blue-500/50 scale-[1.02] ring-4 ring-blue-500/20"
-                    : "border-border/50"
+                    ? "ring-4 ring-stone-500/50 shadow-2xl shadow-stone-500/20"
+                    : "ring-2 ring-white/10"
                 )}
+                style={{ width: 'clamp(160px, 20vw, 220px)', height: 'clamp(160px, 20vw, 220px)' }}
               >
-                <div className="absolute inset-0 bg-linear-to-br from-muted/10 via-muted/5 to-transparent flex items-center justify-center">
-                  <div className="text-center z-10">
-                    <div className={cn(
-                      "w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-3 transition-all duration-300 overflow-hidden",
-                      activeSpeaker === 'prospect'
-                        ? "ring-4 ring-blue-500/30 scale-110"
-                        : "bg-muted/20"
-                    )}>
-                      {prospectAvatar ? (
-                        <Avatar className="w-full h-full">
-                          <AvatarImage
-                            src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)}
-                            alt={prospectAvatar.name}
-                            className="object-cover"
-                          />
-                          <AvatarFallback className="bg-blue-500/20 text-blue-600">
-                            {prospectAvatar.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <Bot className="h-12 w-12 text-foreground" />
-                      )}
-                    </div>
-                    <p className="font-semibold text-lg">{prospectAvatar?.name ?? 'AI Prospect'}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
-                    </p>
-                    {loading && (
-                      <div className="mt-2 flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
-                        <span className="text-xs text-blue-500 font-medium">Thinking...</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                {activeSpeaker === 'prospect' && (
-                  <div className="absolute top-3 right-3 z-20">
-                    <div className="w-4 h-4 bg-blue-500 rounded-full animate-pulse ring-2 ring-blue-500/50"></div>
+                {prospectAvatar ? (
+                  <Avatar className="w-full h-full">
+                    <AvatarImage
+                      src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)}
+                      alt={prospectAvatar.name}
+                      className="object-cover"
+                    />
+                    <AvatarFallback className="bg-stone-700 text-stone-200 text-2xl">
+                      {prospectAvatar.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-stone-800">
+                    <Bot className="h-16 w-16 text-stone-500" />
                   </div>
                 )}
-              </Card>
+                {loading && (
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
+                  </div>
+                )}
+                {activeSpeaker === 'prospect' && !loading && (
+                  <div className="absolute top-2 right-2 w-3 h-3 bg-stone-500 rounded-full animate-pulse ring-2 ring-stone-400/50" />
+                )}
+              </div>
+              <h2 className="mt-4 text-xl font-semibold text-foreground">
+                {prospectAvatar?.name ?? 'AI Prospect'}
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+                {prospectAvatar?.positionDescription ?? 'Virtual buyer'}
+              </p>
+            </div>
+
+            {/* You – PiP bottom-right */}
+            <div
+              className={cn(
+                "absolute bottom-24 right-6 w-[210px] z-[5000] rounded-xl overflow-hidden border-2 transition-all duration-300 bg-stone-900/90 backdrop-blur",
+                activeSpeaker === 'rep'
+                  ? "border-orange-500/80 shadow-lg shadow-orange-500/20"
+                  : "border-white/10"
+              )}
+              style={{ aspectRatio: '4/3' }}
+            >
+              {cameraOn ? (
+                <>
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                    <span className="text-white text-xs font-medium truncate block">{userProfile?.name || 'You'}</span>
+                  </div>
+                  {isListening && (
+                    <div className="absolute top-1 right-1 flex gap-0.5">
+                      <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
+                      <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.15s' }} />
+                      <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-stone-800/80 p-2">
+                  {userProfile?.profilePhoto ? (
+                    <Avatar className="w-12 h-12">
+                      <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                      <AvatarFallback className="bg-orange-500/30 text-orange-300 text-sm">
+                        {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center">
+                      <User className="h-6 w-6 text-orange-400" />
+                    </div>
+                  )}
+                  <span className="text-xs text-muted-foreground mt-1 truncate w-full text-center">You</span>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Transcript Panel (Right) */}
+          {/* Transcript Panel (Right) – floating sheet style */}
           {showTranscript && (
-            <div className="w-96 border-l bg-card/80 backdrop-blur-md flex flex-col shrink-0">
-              <div className="border-b p-4 flex items-center justify-between">
-                <h2 className="font-semibold">Transcript</h2>
+            <div className="w-96 shrink-0 flex flex-col rounded-l-2xl border-l border-y border-white/10 bg-stone-900/95 backdrop-blur-xl shadow-2xl">
+              <div className="border-b p-3 flex items-center justify-between gap-2">
+                <h2 className="font-semibold shrink-0">Transcript</h2>
                 <Button
                   variant="ghost"
                   size="icon"
                   onClick={() => setShowTranscript(false)}
+                  aria-label="Close transcript"
                 >
                   <MoreVertical className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.length === 0 ? (
-                  <div className="text-center py-12 text-muted-foreground">
-                    <p>Conversation will appear here</p>
-                  </div>
-                ) : (
-                  messages.map((msg, idx) => (
-                    <div
-                      key={idx}
-                      className="space-y-1"
-                      data-timestamp={msg.timestamp || idx * 5000}
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "font-semibold text-sm",
-                          msg.role === 'rep' ? "text-primary" : "text-muted-foreground"
-                        )}>
-                          {msg.role === 'rep' ? 'You' : 'Prospect'}
-                        </span>
-                        {msg.metadata?.objectionType && (
-                          <Badge variant="outline" className="text-xs">
-                            {msg.metadata.objectionType}
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-sm text-foreground/80 whitespace-pre-wrap">
-                        {msg.content}
-                      </p>
-                    </div>
-                  ))
-                )}
-                {loading && (
-                  <div className="space-y-1">
-                    <span className="font-semibold text-sm text-muted-foreground">Prospect</span>
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      <span className="text-sm text-muted-foreground">Typing...</span>
-                    </div>
-                  </div>
-                )}
-                <div ref={transcriptEndRef} />
+              <div className="border-b flex gap-0">
+                {(['transcript', 'pinned', 'notes'] as const).map((tab) => (
+                  <Button
+                    key={tab}
+                    variant="ghost"
+                    size="sm"
+                    className={cn(
+                      "rounded-none border-b-2 border-transparent flex-1",
+                      transcriptTab === tab && "border-primary font-medium"
+                    )}
+                    onClick={() => setTranscriptTab(tab)}
+                  >
+                    {tab === 'transcript' ? 'Transcript' : tab === 'pinned' ? 'Pinned' : 'Notes'}
+                  </Button>
+                ))}
               </div>
+              {transcriptTab === 'transcript' && (
+                <>
+                  <div className="border-b p-2">
+                    <div className="relative">
+                      <Search className="absolute left-2.5 top-1/2 -transtone-y-1/2 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search transcript..."
+                        value={transcriptSearch}
+                        onChange={(e) => setTranscriptSearch(e.target.value)}
+                        className="pl-8 h-9 bg-background/80"
+                        aria-label="Search transcript"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {(() => {
+                      const filtered = transcriptSearch.trim()
+                        ? messages.filter((m) =>
+                          m.content.toLowerCase().includes(transcriptSearch.trim().toLowerCase())
+                        )
+                        : messages;
+                      if (filtered.length === 0) {
+                        return (
+                          <div className="text-center py-12 text-muted-foreground">
+                            <p>{transcriptSearch.trim() ? 'No messages match your search.' : 'Conversation will appear here'}</p>
+                          </div>
+                        );
+                      }
+                      return filtered.map((msg, idx) => (
+                        <div
+                          key={msg.id ?? idx}
+                          className="space-y-1 group"
+                          data-timestamp={msg.timestamp ?? idx * 5000}
+                        >
+                          <div className="flex items-center gap-2 justify-between">
+                            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                              <span className={cn(
+                                "font-semibold text-sm shrink-0",
+                                msg.role === 'rep' ? "text-primary" : "text-muted-foreground"
+                              )}>
+                                {msg.role === 'rep' ? 'You' : 'Prospect'}
+                              </span>
+                              {typeof msg.timestamp === 'number' && (
+                                <span className="text-xs text-muted-foreground" title="Time in session">
+                                  {formatMessageTime(msg.timestamp)}
+                                </span>
+                              )}
+                              {msg.metadata?.objectionType && (
+                                <Badge variant="outline" className="text-xs">
+                                  {msg.metadata.objectionType}
+                                </Badge>
+                              )}
+                            </div>
+                            {msg.id && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 shrink-0 opacity-70 hover:opacity-100"
+                                onClick={() => togglePin(msg.id!)}
+                                title={pinnedMessageIds.includes(msg.id) ? 'Unpin this line' : 'Pin this line'}
+                                aria-label={pinnedMessageIds.includes(msg.id) ? 'Unpin' : 'Pin'}
+                              >
+                                {pinnedMessageIds.includes(msg.id) ? (
+                                  <Pin className="h-4 w-4 fill-current" />
+                                ) : (
+                                  <PinOff className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </div>
+                          <p className="text-sm text-foreground/80 whitespace-pre-wrap">
+                            {msg.content}
+                          </p>
+                        </div>
+                      ));
+                    })()}
+                    {loading && (
+                      <div className="space-y-1">
+                        <span className="font-semibold text-sm text-muted-foreground">Prospect</span>
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                          <span className="text-sm text-muted-foreground">Typing...</span>
+                        </div>
+                      </div>
+                    )}
+                    <div ref={transcriptEndRef} />
+                  </div>
+                </>
+              )}
+              {transcriptTab === 'pinned' && (
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {pinnedMessageIds.length === 0 ? (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <p>No pinned messages.</p>
+                      <p className="text-xs mt-1">Pin lines from the Transcript tab.</p>
+                    </div>
+                  ) : (
+                    messages
+                      .filter((m) => m.id && pinnedMessageIds.includes(m.id))
+                      .map((msg) => (
+                        <div key={msg.id} className="space-y-1">
+                          <div className="flex items-center gap-2 justify-between">
+                            <span className={cn(
+                              "font-semibold text-sm",
+                              msg.role === 'rep' ? "text-primary" : "text-muted-foreground"
+                            )}>
+                              {msg.role === 'rep' ? 'You' : 'Prospect'}
+                            </span>
+                            {typeof msg.timestamp === 'number' && (
+                              <span className="text-xs text-muted-foreground">{formatMessageTime(msg.timestamp)}</span>
+                            )}
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => togglePin(msg.id!)}
+                              title="Unpin"
+                              aria-label="Unpin"
+                            >
+                              <Pin className="h-4 w-4 fill-current" />
+                            </Button>
+                          </div>
+                          <p className="text-sm text-foreground/80 whitespace-pre-wrap">{msg.content}</p>
+                        </div>
+                      ))
+                  )}
+                </div>
+              )}
+              {transcriptTab === 'notes' && (
+                <div className="flex-1 flex flex-col p-4 min-h-0">
+                  <p className="text-xs text-muted-foreground mb-2">Session notes (saved automatically)</p>
+                  <textarea
+                    className="flex-1 min-h-[200px] w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="e.g. Prospect concerned about price, follow up on timeline..."
+                    value={sessionNotes}
+                    onChange={(e) => setSessionNotes(e.target.value)}
+                    onBlur={() => persistNotes(sessionNotes)}
+                    aria-label="Session notes"
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -592,100 +769,94 @@ function RoleplaySessionContent() {
           {!showTranscript && (
             <Button
               variant="secondary"
-              size="icon"
-              className="fixed top-20 right-4 z-30 shadow-lg"
+              size="sm"
+              className="fixed top-16 right-6 z-30 rounded-full shadow-lg gap-2 bg-stone-800/90 hover:bg-stone-700 border-white/10"
               onClick={() => setShowTranscript(true)}
             >
-              <MessageSquare className="h-5 w-5" />
+              <MessageSquare className="h-4 w-4" />
+              Transcript
             </Button>
           )}
         </div>
 
-        {/* Footer Controls - Clean Meeting Style */}
-        <div className="border-t bg-card/95 backdrop-blur-md p-4 flex items-center justify-center shrink-0">
-          <div className="flex items-center gap-4 max-w-5xl w-full">
-            {/* Left: AI Voice Control */}
-            <div className="flex items-center gap-2">
+        {/* Floating control bar */}
+        <div className="absolute bottom-0 left-0 right-0 z-20 flex justify-center p-4 pointer-events-none">
+          <div className="pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-2xl bg-stone-900/95 backdrop-blur-xl border border-white/10 shadow-2xl max-w-2xl w-full">
+            <Button
+              variant={isMuted ? 'destructive' : 'ghost'}
+              size="icon"
+              onClick={handleMute}
+              className="rounded-full h-10 w-10 shrink-0"
+              title={isMuted ? 'Unmute AI voice' : 'Mute AI voice'}
+            >
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </Button>
+            {session?.inputMode === 'voice' && (
               <Button
-                variant={isMuted ? 'destructive' : 'outline'}
+                variant={isListening ? 'default' : 'ghost'}
                 size="icon"
-                onClick={handleMute}
-                className="rounded-full h-11 w-11"
-                title={isMuted ? 'Unmute AI voice' : 'Mute AI voice'}
+                onClick={handleVoiceInput}
+                className={cn(
+                  "rounded-full h-10 w-10 shrink-0 transition-all",
+                  isListening && "ring-2 ring-orange-500/50"
+                )}
+                title={isListening ? 'Stop voice input' : 'Start voice input'}
               >
-                {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-              </Button>
-              <span className="text-xs text-muted-foreground hidden sm:block">
-                {isMuted ? 'AI Muted' : 'AI Voice'}
-              </span>
-            </div>
-
-            {/* Center: Input Area */}
-            <div className="flex-1 flex items-center gap-2">
-              {/* Voice Input Button (only in voice mode) */}
-              {session?.inputMode === 'voice' && (
-                <Button
-                  variant={isListening ? 'default' : 'outline'}
-                  size="icon"
-                  onClick={handleVoiceInput}
-                  className={cn(
-                    "rounded-full h-11 w-11 border-2 transition-all",
-                    isListening && "border-blue-500 ring-2 ring-blue-500/20"
-                  )}
-                  title={isListening ? 'Stop voice input' : 'Start voice input'}
-                >
-                  {isListening ? (
-                    <div className="relative">
-                      <Mic className="h-5 w-5" />
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse border-2 border-background"></div>
-                    </div>
-                  ) : (
+                {isListening ? (
+                  <span className="relative flex">
                     <Mic className="h-5 w-5" />
-                  )}
-                </Button>
-              )}
-
-              {/* Text Input */}
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder={
-                  session?.inputMode === 'voice'
-                    ? (isListening ? 'Listening...' : 'Click mic or type here...')
-                    : 'Type your message...'
-                }
-                disabled={loading || isListening}
-                className="flex-1 bg-background/90 border-border/50 h-11"
-              />
-
-              {/* Send Button */}
-              <Button
-                onClick={() => handleSend()}
-                disabled={loading || !input.trim() || isListening}
-                size="icon"
-                className="rounded-full h-11 w-11"
-                title="Send message"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                    <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-orange-500 animate-pulse ring-2 ring-background" />
+                  </span>
                 ) : (
-                  <MessageSquare className="h-4 w-4" />
+                  <Mic className="h-5 w-5" />
                 )}
               </Button>
-            </div>
-
-            {/* Right: End Call */}
+            )}
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={
+                session?.inputMode === 'voice'
+                  ? (isListening ? 'Listening...' : 'Type or use mic...')
+                  : 'Type your message...'
+              }
+              disabled={loading || isListening}
+              className="flex-1 h-10 rounded-full bg-stone-800/80 border-white/10 focus-visible:ring-orange-500/50"
+            />
+            <Button
+              onClick={() => handleSend()}
+              disabled={loading || !input.trim() || isListening}
+              size="icon"
+              className="rounded-full h-10 w-10 shrink-0"
+              title="Send"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <MessageSquare className="h-4 w-4" />
+              )}
+            </Button>
+            <div className="w-px h-6 bg-white/10 shrink-0" />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleCamera}
+              className={cn("rounded-full h-10 w-10 shrink-0", cameraOn && "bg-orange-500/20 text-orange-400")}
+              title={cameraOn ? 'Camera on' : 'Turn on camera'}
+            >
+              <Video className="h-4 w-4" />
+            </Button>
             <Button
               variant="destructive"
               size="icon"
               onClick={handleEndSession}
-              className="rounded-full h-11 w-11"
+              className="rounded-full h-10 w-10 shrink-0"
               title="End session"
             >
               <PhoneOff className="h-5 w-5" />

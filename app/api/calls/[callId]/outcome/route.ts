@@ -5,7 +5,7 @@ import { db } from '@/db';
 import { salesCalls } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
-const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit'] as const;
+const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit', 'follow_up'] as const;
 
 /**
  * PATCH - Update call outcome for sales figures (result, qualified, cashCollected, revenueGenerated, reasonForOutcome).

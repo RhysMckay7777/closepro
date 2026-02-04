@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -18,7 +18,9 @@ import { toastError, toastSuccess } from '@/lib/toast';
 export default function CallDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const callId = params?.callId as string;
+  const openOutcome = searchParams?.get('openOutcome') === '1';
   const [call, setCall] = useState<any>(null);
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -50,7 +52,23 @@ export default function CallDetailPage() {
         const data = await response.json();
         setCall(data.call);
         setAnalysis(data.analysis);
-        setEditingOutcome(false);
+        if (openOutcome && data.call) {
+          const c = data.call;
+          const d = c?.callDate ? new Date(c.callDate) : new Date();
+          setEditCallDate(isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
+          setEditOfferId(c?.offerId ?? '');
+          setEditProspectName(c?.prospectName ?? '');
+          setEditCallType(c?.callType === 'follow_up' ? 'follow_up' : 'closing_call');
+          setEditResult(c?.result ?? '');
+          setEditQualified(c?.qualified === true);
+          setEditCash(c?.cashCollected != null ? String((c.cashCollected / 100).toFixed(2)) : '');
+          setEditRevenue(c?.revenueGenerated != null ? String((c.revenueGenerated / 100).toFixed(2)) : '');
+          setEditCommissionRatePct(c?.commissionRatePct != null ? String(c.commissionRatePct) : '');
+          setEditReason(c?.reasonForOutcome ?? '');
+          setEditingOutcome(true);
+        } else {
+          setEditingOutcome(false);
+        }
 
         // If still processing, poll for updates
         if (data.status !== 'completed' && data.status !== 'failed') {
@@ -148,7 +166,7 @@ export default function CallDetailPage() {
     }
   };
 
-  const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit'] as const;
+  const VALID_RESULTS = ['no_show', 'closed', 'lost', 'deposit', 'follow_up', 'unqualified'] as const;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -376,7 +394,9 @@ export default function CallDetailPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {VALID_RESULTS.map((r) => (
-                          <SelectItem key={r} value={r}>{r.replace('_', ' ')}</SelectItem>
+                          <SelectItem key={r} value={r}>
+                            {r === 'follow_up' ? 'Follow-up' : r.replace('_', ' ')}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

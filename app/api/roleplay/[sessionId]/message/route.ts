@@ -79,14 +79,14 @@ export async function POST(
     const now = Date.now();
     const timestamp = now - sessionStartTime;
 
-    await db.insert(roleplayMessages).values({
+    const [repMessage] = await db.insert(roleplayMessages).values({
       sessionId,
       role: 'rep',
       content: message,
       messageType: audioUrl ? 'voice' : 'text',
       audioUrl: audioUrl || null,
       timestamp,
-    });
+    }).returning({ id: roleplayMessages.id });
 
     // Get offer or create default
     let offerData = await db
@@ -219,14 +219,14 @@ export async function POST(
 
     // Save prospect message
     const prospectTimestamp = Date.now() - sessionStartTime;
-    await db.insert(roleplayMessages).values({
+    const [prospectMessage] = await db.insert(roleplayMessages).values({
       sessionId,
       role: 'prospect',
       content: response,
       messageType: 'text',
       timestamp: prospectTimestamp,
       metadata: metadata ? JSON.stringify(metadata) : null,
-    });
+    }).returning({ id: roleplayMessages.id });
 
     // Update session metadata with behaviour state (store in metadata JSON)
     const currentMetadata = roleplay[0].metadata ? JSON.parse(roleplay[0].metadata) : {};
@@ -240,6 +240,8 @@ export async function POST(
       response,
       metadata,
       behaviourState: updatedBehaviourState,
+      repMessageId: repMessage?.id ?? null,
+      prospectMessageId: prospectMessage?.id ?? null,
     });
   } catch (error: any) {
     console.error('Error sending roleplay message:', error);

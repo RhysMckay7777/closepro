@@ -1,5 +1,31 @@
 // Layer 2: Prospect Avatar & Difficulty Intelligence (50-Point Model)
 
+// Realistic prospect names for auto-generated avatars (no "Auto-Generated X Prospect")
+const FIRST_NAMES = [
+  'James', 'Maria', 'David', 'Sarah', 'Michael', 'Emma', 'Chris', 'Lisa', 'Alex', 'Jennifer',
+  'Ryan', 'Nicole', 'Jordan', 'Rachel', 'Taylor', 'Amanda', 'Morgan', 'Jessica', 'Casey', 'Lauren',
+  'Sam', 'Katie', 'Jamie', 'Megan', 'Riley', 'Ashley', 'Quinn', 'Brooke', 'Reese', 'Hayley',
+];
+const LAST_NAMES = [
+  'Chen', 'Williams', 'Martinez', 'Kim', 'Brown', 'Garcia', 'Johnson', 'Lee', 'Davis', 'Patel',
+  'Thompson', 'Rodriguez', 'Wilson', 'Nguyen', 'Anderson', 'Taylor', 'Moore', 'Jackson', 'White', 'Harris',
+];
+
+/**
+ * Returns a random realistic prospect name (e.g. "Maria Chen").
+ * Pass a Set to avoid duplicates when generating multiple names in one go.
+ */
+export function generateRandomProspectName(usedNames?: Set<string>): string {
+  let name: string;
+  do {
+    const first = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+    const last = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+    name = `${first} ${last}`;
+  } while (usedNames?.has(name) && usedNames.size < FIRST_NAMES.length * LAST_NAMES.length);
+  usedNames?.add(name);
+  return name;
+}
+
 export type AuthorityLevel = 'advisee' | 'peer' | 'advisor';
 export type DifficultyTier = 'easy' | 'realistic' | 'hard' | 'elite' | 'near_impossible';
 
@@ -201,44 +227,59 @@ function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-/** Default bio templates per difficulty tier (picked at random for variety) */
-const DEFAULT_BIOS: Record<DifficultyTier, string[]> = {
+/** Character archetypes for generating realistic, person-driven bios */
+const CHARACTER_ARCHETYPES = {
   easy: [
-    'Open to change, already sees the value and is leaning yes. Needs a light nudge and clear next step.',
-    'Warm lead with clear pain and budget. Ready to move if the fit is right and timeline works.',
-    'Has done some research and is interested. Looking for reassurance and a simple path forward.',
+    { role: 'busy parent', context: 'trying to balance family and career, looking for solutions that save time' },
+    { role: 'young professional', context: 'early in their career, eager to learn and improve their situation' },
+    { role: 'small business owner', context: 'just starting out, open to new ideas and ready to invest in growth' },
+    { role: 'career changer', context: 'transitioning to a new field, actively seeking guidance and support' },
+    { role: 'motivated individual', context: 'has clear goals and is ready to take action to achieve them' },
   ],
   realistic: [
-    'Interested but cautious. Has competing priorities and needs to see ROI before committing.',
-    'Sees the problem and is exploring options. Needs clarity on outcomes and a bit of trust-building.',
-    'Mid-funnel: aware of the offer, weighing cost vs benefit. Open to a good conversation.',
+    { role: 'busy dad', context: 'trying to figure out his business while managing family responsibilities' },
+    { role: 'working mom', context: 'juggling career advancement with raising kids, needs efficient solutions' },
+    { role: 'mid-level manager', context: 'looking to level up their career but cautious about investments' },
+    { role: 'entrepreneur', context: 'running a small business, weighing options and looking for proven results' },
+    { role: 'professional', context: 'established in their field but exploring ways to improve their situation' },
+    { role: 'secretary', context: 'trained to an MVP level, looking to advance and take on more responsibility' },
   ],
   hard: [
-    'Skeptical or price-sensitive. Has been burned before or has strong objections to address.',
-    'Busy decision-maker with many options. Needs to be convinced of fit and urgency.',
-    'Interested in the outcome but resistant on price, timing, or authority. Pushes back on assumptions.',
+    { role: 'skeptical business owner', context: 'has been burned before, questions everything and needs proof' },
+    { role: 'busy executive', context: 'overwhelmed with options and competing priorities, hard to get attention' },
+    { role: 'price-sensitive buyer', context: 'interested but budget-conscious, needs strong ROI justification' },
+    { role: 'experienced professional', context: 'set in their ways, resistant to change unless benefits are clear' },
+    { role: 'time-poor decision maker', context: 'wants results but struggles to find time to commit or evaluate' },
   ],
   elite: [
-    'Expert or advisor-level. Questions the mechanism and wants proof. High bar for credibility.',
-    'Very resistant: budget locked, timeline far out, or decision by committee. Hard close.',
-    'Sophisticated buyer with strong objections and alternatives. Needs exceptional handling.',
+    { role: 'expert consultant', context: 'deeply knowledgeable, questions methodology and wants data-driven proof' },
+    { role: 'seasoned executive', context: 'has seen many pitches, high standards and requires exceptional value' },
+    { role: 'sophisticated buyer', context: 'evaluates multiple alternatives, needs compelling differentiation' },
+    { role: 'authority figure', context: 'makes decisions for others, requires extensive validation and trust' },
   ],
   near_impossible: [
-    'Extremely resistant: wrong timing, no budget, or no authority. Would require exceptional persuasion.',
-    'Hostile or disengaged. Multiple blockers and low perceived need. Very difficult to convert.',
+    { role: 'hostile prospect', context: 'disengaged or negative, multiple blockers and low perceived need' },
+    { role: 'wrong timing prospect', context: 'no budget, timeline far out, or decision by committee required' },
   ],
 };
 
 /**
- * Return a short default bio (position description) for a difficulty tier.
- * Picks randomly from templates so generated prospects feel varied.
+ * Generate a character-driven bio using the prospect's name and a character archetype.
+ * Creates realistic, person-focused descriptions like "Busy dad George trying to figure out his business".
  */
 export function getDefaultBioForDifficulty(
-  tier: DifficultyTier | 'realistic' | 'hard' | 'elite' | 'easy'
+  tier: DifficultyTier | 'realistic' | 'hard' | 'elite' | 'easy',
+  prospectName?: string
 ): string {
   const key = tier as DifficultyTier;
-  const options = DEFAULT_BIOS[key] ?? DEFAULT_BIOS.realistic;
-  return options[randomInt(0, options.length - 1)];
+  const archetypes = CHARACTER_ARCHETYPES[key] ?? CHARACTER_ARCHETYPES.realistic;
+  const archetype = archetypes[randomInt(0, archetypes.length - 1)];
+  
+  // Extract first name from prospect name if provided
+  const firstName = prospectName?.split(' ')[0] || 'They';
+  
+  // Generate character-driven bio
+  return `${archetype.role.charAt(0).toUpperCase() + archetype.role.slice(1)} ${firstName} ${archetype.context}.`;
 }
 
 /**

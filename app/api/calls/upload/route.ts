@@ -81,9 +81,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type
-    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/webm'];
-    if (!allowedTypes.includes(file.type)) {
+    // Validate file type (MIME and/or extension — M4A is often reported as audio/mp4)
+    const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
+    const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
+    const allowedExts = ['.mp3', '.wav', '.m4a', '.webm'];
+    const typeOk = file.type && allowedTypes.includes(file.type);
+    const extOk = allowedExts.includes(ext);
+    if (!typeOk && !extOk) {
       return NextResponse.json(
         { error: 'Invalid file type. Supported: MP3, WAV, M4A, WebM' },
         { status: 400 }

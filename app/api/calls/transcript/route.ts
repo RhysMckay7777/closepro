@@ -38,6 +38,22 @@ function transcriptTextToJson(transcript: string): { utterances: Array<{ speaker
 }
 
 /**
+ * Try to extract a prospect name from transcript text (for pre-filling outcome form).
+ * Looks for "Call with X", "Prospect: X", "Client: X", or a short first line that looks like a name.
+ */
+function extractProspectNameFromTranscript(transcript: string): string | null {
+  const head = transcript.trim().slice(0, 800);
+  const withMatch = head.match(/(?:call|meeting|session)\s+with\s+([A-Za-z][A-Za-z\s.-]{1,60}?)(?:\n|\.|$)/i);
+  if (withMatch) return withMatch[1].trim().slice(0, 200) || null;
+  const prospectMatch = head.match(/(?:prospect|client|customer)\s*:\s*([A-Za-z][A-Za-z\s.-]{1,60}?)(?:\n|$)/i);
+  if (prospectMatch) return prospectMatch[1].trim().slice(0, 200) || null;
+  const firstLine = head.split(/\n/)[0]?.trim();
+  if (firstLine && firstLine.length <= 50 && /^[A-Za-z][A-Za-z\s.-]+$/.test(firstLine) && !firstLine.includes(':'))
+    return firstLine.slice(0, 200);
+  return null;
+}
+
+/**
  * POST - Create a call from pasted transcript or uploaded file (no audio/Deepgram).
  * Accepts either:
  * - JSON: { transcript: string, addToFigures?: boolean, fileName?: string }
@@ -102,13 +118,13 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData();
       const file = formData.get('file') as File | null;
       const metadataStr = formData.get('metadata') as string | null;
-      if (!file || file.size === 0) {
+      if (!file || typeof file.name !== 'string' || file.size === 0) {
         return NextResponse.json(
           { error: 'No file provided. Upload a .txt, .pdf, or .docx transcript file.' },
           { status: 400 }
         );
       }
-      if (!isAllowedTranscriptFile(file.name, file.type)) {
+      if (!isAllowedTranscriptFile(file.name, file.type ?? '')) {
         return NextResponse.json(
           { error: 'Unsupported file type. Use .txt, .pdf, or .docx.' },
           { status: 400 }
@@ -116,7 +132,7 @@ export async function POST(request: NextRequest) {
       }
       try {
         const buffer = Buffer.from(await file.arrayBuffer());
-        transcript = await extractTextFromTranscriptFile(buffer, file.name, file.type);
+        transcript = await extractTextFromTranscriptFile(buffer, file.name, file.type ?? undefined);
       } catch (extractErr: unknown) {
         const msg = extractErr instanceof Error ? extractErr.message : 'Failed to extract text from file';
         return NextResponse.json(
@@ -131,7 +147,7 @@ export async function POST(request: NextRequest) {
         );
       }
       fileName = file.name;
-      if (metadataStr) {
+      if (metadataStr && typeof metadataStr === 'string') {
         try {
           const meta = JSON.parse(metadataStr);
           addToFigures = meta.addToFigures !== false;
@@ -155,6 +171,7 @@ export async function POST(request: NextRequest) {
 
     const transcriptJson = transcriptTextToJson(transcript);
     const callMetadata = { addToFigures };
+    const prospectName = extractProspectNameFromTranscript(transcript);
 
     const trimmedTranscript = transcript.trim();
     const metadataStr = JSON.stringify(callMetadata);
@@ -163,7 +180,6 @@ export async function POST(request: NextRequest) {
     let callId: string;
 
     try {
-      // Minimal insert: only columns that exist in base schema so transcript works before migrations
       const [call] = await db
         .insert(salesCalls)
         .values({
@@ -177,6 +193,7 @@ export async function POST(request: NextRequest) {
           transcriptJson: transcriptJsonStr,
           status: 'analyzing',
           metadata: metadataStr,
+          ...(prospectName && { prospectName: prospectName.slice(0, 500) }),
         })
         .returning();
 

@@ -32,6 +32,7 @@ function NewProspectAvatarContent() {
     name: '',
     problems: [''],
     positionDescription: '',
+    voiceStyle: '',
     // 5 sliders (1-10 each)
     positionProblemAlignment: 5, // 1-10
     painAmbitionIntensity: 5, // 1-10 (combines pain and ambition)
@@ -115,6 +116,7 @@ function NewProspectAvatarContent() {
           funnelContext,
           executionResistance,
           positionDescription: formData.positionDescription,
+          voiceStyle: formData.voiceStyle.trim() || undefined,
           problems: problems,
         }),
       });
@@ -178,6 +180,19 @@ function NewProspectAvatarContent() {
               />
               <p className="text-xs text-muted-foreground">
                 Include demographics, constraints, and relevant context. The more detailed, the better the AI will play this prospect.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="voiceStyle">Voice style (optional)</Label>
+              <Input
+                id="voiceStyle"
+                value={formData.voiceStyle}
+                onChange={(e) => setFormData({ ...formData, voiceStyle: e.target.value })}
+                placeholder="e.g. Professional, Friendly, or ElevenLabs voice ID"
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter an ElevenLabs voice ID (e.g., 21m00Tcm4TlvDq8ikWAM) or a style like &apos;Professional&apos;, &apos;Friendly&apos;, &apos;Authoritative&apos;. Leave empty to auto-select based on character.
               </p>
             </div>
           </div>

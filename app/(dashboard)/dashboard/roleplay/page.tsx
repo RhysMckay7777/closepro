@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -96,6 +96,30 @@ export default function RoleplayPage() {
       b2b_services: 'B2B Services',
     };
     return labels[type] || type;
+  };
+
+  const getOfferTypeDescription = (type?: string) => {
+    if (!type) return null;
+    const descriptions: Record<string, string> = {
+      b2c_health: 'Health and wellness solutions',
+      b2c_relationships: 'Relationship and personal development',
+      b2c_wealth: 'Financial and wealth building',
+      mixed_wealth: 'Mixed wealth solutions',
+      b2b_services: 'Business services and solutions',
+    };
+    return descriptions[type] || null;
+  };
+
+  const getOfferTypeIcon = (type?: string) => {
+    if (!type) return null;
+    const iconMap: Record<string, React.ReactNode> = {
+      b2c_health: <Heart className="h-4 w-4 text-red-500" />,
+      b2c_relationships: <Users className="h-4 w-4 text-pink-500" />,
+      b2c_wealth: <DollarSign className="h-4 w-4 text-green-500" />,
+      mixed_wealth: <PieChart className="h-4 w-4 text-blue-500" />,
+      b2b_services: <Briefcase className="h-4 w-4 text-purple-500" />,
+    };
+    return iconMap[type] || null;
   };
 
   const getDifficultyBadgeVariant = (tier: string | null) => {
