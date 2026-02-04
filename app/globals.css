@@ -133,3 +133,64 @@
         background-size: 4rem 4rem;
     }
 }
+
+/* Landing page: marquee animations */
+@keyframes marquee-left {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+@keyframes marquee-right {
+    0% { transform: translateX(-50%); }
+    100% { transform: translateX(0); }
+}
+.animate-marquee-left {
+    animation: marquee-left 30s linear infinite;
+}
+.animate-marquee-right {
+    animation: marquee-right 25s linear infinite;
+}
+
+/* Landing page: scroll animations */
+@keyframes scroll-right {
+    0% { transform: translateX(-50%); }
+    100% { transform: translateX(0); }
+}
+@keyframes scroll-left {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+}
+.animate-scroll-right {
+    animation: scroll-right 20s linear infinite;
+}
+.animate-scroll-left {
+    animation: scroll-left 20s linear infinite;
+}
+
+/* Landing page: diagonal stripes */
+.diagonal-stripes {
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(0, 0, 0, 0.02),
+        rgba(0, 0, 0, 0.02) 10px,
+        rgba(0, 0, 0, 0.04) 10px,
+        rgba(0, 0, 0, 0.04) 20px
+    );
+}
+.dark .diagonal-stripes {
+    background-image: repeating-linear-gradient(
+        45deg,
+        rgba(255, 255, 255, 0.02),
+        rgba(255, 255, 255, 0.02) 10px,
+        rgba(255, 255, 255, 0.05) 10px,
+        rgba(255, 255, 255, 0.05) 20px
+    );
+}
+
+/* Landing page: orange hover effect on images */
+.orange-hover-effect {
+    transition: all 0.5s ease;
+}
+.group:hover .orange-hover-effect {
+    filter: sepia(0.4) saturate(1.5) hue-rotate(-10deg) brightness(1.1);
+    transform: scale(1.05);
+}

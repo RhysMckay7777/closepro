@@ -453,7 +453,7 @@ function RoleplaySessionContent() {
   return (
     <>
       <ConfirmDialog />
-      <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-gradient-to-b from-stone-950 via-stone-900 to-stone-950">
+      <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-linear-to-b from-stone-950 via-stone-900 to-stone-950">
         {/* Minimal floating header */}
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 pointer-events-none">
           <div className="pointer-events-auto">
@@ -560,7 +560,7 @@ function RoleplaySessionContent() {
                     muted
                     className="absolute inset-0 w-full h-full object-cover"
                   />
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+                  <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent p-2">
                     <span className="text-white text-xs font-medium truncate block">{userProfile?.name || 'You'}</span>
                   </div>
                   {isListening && (
