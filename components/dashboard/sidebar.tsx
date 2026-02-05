@@ -216,12 +216,12 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        'bg-card/95 backdrop-blur-xl flex flex-col h-screen transition-all duration-300 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shadow-primary/5 w-full lg:w-84',
-        collapsed && 'lg:w-16'
+        'bg-card/95 backdrop-blur-xl flex flex-col h-screen transition-all duration-300 shadow-[0_8px_30px_rgb(0,0,0,0.12)] shadow-primary/5 w-full lg:w-84 min-w-0',
+        collapsed && 'lg:w-18'
       )}
     >
       {/* Logo and branding */}
-      <div className="p-6">
+      {/* <div className="p-6">
         <Link href="/dashboard" className="flex items-center gap-3 group">
           <div className="bg-linear-to-br from-primary to-primary/80 text-primary-foreground flex size-9 items-center justify-center rounded-xl shadow-[0_2px_8px_rgba(0,0,0,0.12)] group-hover:shadow-[0_4px_12px_rgba(0,0,0,0.16)] transition-all">
             <svg
@@ -249,13 +249,13 @@ export function Sidebar({
             </div>
           )}
         </Link>
-      </div>
+      </div> */}
 
 
 
       {/* Organization/Workspace Card */}
       {!collapsed && (
-        <div className="mx-4 mb-4">
+        <div className="mx-2 mt-3 mb-6">
           {loadingOrgs ? (
             <div className="w-full p-4 rounded-2xl bg-card flex items-center gap-3">
               <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center">
@@ -324,15 +324,15 @@ export function Sidebar({
       )}
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-4 space-y-8">
+      <nav className={cn("flex-1 overflow-y-auto overflow-x-hidden space-y-8", collapsed ? "px-2 flex flex-col items-center" : "px-4")}>
         {navSections.map((section) => (
-          <div key={section.title}>
+          <div key={section.title} className={cn(collapsed && "w-full flex flex-col items-center")}>
             {!collapsed && (
               <div className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider mb-3 px-2">
                 {section.title}
               </div>
             )}
-            <div className="space-y-1">
+            <div className={cn("space-y-1", collapsed && "w-11 flex flex-col items-center")}>
               {section.items.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
@@ -347,7 +347,8 @@ export function Sidebar({
                     href={item.href}
                     {...(dataTour && { 'data-tour': dataTour })}
                     className={cn(
-                      'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all relative group',
+                      'flex items-center rounded-xl text-sm font-medium transition-all relative group',
+                      collapsed ? 'justify-center items-center p-0 min-h-11 w-11 shrink-0' : 'gap-3 px-3 py-2.5',
                       isActive
                         ? 'bg-primary/10 text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)] hover:shadow-[0_2px_6px_rgba(0,0,0,0.12)]'
                         : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground hover:shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
@@ -357,7 +358,7 @@ export function Sidebar({
                     {isActive && (
                       <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-primary rounded-r shadow-sm" />
                     )}
-                    <Icon className={cn("h-4 w-4 shrink-0 transition-transform group-hover:scale-110", isActive && "text-primary")} />
+                    <Icon className={cn("shrink-0 transition-transform group-hover:scale-110", isActive && "text-primary", collapsed ? "h-5 w-5" : "h-4 w-4")} />
                     {!collapsed && (
                       <>
                         <span className="flex-1">{item.title}</span>
@@ -434,10 +435,22 @@ export function Sidebar({
           </Link>
         </div>
       )}
-      <div className="p-6 mt-auto">
-        <div className="text-xs text-muted-foreground">
-          © 2026 ClosePro
-        </div>
+      <div
+        className={cn(
+          "mt-auto shrink-0 border-t border-border/50 overflow-hidden",
+          collapsed ? "py-3 px-2 flex justify-center items-center min-h-12" : "p-6"
+        )}
+      >
+        {collapsed ? (
+          <span
+            className="text-xs text-muted-foreground select-none"
+            title="© 2026 ClosePro"
+          >
+            ©
+          </span>
+        ) : (
+          <div className="text-xs text-muted-foreground">© 2026 ClosePro</div>
+        )}
       </div>
     </aside>
   );

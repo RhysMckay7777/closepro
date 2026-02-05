@@ -129,7 +129,7 @@ export function Header({
 
   return (
     <header className="bg-card/95 backdrop-blur-2xl border-b border-white/10 shadow-[0_2px_8px_rgba(0,0,0,0.04)] sticky top-0 z-10">
-      <div className="flex items-center justify-between h-16 sm:h-20 px-3 sm:px-4 lg:px-6 gap-2 sm:gap-3">
+      <div className="flex items-center justify-between h-16 sm:h-20 px-3 py-3 sm:px-4 lg:px-6 gap-2 sm:gap-3">
         {/* Left: Sidebar toggle + Breadcrumbs */}
         <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           {onToggleSidebar && (

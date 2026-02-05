@@ -53,7 +53,7 @@ export default function BillingPage() {
 
   const fetchBillingData = async () => {
     try {
-      const response = await fetch('/api/dashboard/billing');
+      const response = await fetch('/api/billing');
       if (!response.ok) throw new Error('Failed to fetch billing data');
       const result = await response.json();
       setData(result);
