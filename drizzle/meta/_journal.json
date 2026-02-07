@@ -15,6 +15,20 @@
       "when": 1769532266897,
       "tag": "0001_calm_blackheart",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770427962144,
+      "tag": "0002_many_nova",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1770441229103,
+      "tag": "0003_nice_silverclaw",
+      "breakpoints": true
     }
   ]
 }

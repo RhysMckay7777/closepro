@@ -6,7 +6,7 @@ import Groq from 'groq-sdk';
 import { OfferProfile, generateOfferSummary, getDefaultSalesStyle } from './offer-intelligence';
 import { ProspectAvatar, ProspectDifficultyProfile, DifficultyTier } from './prospect-avatar';
 import { FunnelContext } from './funnel-context';
-import { BehaviourState, initializeBehaviourState, adaptBehaviour, shouldRaiseObjection, getObjectionType } from './behaviour-rules';
+import { BehaviourState, initializeBehaviourState, adaptBehaviour, shouldRaiseObjection, getObjectionType, getOpeningLine, getBehaviourInstructions, OpeningLineContext } from './behaviour-rules';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -83,8 +83,8 @@ export async function generateProspectResponse(
           content: msg.content,
         })),
       });
-      prospectResponse = response.content[0].type === 'text' 
-        ? response.content[0].text 
+      prospectResponse = response.content[0].type === 'text'
+        ? response.content[0].text
         : '...';
     } else {
       throw new Error('No AI service configured');
@@ -96,7 +96,7 @@ export async function generateProspectResponse(
 
   // Determine if this response contains an objection
   const objectionType = detectObjectionInResponse(
-    prospectResponse, 
+    prospectResponse,
     updatedBehaviourState,
     context.prospectAvatar.difficulty.executionResistance
   );
@@ -118,11 +118,11 @@ function buildRoleplaySystemPrompt(context: RoleplayContext): string {
   const { difficultyTier, authorityLevel, executionResistance } = prospectAvatar.difficulty;
 
   // Execution resistance interpretation
-  const executionAbility = executionResistance >= 8 
+  const executionAbility = executionResistance >= 8
     ? 'Fully Able - Has money, time, and decision authority. Can proceed if convinced.'
     : executionResistance >= 5
-    ? 'Partial Ability - Has some resources but may need payment plans, time restructuring, or prioritization reframing.'
-    : 'Extreme Resistance - Severe money/time constraints or external dependencies. Very difficult to close on-call.';
+      ? 'Partial Ability - Has some resources but may need payment plans, time restructuring, or prioritization reframing.'
+      : 'Extreme Resistance - Severe money/time constraints or external dependencies. Very difficult to close on-call.';
 
   return `You are playing the role of a sales prospect in a realistic roleplay scenario.
 
@@ -168,6 +168,8 @@ CRITICAL RULES:
 7. Be realistic - not scripted. Show hesitation, ask follow-ups, push back when appropriate.
 8. Never automatically accept a flawed pitch.
 9. Your responses should be conversational, natural, and human-like.
+
+${getBehaviourInstructions(difficultyTier)}
 
 Respond as this prospect would, given your current state, execution resistance level, and the rep's message.`;
 }
@@ -272,7 +274,7 @@ function analyzeRepAction(
     .slice(-3)
     .map(m => m.content.toLowerCase())
     .join(' ');
-  
+
   if (
     recentProspectMessages.includes('but') ||
     recentProspectMessages.includes('however') ||
@@ -375,3 +377,115 @@ function detectObjectionInResponse(
 
   return undefined;
 }
+
+/**
+ * Generate the initial prospect message to start a roleplay
+ * Uses funnel-aware, difficulty-appropriate opening lines
+ */
+export function generateInitialProspectMessage(
+  prospectAvatar: ProspectAvatar,
+  funnelContext: FunnelContext,
+  offerType?: string,
+  referrerName?: string
+): RoleplayMessage {
+  const openingLineContext: OpeningLineContext = {
+    funnelContext,
+    difficulty: prospectAvatar.difficulty,
+    prospectName: prospectAvatar.positionDescription || 'Prospect',
+    offerType,
+    referrerName,
+  };
+
+  const openingLine = getOpeningLine(openingLineContext);
+
+  return {
+    role: 'prospect',
+    content: openingLine,
+    timestamp: Date.now(),
+    metadata: {
+      sentiment: funnelContext.type === 'referral' || funnelContext.type === 'content_educated'
+        ? 'positive'
+        : funnelContext.type === 'cold_outbound'
+          ? 'negative'
+          : 'neutral',
+    },
+  };
+}
+
+/**
+ * Stages of a complete sales conversation
+ * Used for detecting incomplete roleplays
+ */
+export interface ConversationStages {
+  opening: boolean;
+  discovery: boolean;
+  offer: boolean;
+  objections: boolean;
+  close: boolean;
+}
+
+/**
+ * Detect which conversation stages have been completed
+ * Based on message content and flow
+ */
+export function detectConversationStages(messages: RoleplayMessage[]): ConversationStages {
+  const stages: ConversationStages = {
+    opening: false,
+    discovery: false,
+    offer: false,
+    objections: false,
+    close: false,
+  };
+
+  if (messages.length === 0) return stages;
+
+  // Opening: First exchange happened
+  stages.opening = messages.length >= 2;
+
+  const allContent = messages.map(m => m.content.toLowerCase()).join(' ');
+  const repContent = messages.filter(m => m.role === 'rep').map(m => m.content.toLowerCase()).join(' ');
+  const prospectContent = messages.filter(m => m.role === 'prospect').map(m => m.content.toLowerCase()).join(' ');
+
+  // Discovery: Questions about situation, problems, goals
+  const discoveryPatterns = [
+    'what brings you', 'tell me about', 'what\'s going on', 'what are you struggling',
+    'what would you like', 'what\'s your goal', 'what are you hoping', 'what\'s been happening',
+    'how long have you', 'what have you tried', 'what would change', 'what would it mean',
+  ];
+  stages.discovery = discoveryPatterns.some(p => repContent.includes(p));
+
+  // Offer: Mentioned the solution, program, price
+  const offerPatterns = [
+    'program', 'solution', 'what we do', 'how it works', 'investment', 'price',
+    'cost', 'guarantee', 'included', 'what you get', 'package', 'coaching',
+  ];
+  stages.offer = offerPatterns.some(p => repContent.includes(p));
+
+  // Objections: Prospect raised concerns
+  const objectionPatterns = [
+    'can\'t afford', 'need to think', 'not sure', 'too expensive', 'don\'t have time',
+    'need to talk to', 'what if', 'how do i know', 'what makes you different',
+    'i\'ve tried', 'doesn\'t work', 'skeptical', 'concerned',
+  ];
+  stages.objections = objectionPatterns.some(p => prospectContent.includes(p));
+
+  // Close: Attempt to move forward
+  const closePatterns = [
+    'ready to get started', 'move forward', 'next step', 'sign up', 'let\'s do it',
+    'i\'m in', 'where do i sign', 'how do we start', 'payment', 'card',
+    'not ready', 'need more time', 'follow up', 'think about it',
+  ];
+  stages.close = closePatterns.some(p => allContent.includes(p));
+
+  return stages;
+}
+
+/**
+ * Determine if a roleplay is incomplete based on stages
+ */
+export function isRoleplayIncomplete(stages: ConversationStages): boolean {
+  // A complete roleplay should have at least opening, discovery, and offer
+  // Objections and close are ideal but not strictly required
+  return !stages.opening || !stages.discovery || !stages.offer;
+}
+

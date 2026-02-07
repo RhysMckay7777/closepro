@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, DollarSign, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, DollarSign, AlertCircle, FileDown } from 'lucide-react';
 import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -300,7 +300,10 @@ export default function FiguresPage() {
             </Card>
           </div>
 
-          {/* Commission: rate and total */}
+          {/* Visual divider before Commission */}
+          <div className="border-t border-border/50 my-6" aria-hidden />
+
+          {/* Commission section: Total Commission (Month) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
               <CardHeader className="pb-2">
@@ -313,7 +316,7 @@ export default function FiguresPage() {
             </Card>
             <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
               <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Total commission (month)</CardTitle>
+                <CardTitle className="text-sm font-semibold">Total Commission (Month)</CardTitle>
                 <p className="text-xs text-muted-foreground">Sum of commission on sales (revenue × commission % per deal)</p>
               </CardHeader>
               <CardContent>
@@ -322,12 +325,64 @@ export default function FiguresPage() {
             </Card>
           </div>
 
-          {/* Sales list: cash, revenue, offer, date, commission % per deal, commission amount */}
+          {/* Commission table: Date, Offer, Prospect Name, Cash Collected, Revenue, Commission %, Commission Amount – exportable as PDF */}
           {figures.salesList && figures.salesList.length > 0 && (
-            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Sales this month (for commission)</CardTitle>
-                <p className="text-xs text-muted-foreground">Cash received, revenue generated, offer, date of sale, commission % per deal, commission amount</p>
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl" id="commission-table">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between gap-4">
+                <div>
+                  <CardTitle className="text-sm font-semibold">Total Commission (Month)</CardTitle>
+                  <p className="text-xs text-muted-foreground">Date, Offer, Prospect Name, Cash Collected, Revenue, Commission %, Commission Amount. Commission rate is per deal.</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const printWindow = window.open('', '_blank');
+                    if (!printWindow) return;
+                    const monthLabel = MONTHS[Number(month) - 1];
+                    const html = `
+                      <!DOCTYPE html>
+                      <html>
+                        <head><title>Commission - ${monthLabel} ${year}</title></head>
+                        <body style="font-family: system-ui; padding: 24px;">
+                          <h1>Total Commission (Month) – ${monthLabel} ${year}</h1>
+                          <table style="width:100%; border-collapse: collapse; margin-top: 16px;">
+                            <thead>
+                              <tr style="border-bottom: 2px solid #333;">
+                                <th style="text-align:left; padding: 8px;">Date</th>
+                                <th style="text-align:left; padding: 8px;">Offer</th>
+                                <th style="text-align:left; padding: 8px;">Prospect Name</th>
+                                <th style="text-align:right; padding: 8px;">Cash Collected</th>
+                                <th style="text-align:right; padding: 8px;">Revenue</th>
+                                <th style="text-align:right; padding: 8px;">Commission %</th>
+                                <th style="text-align:right; padding: 8px;">Commission Amount</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              ${(figures.salesList ?? []).map((row) => `
+                                <tr style="border-bottom: 1px solid #ddd;">
+                                  <td style="padding: 8px;">${row.date}</td>
+                                  <td style="padding: 8px;">${row.offerName}</td>
+                                  <td style="padding: 8px;">${row.prospectName || '—'}</td>
+                                  <td style="text-align:right; padding: 8px;">$${(row.cashCollected / 100).toLocaleString()}</td>
+                                  <td style="text-align:right; padding: 8px;">$${(row.revenueGenerated / 100).toLocaleString()}</td>
+                                  <td style="text-align:right; padding: 8px;">${row.commissionPct}%</td>
+                                  <td style="text-align:right; padding: 8px;">$${(row.commissionAmount / 100).toLocaleString()}</td>
+                                </tr>
+                              `).join('')}
+                            </tbody>
+                          </table>
+                        </body>
+                      </html>
+                    `;
+                    printWindow.document.write(html);
+                    printWindow.document.close();
+                    setTimeout(() => { printWindow.print(); printWindow.onafterprint = () => printWindow.close(); }, 250);
+                  }}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Export PDF
+                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">

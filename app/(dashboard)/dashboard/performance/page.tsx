@@ -17,6 +17,19 @@ const RANGE_OPTIONS = [
   { value: 'last_year', label: 'Last Year' },
 ] as const;
 
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+function getDefaultMonthYear(): { month: string; year: number } {
+  const now = new Date();
+  return {
+    month: String(now.getMonth() + 1).padStart(2, '0'),
+    year: now.getFullYear(),
+  };
+}
+
 interface PerformanceData {
   range?: string;
   period: string;
@@ -24,11 +37,14 @@ interface PerformanceData {
   totalCalls: number;
   totalRoleplays: number;
   averageOverall: number;
+  averageRoleplayScore?: number;
   averageValue: number;
   averageTrust: number;
   averageFit: number;
   averageLogistics: number;
   trend: 'improving' | 'declining' | 'neutral';
+  salesCallsSummary?: { totalCalls: number; averageOverall: number; bestCategory: string | null; improvementOpportunity: string | null; trend: string };
+  roleplaysSummary?: { totalRoleplays: number; averageRoleplayScore: number; bestCategory: string | null; improvementOpportunity: string | null; trend: string };
   weeklyData: Array<{ week: string; score: number; count: number }>;
   skillCategories: Array<{ category: string; averageScore: number; trend?: number }>;
   strengths: Array<{ category: string; averageScore: number }>;
@@ -63,16 +79,29 @@ export default function PerformancePage() {
   const [error, setError] = useState<string | null>(null);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
   const [range, setRange] = useState<string>('this_month');
+  // Month-specific selection
+  const defaultMonthYear = getDefaultMonthYear();
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonthYear.month);
+  const [selectedYear, setSelectedYear] = useState(defaultMonthYear.year);
+  const [selectionMode, setSelectionMode] = useState<'range' | 'month'>('range');
+
+  const years = [selectedYear - 2, selectedYear - 1, selectedYear, selectedYear + 1].filter((y) => y >= 2020 && y <= 2030);
 
   useEffect(() => {
     fetchPerformance();
-  }, [range]);
+  }, [range, selectedMonth, selectedYear, selectionMode]);
 
   const fetchPerformance = async () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`/api/performance?range=${range}`);
+      let url = `/api/performance`;
+      if (selectionMode === 'month') {
+        url += `?month=${selectedYear}-${selectedMonth}`;
+      } else {
+        url += `?range=${range}`;
+      }
+      const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch performance data');
       }
@@ -190,104 +219,140 @@ export default function PerformancePage() {
             Track your sales performance over time
           </p>
         </div>
-        <Select value={range} onValueChange={setRange}>
-          <SelectTrigger className="w-full sm:w-[180px]">
-            <SelectValue placeholder="Time range" />
-          </SelectTrigger>
-          <SelectContent>
-            {RANGE_OPTIONS.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                {opt.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          {/* Mode toggle buttons */}
+          <div className="flex rounded-md border border-border overflow-hidden">
+            <button
+              className={`px-3 py-1.5 text-xs font-medium ${selectionMode === 'range' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+              onClick={() => setSelectionMode('range')}
+            >
+              Range
+            </button>
+            <button
+              className={`px-3 py-1.5 text-xs font-medium ${selectionMode === 'month' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
+              onClick={() => setSelectionMode('month')}
+            >
+              Month
+            </button>
+          </div>
+          {/* Range selector */}
+          {selectionMode === 'range' && (
+            <Select value={range} onValueChange={setRange}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue placeholder="Time range" />
+              </SelectTrigger>
+              <SelectContent>
+                {RANGE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {/* Month/Year selector */}
+          {selectionMode === 'month' && (
+            <div className="flex gap-2">
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="w-[120px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MONTHS.map((m, idx) => (
+                    <SelectItem key={idx} value={String(idx + 1).padStart(2, '0')}>
+                      {m}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v, 10))}>
+                <SelectTrigger className="w-[90px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {years.map((y) => (
+                    <SelectItem key={y} value={String(y)}>
+                      {y}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Overall Performance */}
+      {/* Overall Performance – Sales Calls */}
       <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
         <CardHeader>
-          <CardTitle>Overall Performance</CardTitle>
-          <CardDescription>Based on {performance.period}</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" /> Overall Performance – Sales Calls</CardTitle>
+          <CardDescription>Based on {performance.period}. Data: analysed sales calls only.</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="text-center p-4 rounded-lg bg-muted/30">
               <p className="text-sm text-muted-foreground mb-2">Overall Score</p>
-              <p className={`text-4xl font-bold ${getScoreColor(performance.averageOverall)}`}>
-                {performance.averageOverall}
+              <p className={`text-4xl font-bold ${getScoreColor(performance.salesCallsSummary?.averageOverall ?? performance.averageOverall)}`}>
+                {performance.salesCallsSummary?.averageOverall ?? performance.averageOverall}
               </p>
-              <div className="flex items-center justify-center gap-1 mt-2">
-                {performance.trend === 'improving' && (
-                  <>
-                    <TrendingUp className="h-4 w-4 text-green-500" />
-                    <span className="text-xs text-green-500">Improving</span>
-                  </>
-                )}
-                {performance.trend === 'declining' && (
-                  <>
-                    <TrendingDown className="h-4 w-4 text-red-500" />
-                    <span className="text-xs text-red-500">Declining</span>
-                  </>
-                )}
-                {performance.trend === 'neutral' && (
-                  <>
-                    <Minus className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Stable</span>
-                  </>
-                )}
-              </div>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Total Sessions</p>
-              <p className="text-4xl font-bold">{performance.totalAnalyses}</p>
-              <p className="text-xs text-muted-foreground mt-2">
-                {performance.totalCalls} calls, {performance.totalRoleplays} roleplays
-              </p>
+              <p className="text-xs text-muted-foreground mt-2">Total Calls Analysed: {performance.salesCallsSummary?.totalCalls ?? performance.totalCalls}</p>
             </div>
             <div className="text-center p-4 rounded-lg bg-muted/30">
               <p className="text-sm text-muted-foreground mb-2">Best Category</p>
-              {performance.strengths.length > 0 ? (
-                <>
-                  <p className="text-2xl font-bold truncate" title={performance.strengths[0].category}>
-                    {performance.strengths[0].category}
-                  </p>
-                  <p className={`text-lg font-semibold ${getScoreColor(performance.strengths[0].averageScore)}`}>
-                    {performance.strengths[0].averageScore}
-                  </p>
-                </>
-              ) : performance.totalAnalyses > 0 ? (
-                <>
-                  <p className="text-2xl font-bold">Value</p>
-                  <p className={`text-lg font-semibold ${getScoreColor(performance.averageValue)}`}>
-                    {performance.averageValue}
-                  </p>
-                </>
-              ) : (
-                <p className="text-muted-foreground text-sm">No data yet</p>
-              )}
+              <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category}>
+                {performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category ?? '—'}
+              </p>
             </div>
             <div className="text-center p-4 rounded-lg bg-muted/30">
               <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
-              {performance.weaknesses.length > 0 ? (
-                <>
-                  <p className="text-2xl font-bold truncate" title={performance.weaknesses[0].category}>
-                    {performance.weaknesses[0].category}
-                  </p>
-                  <p className={`text-lg font-semibold ${getScoreColor(performance.weaknesses[0].averageScore)}`}>
-                    {performance.weaknesses[0].averageScore}
-                  </p>
-                </>
-              ) : performance.totalAnalyses > 0 ? (
-                <>
-                  <p className="text-2xl font-bold">Logistics</p>
-                  <p className={`text-lg font-semibold ${getScoreColor(performance.averageLogistics)}`}>
-                    {performance.averageLogistics}
-                  </p>
-                </>
-              ) : (
-                <p className="text-muted-foreground text-sm">No data yet</p>
-              )}
+              <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category}>
+                {performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category ?? '—'}
+              </p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-muted/30">
+              <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
+              <div className="flex items-center justify-center gap-1 mt-2">
+                {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
+                {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
+                {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Overall Performance – Roleplays */}
+      <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" /> Overall Performance – Roleplays</CardTitle>
+          <CardDescription>Based on {performance.period}. Data: roleplay sessions only.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="text-center p-4 rounded-lg bg-muted/30">
+              <p className="text-sm text-muted-foreground mb-2">Average Roleplay Score</p>
+              <p className={`text-4xl font-bold ${getScoreColor(performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0)}`}>
+                {performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">Total Roleplays: {performance.roleplaysSummary?.totalRoleplays ?? performance.totalRoleplays}</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-muted/30">
+              <p className="text-sm text-muted-foreground mb-2">Best Category</p>
+              <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.bestCategory ?? '—'}</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-muted/30">
+              <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
+              <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.improvementOpportunity ?? '—'}</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-muted/30">
+              <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
+              <div className="flex items-center justify-center gap-1 mt-2">
+                {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
+                {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
+                {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
             </div>
           </div>
         </CardContent>
@@ -297,7 +362,7 @@ export default function PerformancePage() {
       <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
         <CardHeader>
           <CardTitle>Performance Trend</CardTitle>
-          <CardDescription>Weekly average scores over the last 7 weeks</CardDescription>
+          <CardDescription>Weekly average scores over the last 12 weeks</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
@@ -327,12 +392,11 @@ export default function PerformancePage() {
                     <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
                       <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
                         <div
-                          className={`w-full rounded-t transition-all hover:opacity-80 ${
-                            data.score >= 80 ? 'bg-green-500' :
+                          className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
                             data.score >= 60 ? 'bg-blue-500' :
-                            data.score >= 40 ? 'bg-orange-500' :
-                            'bg-red-500'
-                          }`}
+                              data.score >= 40 ? 'bg-orange-500' :
+                                'bg-red-500'
+                            }`}
                           style={{ height: `${height}%` }}
                           title={`Week ${data.week}: ${data.score} (${data.count} sessions)`}
                         />
@@ -354,8 +418,8 @@ export default function PerformancePage() {
       {performance.skillCategories.length > 0 && (
         <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
           <CardHeader>
-            <CardTitle>Sales Skill Breakdown</CardTitle>
-            <CardDescription>Average score and trend per category (from analyses)</CardDescription>
+            <CardTitle>Sales Skills Breakdown</CardTitle>
+            <CardDescription>Average score and trend per category (from analyses). Sales categories defined in Knowledge Doc: Sales Call Scoring Framework.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
@@ -371,12 +435,11 @@ export default function PerformancePage() {
                     )}
                     <div className="w-32 bg-muted h-2 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all ${
-                          skill.averageScore >= 80 ? 'bg-green-500' :
+                        className={`h-full rounded-full transition-all ${skill.averageScore >= 80 ? 'bg-green-500' :
                           skill.averageScore >= 60 ? 'bg-blue-500' :
-                          skill.averageScore >= 40 ? 'bg-orange-500' :
-                          'bg-red-500'
-                        }`}
+                            skill.averageScore >= 40 ? 'bg-orange-500' :
+                              'bg-red-500'
+                          }`}
                         style={{ width: `${skill.averageScore}%` }}
                       />
                     </div>
@@ -393,8 +456,8 @@ export default function PerformancePage() {
 
       {/* Breakdowns: by offer type, difficulty, offer */}
       {(performance.byOfferType && Object.keys(performance.byOfferType).length > 0) ||
-       (performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0) ||
-       (performance.byOffer && performance.byOffer.length > 0) ? (
+        (performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0) ||
+        (performance.byOffer && performance.byOffer.length > 0) ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {performance.byOfferType && Object.keys(performance.byOfferType).length > 0 && (
             <Card>

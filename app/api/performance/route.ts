@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls, callAnalysis, roleplaySessions, roleplayAnalysis, offers } from '@/db/schema';
 import { eq, and, gte, lt, lte, desc } from 'drizzle-orm';
+import { SALES_CATEGORIES, getCategoryLabel } from '@/lib/ai/scoring-framework';
 
 export type PerformanceRange = 'this_week' | 'this_month' | 'last_month' | 'last_quarter' | 'last_year';
 
@@ -13,6 +14,19 @@ function getRangeDates(range: string): { start: Date; end: Date; label: string }
   let end = new Date(now);
   start.setHours(0, 0, 0, 0);
   end.setHours(23, 59, 59, 999);
+
+  // Check for YYYY-MM format (specific month selection)
+  const monthMatch = range.match(/^(\d{4})-(\d{2})$/);
+  if (monthMatch) {
+    const year = parseInt(monthMatch[1], 10);
+    const month = parseInt(monthMatch[2], 10) - 1; // JS months are 0-indexed
+    start.setFullYear(year);
+    start.setMonth(month);
+    start.setDate(1);
+    end = new Date(year, month + 1, 0, 23, 59, 59, 999); // Last day of the month
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    return { start, end, label: `${monthNames[month]} ${year}` };
+  }
 
   switch (range) {
     case 'this_week': {
@@ -78,7 +92,9 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const rangeParam = searchParams.get('range') || searchParams.get('days') || 'this_month';
+    // Support both 'range=this_month' and 'month=2026-02' formats
+    const monthParam = searchParams.get('month');
+    const rangeParam = monthParam || searchParams.get('range') || searchParams.get('days') || 'this_month';
     const rangeLabel =
       ['this_week', 'this_month', 'last_month', 'last_quarter', 'last_year'].includes(rangeParam)
         ? rangeParam
@@ -116,8 +132,8 @@ export async function GET(request: NextRequest) {
       let parsedSkillScores = null;
       if (analysis.skillScores) {
         try {
-          parsedSkillScores = typeof analysis.skillScores === 'string' 
-            ? JSON.parse(analysis.skillScores) 
+          parsedSkillScores = typeof analysis.skillScores === 'string'
+            ? JSON.parse(analysis.skillScores)
             : analysis.skillScores;
         } catch (e) {
           // Invalid JSON, keep as null
@@ -164,8 +180,8 @@ export async function GET(request: NextRequest) {
       let parsedSkillScores = null;
       if (analysis.skillScores) {
         try {
-          parsedSkillScores = typeof analysis.skillScores === 'string' 
-            ? JSON.parse(analysis.skillScores) 
+          parsedSkillScores = typeof analysis.skillScores === 'string'
+            ? JSON.parse(analysis.skillScores)
             : analysis.skillScores;
         } catch (e) {
           // Invalid JSON, keep as null
@@ -187,6 +203,10 @@ export async function GET(request: NextRequest) {
     const totalAnalyses = allAnalyses.length;
     const averageOverall = totalAnalyses > 0
       ? Math.round(allAnalyses.reduce((sum, a) => sum + (a.overallScore || 0), 0) / totalAnalyses)
+      : 0;
+    const roleplayOnly = allAnalyses.filter(a => a.type === 'roleplay');
+    const averageRoleplayScore = roleplayOnly.length > 0
+      ? Math.round(roleplayOnly.reduce((sum, a) => sum + (a.overallScore || 0), 0) / roleplayOnly.length)
       : 0;
     const averageValue = totalAnalyses > 0
       ? Math.round(allAnalyses.reduce((sum, a) => sum + (a.valueScore || 0), 0) / totalAnalyses)
@@ -216,15 +236,15 @@ export async function GET(request: NextRequest) {
       else if (diff < -2) trend = 'declining';
     }
 
-    // Group by time periods for chart data
+    // Group by time periods for chart data (last 12 weeks)
     const weeklyData: Array<{ week: string; score: number; count: number }> = [];
     const now = new Date();
-    
-    for (let i = 6; i >= 0; i--) {
+
+    for (let i = 11; i >= 0; i--) {
       const weekStart = new Date(now);
       weekStart.setDate(weekStart.getDate() - (i * 7));
       weekStart.setHours(0, 0, 0, 0);
-      
+
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 7);
 
@@ -296,7 +316,16 @@ export async function GET(request: NextRequest) {
     allAnalyses.forEach(analysis => {
       const row: Record<string, number> = {};
       const skillScoresData = analysis.skillScores;
-      if (skillScoresData && Array.isArray(skillScoresData)) {
+      if (skillScoresData && typeof skillScoresData === 'object' && !Array.isArray(skillScoresData)) {
+        const entries = Object.entries(skillScoresData);
+        if (entries.length > 0 && typeof entries[0][1] === 'number') {
+          entries.forEach(([id, score]) => {
+            const category = getCategoryLabel(id);
+            row[category] = (typeof score === 'number' ? score : 0) * 10;
+          });
+        }
+      }
+      if (Object.keys(row).length === 0 && skillScoresData && Array.isArray(skillScoresData)) {
         skillScoresData.forEach((skill: { category?: string; subSkills?: Record<string, number> }) => {
           if (skill?.category) {
             const subSkillValues = Object.values(skill.subSkills || {}) as number[];
@@ -439,6 +468,23 @@ export async function GET(request: NextRequest) {
       actionPlan: ['Set a weekly practice goal', 'Compare scores by offer type', 'Export summary for coaching'].slice(0, 3),
     };
 
+    const callOnly = allAnalyses.filter(a => a.type === 'call');
+    const roleplayOnlyForSummary = allAnalyses.filter(a => a.type === 'roleplay');
+    const salesCallsSummary = {
+      totalCalls: callAnalyses.length,
+      averageOverall: callOnly.length > 0 ? Math.round(callOnly.reduce((s, a) => s + (a.overallScore ?? 0), 0) / callOnly.length) : 0,
+      bestCategory: skillCategories.length > 0 ? skillCategories[0].category : null,
+      improvementOpportunity: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].category : null,
+      trend,
+    };
+    const roleplaysSummary = {
+      totalRoleplays: roleplayAnalyses.length,
+      averageRoleplayScore: roleplayOnlyForSummary.length > 0 ? Math.round(roleplayOnlyForSummary.reduce((s, a) => s + (a.overallScore ?? 0), 0) / roleplayOnlyForSummary.length) : 0,
+      bestCategory: skillCategories.length > 0 ? skillCategories[0].category : null,
+      improvementOpportunity: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].category : null,
+      trend,
+    };
+
     return NextResponse.json({
       range: rangeLabel ?? rangeParam,
       period: periodLabel,
@@ -446,11 +492,14 @@ export async function GET(request: NextRequest) {
       totalCalls: callAnalyses.length,
       totalRoleplays: roleplayAnalyses.length,
       averageOverall,
+      averageRoleplayScore,
       averageValue,
       averageTrust,
       averageFit,
       averageLogistics,
       trend,
+      salesCallsSummary,
+      roleplaysSummary,
       weeklyData,
       skillCategories,
       strengths,

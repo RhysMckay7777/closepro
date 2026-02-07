@@ -69,18 +69,24 @@ export async function GET(
 
     let analysisData = null;
     if (analysis[0]) {
+      const skillScoresRaw = analysis[0].skillScores ? JSON.parse(analysis[0].skillScores) : null;
+      const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw)
+        ? skillScoresRaw
+        : {};
+      const objectionDetailsRaw = analysis[0].objectionDetails;
+      const objections = objectionDetailsRaw && typeof objectionDetailsRaw === 'string' ? JSON.parse(objectionDetailsRaw) : [];
       analysisData = {
         overallScore: analysis[0].overallScore,
-        value: analysis[0].valueDetails ? JSON.parse(analysis[0].valueDetails) : null,
-        trust: analysis[0].trustDetails ? JSON.parse(analysis[0].trustDetails) : null,
-        fit: analysis[0].fitDetails ? JSON.parse(analysis[0].fitDetails) : null,
-        logistics: analysis[0].logisticsDetails ? JSON.parse(analysis[0].logisticsDetails) : null,
-        skillScores: analysis[0].skillScores ? JSON.parse(analysis[0].skillScores) : [],
-        coachingRecommendations: analysis[0].coachingRecommendations 
-          ? JSON.parse(analysis[0].coachingRecommendations) 
+        categoryScores,
+        objections,
+        prospectDifficulty: analysis[0].prospectDifficulty ?? undefined,
+        prospectDifficultyTier: analysis[0].prospectDifficultyTier ?? undefined,
+        skillScores: categoryScores,
+        coachingRecommendations: analysis[0].coachingRecommendations
+          ? JSON.parse(analysis[0].coachingRecommendations)
           : [],
-        timestampedFeedback: analysis[0].timestampedFeedback 
-          ? JSON.parse(analysis[0].timestampedFeedback) 
+        timestampedFeedback: analysis[0].timestampedFeedback
+          ? JSON.parse(analysis[0].timestampedFeedback)
           : [],
       };
     }

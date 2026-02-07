@@ -154,13 +154,13 @@ export async function GET(request: NextRequest) {
         `);
         const rawRows = Array.isArray(raw) ? raw : (raw as { rows?: typeof raw })?.rows ?? [];
         rows = rawRows.map((r: Record<string, unknown>) => ({
-          callDate: r.call_date ?? null,
-          createdAt: r.created_at as Date,
-          originalCallId: r.original_call_id ?? null,
-          result: r.result ?? null,
-          qualified: r.qualified ?? null,
-          cashCollected: r.cash_collected ?? null,
-          revenueGenerated: r.revenue_generated ?? null,
+          callDate: (r.call_date != null ? new Date(r.call_date as Date | string) : null) as Date | null,
+          createdAt: r.created_at != null ? new Date(r.created_at as Date | string) : new Date(),
+          originalCallId: (r.original_call_id ?? null) as string | null,
+          result: (r.result ?? null) as string | null,
+          qualified: (r.qualified ?? null) as boolean | null,
+          cashCollected: (r.cash_collected ?? null) as number | null,
+          revenueGenerated: (r.revenue_generated ?? null) as number | null,
         }));
       } catch (rawErr: unknown) {
         const re = rawErr as { code?: string; message?: string };

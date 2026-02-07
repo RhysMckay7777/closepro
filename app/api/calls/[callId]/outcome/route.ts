@@ -46,16 +46,8 @@ export async function PATCH(
     const updatePayload: Record<string, unknown> = {};
     if (typeof resultRaw === 'string' && VALID_RESULTS.includes(resultRaw as typeof VALID_RESULTS[number])) {
       updatePayload.result = resultRaw;
-      const qualifiedValue = typeof qualified === 'boolean'
-        ? qualified
-        : resultRaw === 'closed' || resultRaw === 'lost'
-          ? true
-          : resultRaw === 'unqualified'
-            ? false
-            : undefined;
-      if (qualifiedValue !== undefined) {
-        updatePayload.qualified = qualifiedValue;
-      }
+      // Qualified if result ≠ Unqualified; only "Unqualified" marks the call as not qualified
+      updatePayload.qualified = resultRaw !== 'unqualified';
     } else if (typeof qualified === 'boolean') {
       updatePayload.qualified = qualified;
     }

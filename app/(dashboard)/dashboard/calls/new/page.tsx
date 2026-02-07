@@ -32,15 +32,16 @@ export default function NewCallPage() {
     date: new Date().toISOString().split('T')[0],
     offerId: '',
     offerType: '',
-    callType: 'closing_call' as 'closing_call' | 'follow_up',
     result: '',
-    qualified: false,
     prospectName: '',
     cashCollected: '',
     revenueGenerated: '',
     commissionRatePct: '',
     depositTaken: false,
     reasonForOutcome: '',
+    paymentType: 'paid_in_full' as 'paid_in_full' | 'payment_plan',
+    numberOfInstalments: '',
+    monthlyAmount: '',
   });
 
   // No-show form state
@@ -65,6 +66,9 @@ export default function NewCallPage() {
     revenueGenerated: '',
     commissionRatePct: '',
     depositTaken: false,
+    paymentType: 'paid_in_full' as 'paid_in_full' | 'payment_plan',
+    numberOfInstalments: '',
+    monthlyAmount: '',
   });
 
   // Upload & Analyse (merged: transcript text, transcript file, or audio file)
@@ -124,10 +128,14 @@ export default function NewCallPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...manualForm,
+          callType: 'closing_call',
           prospectName: manualForm.prospectName.trim() || undefined,
           cashCollected: manualForm.cashCollected ? parseInt(manualForm.cashCollected) * 100 : null,
           revenueGenerated: manualForm.revenueGenerated ? parseInt(manualForm.revenueGenerated) * 100 : null,
           commissionRatePct: manualForm.commissionRatePct ? parseFloat(manualForm.commissionRatePct) : undefined,
+          paymentType: manualForm.paymentType,
+          numberOfInstalments: manualForm.numberOfInstalments ? parseInt(manualForm.numberOfInstalments) : undefined,
+          monthlyAmount: manualForm.monthlyAmount ? parseInt(manualForm.monthlyAmount) * 100 : undefined,
         }),
       });
 
@@ -193,6 +201,9 @@ export default function NewCallPage() {
           cashCollected: followUpForm.cashCollected ? parseInt(followUpForm.cashCollected) * 100 : null,
           revenueGenerated: followUpForm.revenueGenerated ? parseInt(followUpForm.revenueGenerated) * 100 : null,
           commissionRatePct: followUpForm.commissionRatePct ? parseFloat(followUpForm.commissionRatePct) : undefined,
+          paymentType: followUpForm.paymentType,
+          numberOfInstalments: followUpForm.numberOfInstalments ? parseInt(followUpForm.numberOfInstalments) : undefined,
+          monthlyAmount: followUpForm.monthlyAmount ? parseInt(followUpForm.monthlyAmount) * 100 : undefined,
         }),
       });
 
@@ -506,26 +517,6 @@ export default function NewCallPage() {
                       className="bg-background"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="manual-call-type" className="flex items-center gap-2 text-muted-foreground">
-                      <Phone className="h-3.5 w-3.5" />
-                      Call type *
-                    </Label>
-                    <Select
-                      value={manualForm.callType}
-                      onValueChange={(value) => setManualForm({ ...manualForm, callType: value })}
-                      required
-                    >
-                      <SelectTrigger className="bg-background">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="closing_call">Closing call</SelectItem>
-                        <SelectItem value="follow_up">Follow-up call</SelectItem>
-                        <SelectItem value="no_show">No-show</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -533,11 +524,7 @@ export default function NewCallPage() {
                     <Label htmlFor="manual-result">Result *</Label>
                     <Select
                       value={manualForm.result}
-                      onValueChange={(value) => {
-                        const qualified = value === 'closed' || value === 'lost' ? true : value === 'unqualified' ? false : manualForm.qualified;
-                        // follow_up/deposit leave qualified as-is
-                        setManualForm({ ...manualForm, result: value, qualified });
-                      }}
+                      onValueChange={(value) => setManualForm({ ...manualForm, result: value })}
                       required
                     >
                       <SelectTrigger>
@@ -552,71 +539,85 @@ export default function NewCallPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Closed or Lost = qualified; Unqualified = not qualified.
+                  <p className="text-xs text-muted-foreground self-end pb-2">
+                    Qualified if result ≠ Unqualified. Only &quot;Unqualified&quot; marks the call as not qualified.
                   </p>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="manual-qualified">Qualified</Label>
-                  <div className="flex items-center gap-2">
-                    <Checkbox
-                      id="manual-qualified"
-                      checked={manualForm.qualified}
-                      onCheckedChange={(checked) => setManualForm({ ...manualForm, qualified: checked === true })}
-                    />
-                    <span className="text-sm text-muted-foreground">
-                      {manualForm.result === 'closed' || manualForm.result === 'lost'
-                        ? 'Yes (set from result)'
-                        : manualForm.result === 'unqualified'
-                          ? 'No (set from result)'
-                          : 'Qualified lead'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="manual-reason">Reason for outcome *</Label>
+                  <Label htmlFor="manual-reason">Why did the prospect buy or not buy? What objections were raised? *</Label>
                   <Textarea
                     id="manual-reason"
                     value={manualForm.reasonForOutcome}
                     onChange={(e) => setManualForm({ ...manualForm, reasonForOutcome: e.target.value })}
-                    placeholder="Why did this call end this way? What objections came up? How did we handle them?"
+                    placeholder="e.g. Prospect agreed to program; payment plan. Objections: timing, partner approval."
                     rows={3}
                     required
                   />
                 </div>
 
                 {manualForm.result === 'closed' && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="manual-cash">Cash Collected (£)</Label>
-                      <Input
-                        id="manual-cash"
-                        type="number"
-                        value={manualForm.cashCollected}
-                        onChange={(e) => setManualForm({ ...manualForm, cashCollected: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="manual-revenue">Revenue Generated (£)</Label>
-                      <Input
-                        id="manual-revenue"
-                        type="number"
-                        value={manualForm.revenueGenerated}
-                        onChange={(e) => setManualForm({ ...manualForm, revenueGenerated: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2 pt-8">
-                        <Checkbox
-                          id="manual-deposit"
-                          checked={manualForm.depositTaken}
-                          onCheckedChange={(checked) => setManualForm({ ...manualForm, depositTaken: checked === true })}
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-cash">Cash Collected (£)</Label>
+                        <Input
+                          id="manual-cash"
+                          type="number"
+                          value={manualForm.cashCollected}
+                          onChange={(e) => setManualForm({ ...manualForm, cashCollected: e.target.value })}
                         />
-                        <Label htmlFor="manual-deposit">Deposit Taken</Label>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-revenue">Revenue Generated (£)</Label>
+                        <Input
+                          id="manual-revenue"
+                          type="number"
+                          value={manualForm.revenueGenerated}
+                          onChange={(e) => setManualForm({ ...manualForm, revenueGenerated: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-payment-type">Payment Type</Label>
+                        <Select
+                          value={manualForm.paymentType}
+                          onValueChange={(value: 'paid_in_full' | 'payment_plan') => setManualForm({ ...manualForm, paymentType: value })}
+                        >
+                          <SelectTrigger id="manual-payment-type">
+                            <SelectValue placeholder="Select payment type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="paid_in_full">Paid in Full</SelectItem>
+                            <SelectItem value="payment_plan">Payment Plan</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
+                    {manualForm.paymentType === 'payment_plan' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="manual-instalments">Number of Instalments</Label>
+                          <Input
+                            id="manual-instalments"
+                            type="number"
+                            min="2"
+                            value={manualForm.numberOfInstalments}
+                            onChange={(e) => setManualForm({ ...manualForm, numberOfInstalments: e.target.value })}
+                            placeholder="e.g. 6"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="manual-monthly">Monthly Amount (£)</Label>
+                          <Input
+                            id="manual-monthly"
+                            type="number"
+                            value={manualForm.monthlyAmount}
+                            onChange={(e) => setManualForm({ ...manualForm, monthlyAmount: e.target.value })}
+                            placeholder="e.g. 500"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -807,69 +808,102 @@ export default function NewCallPage() {
                         <SelectValue placeholder="Select outcome" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="sale_made">Sale Made</SelectItem>
+                        <SelectItem value="closed">Closed</SelectItem>
                         <SelectItem value="lost">Lost</SelectItem>
-                        <SelectItem value="did_not_attend">Did Not Attend</SelectItem>
+                        <SelectItem value="no_show">No-Show</SelectItem>
+                        <SelectItem value="further_follow_up">Further Follow-up</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="follow-up-reason">Reason for outcome *</Label>
+                  <Label htmlFor="follow-up-reason">Why did the prospect buy or not buy? What objections were raised? *</Label>
                   <Textarea
                     id="follow-up-reason"
                     value={followUpForm.reasonForOutcome}
                     onChange={(e) => setFollowUpForm({ ...followUpForm, reasonForOutcome: e.target.value })}
-                    placeholder="Why did this call end this way? What objections came up? How did we handle them?"
+                    placeholder="e.g. Prospect closed; payment plan. Objections: timing."
                     rows={3}
                     required
                   />
                 </div>
 
-                {followUpForm.outcome === 'sale_made' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="follow-up-cash">Cash Collected (£)</Label>
-                      <Input
-                        id="follow-up-cash"
-                        type="number"
-                        value={followUpForm.cashCollected}
-                        onChange={(e) => setFollowUpForm({ ...followUpForm, cashCollected: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="follow-up-revenue">Revenue Generated (£)</Label>
-                      <Input
-                        id="follow-up-revenue"
-                        type="number"
-                        value={followUpForm.revenueGenerated}
-                        onChange={(e) => setFollowUpForm({ ...followUpForm, revenueGenerated: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="follow-up-commission">Commission rate (%)</Label>
-                      <Input
-                        id="follow-up-commission"
-                        type="number"
-                        min={0}
-                        max={100}
-                        step={0.5}
-                        value={followUpForm.commissionRatePct}
-                        onChange={(e) => setFollowUpForm({ ...followUpForm, commissionRatePct: e.target.value })}
-                        placeholder="e.g. 10"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center space-x-2 pt-8">
-                        <Checkbox
-                          id="follow-up-deposit"
-                          checked={followUpForm.depositTaken}
-                          onCheckedChange={(checked) => setFollowUpForm({ ...followUpForm, depositTaken: checked === true })}
+                {followUpForm.outcome === 'closed' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="follow-up-cash">Cash Collected (£)</Label>
+                        <Input
+                          id="follow-up-cash"
+                          type="number"
+                          value={followUpForm.cashCollected}
+                          onChange={(e) => setFollowUpForm({ ...followUpForm, cashCollected: e.target.value })}
                         />
-                        <Label htmlFor="follow-up-deposit">Deposit Taken</Label>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="follow-up-revenue">Revenue Generated (£)</Label>
+                        <Input
+                          id="follow-up-revenue"
+                          type="number"
+                          value={followUpForm.revenueGenerated}
+                          onChange={(e) => setFollowUpForm({ ...followUpForm, revenueGenerated: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="follow-up-commission">Commission rate (%)</Label>
+                        <Input
+                          id="follow-up-commission"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={followUpForm.commissionRatePct}
+                          onChange={(e) => setFollowUpForm({ ...followUpForm, commissionRatePct: e.target.value })}
+                          placeholder="e.g. 10"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="follow-up-payment-type">Payment Type</Label>
+                        <Select
+                          value={followUpForm.paymentType}
+                          onValueChange={(value: 'paid_in_full' | 'payment_plan') => setFollowUpForm({ ...followUpForm, paymentType: value })}
+                        >
+                          <SelectTrigger id="follow-up-payment-type">
+                            <SelectValue placeholder="Select payment type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="paid_in_full">Paid in Full</SelectItem>
+                            <SelectItem value="payment_plan">Payment Plan</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
+                    {followUpForm.paymentType === 'payment_plan' && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="follow-up-instalments">Number of Instalments</Label>
+                          <Input
+                            id="follow-up-instalments"
+                            type="number"
+                            min="2"
+                            value={followUpForm.numberOfInstalments}
+                            onChange={(e) => setFollowUpForm({ ...followUpForm, numberOfInstalments: e.target.value })}
+                            placeholder="e.g. 6"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="follow-up-monthly">Monthly Amount (£)</Label>
+                          <Input
+                            id="follow-up-monthly"
+                            type="number"
+                            value={followUpForm.monthlyAmount}
+                            onChange={(e) => setFollowUpForm({ ...followUpForm, monthlyAmount: e.target.value })}
+                            placeholder="e.g. 500"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

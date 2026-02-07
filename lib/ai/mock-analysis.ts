@@ -1,122 +1,30 @@
 // Mock analysis for development/testing when API credits are unavailable
-import { CallAnalysisResult, SkillScore, PillarDetails, CoachingRecommendation, TimestampedFeedback } from './analysis';
+import { CallAnalysisResult, SkillScore, CoachingRecommendation, TimestampedFeedback, type CategoryScores } from './analysis';
+import { SALES_CATEGORIES, type SalesCategoryId } from './scoring-framework';
 
 /**
- * Generate mock analysis results for development
+ * Generate mock analysis results for development (10-category framework)
  */
 export function generateMockAnalysis(
   transcript: string,
   transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> }
 ): CallAnalysisResult {
-  // Calculate some basic metrics from transcript
   const wordCount = transcript.split(/\s+/).length;
   const duration = transcriptJson.utterances.length > 0
-    ? Math.max(...transcriptJson.utterances.map(u => u.end)) / 1000 // Convert to seconds
-    : 300; // Default 5 minutes
+    ? Math.max(...transcriptJson.utterances.map(u => u.end)) / 1000
+    : 300;
 
-  // Generate realistic scores based on transcript length and content
-  const baseScore = Math.min(85, Math.max(45, 60 + (wordCount / 100)));
+  const baseScore = Math.min(8, Math.max(4, 6 + (wordCount / 500))); // 0-10 scale
 
-  // Generate pillar scores (slight variation)
-  const valueScore = baseScore + (Math.random() * 10 - 5);
-  const trustScore = baseScore + (Math.random() * 10 - 5);
-  const fitScore = baseScore + (Math.random() * 10 - 5);
-  const logisticsScore = baseScore + (Math.random() * 10 - 5);
+  const categoryScores: CategoryScores = {};
+  for (const { id } of SALES_CATEGORIES) {
+    categoryScores[id as SalesCategoryId] = Math.round(Math.max(0, Math.min(10, baseScore + (Math.random() * 2 - 1))) * 10) / 10;
+  }
 
-  const value: PillarDetails = {
-    score: Math.round(Math.max(0, Math.min(100, valueScore))),
-    strengths: [
-      'Clear value proposition communicated',
-      'Effective use of examples and case studies',
-    ],
-    weaknesses: [
-      'Could have emphasized ROI more clearly',
-      'Missing specific numbers or metrics',
-    ],
-    breakdown: 'The rep did a good job explaining the core value, but could strengthen the presentation with more concrete data.',
-  };
-
-  const trust: PillarDetails = {
-    score: Math.round(Math.max(0, Math.min(100, trustScore))),
-    strengths: [
-      'Demonstrated expertise and authority',
-      'Good use of social proof',
-    ],
-    weaknesses: [
-      'Could have built more personal rapport',
-      'Trust signals could be stronger',
-    ],
-    breakdown: 'Trust was established through competence, but personal connection could be deeper.',
-  };
-
-  const fit: PillarDetails = {
-    score: Math.round(Math.max(0, Math.min(100, fitScore))),
-    strengths: [
-      'Good discovery questions asked',
-      'Identified key pain points',
-    ],
-    weaknesses: [
-      'Could have probed deeper into specific needs',
-      'Fit confirmation was somewhat surface-level',
-    ],
-    breakdown: 'The rep identified basic fit, but could have gone deeper to confirm ideal customer profile alignment.',
-  };
-
-  const logistics: PillarDetails = {
-    score: Math.round(Math.max(0, Math.min(100, logisticsScore))),
-    strengths: [
-      'Clear next steps outlined',
-      'Timeline discussed',
-    ],
-    weaknesses: [
-      'Payment options could have been presented earlier',
-      'Implementation details were vague',
-    ],
-    breakdown: 'Logistics were handled adequately, but more detail on process would strengthen the close.',
-  };
-
-  const skillScores: SkillScore[] = [
-    {
-      category: 'Opening & Rapport Building',
-      subSkills: {
-        'Warm greeting': 75,
-        'Personal connection': 70,
-        'Setting agenda': 80,
-      },
-    },
-    {
-      category: 'Discovery & Questioning',
-      subSkills: {
-        'Open-ended questions': 72,
-        'Deep probing': 68,
-        'Active listening': 75,
-      },
-    },
-    {
-      category: 'Value Communication',
-      subSkills: {
-        'Value proposition clarity': 78,
-        'ROI presentation': 70,
-        'Benefit articulation': 75,
-      },
-    },
-    {
-      category: 'Objection Handling',
-      subSkills: {
-        'Objection anticipation': 65,
-        'Reframing skills': 70,
-        'Empathy in response': 72,
-      },
-    },
-    {
-      category: 'Closing Techniques',
-      subSkills: {
-        'Assumptive close': 68,
-        'Urgency creation': 65,
-        'Commitment seeking': 70,
-      },
-    },
-  ];
+  const skillScores: SkillScore[] = SALES_CATEGORIES.map((c) => ({
+    category: c.label,
+    subSkills: { [c.id]: categoryScores[c.id] ?? 0 },
+  }));
 
   const coachingRecommendations: CoachingRecommendation[] = [
     {
@@ -172,14 +80,22 @@ export function generateMockAnalysis(
     },
   ];
 
+  const overallScore = Math.round(
+    Math.max(0, Math.min(100, Object.values(categoryScores).reduce((a, b) => a + (b ?? 0), 0)))
+  );
+
   return {
-    overallScore: Math.round((value.score + trust.score + fit.score + logistics.score) / 4),
-    value,
-    trust,
-    fit,
-    logistics,
+    overallScore,
+    categoryScores,
+    objections: [
+      { objection: 'I need to think about it', pillar: 'trust', handling: 'Rep acknowledged and asked what specifically to think about.' },
+    ],
     skillScores,
     coachingRecommendations,
     timestampedFeedback,
+    prospectDifficulty: {
+      totalDifficultyScore: 32,
+      difficultyTier: 'hard',
+    },
   };
 }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, users, organizations, userOrganizations, offers } from '@/db/schema';
+import { salesCalls, callAnalysis, users, organizations, userOrganizations, offers } from '@/db/schema';
 import { eq, desc } from 'drizzle-orm';
 
 /**
@@ -89,22 +89,46 @@ export async function GET(request: NextRequest) {
         userId: salesCalls.userId,
         prospectName: salesCalls.prospectName,
         offerId: salesCalls.offerId,
+        result: salesCalls.result,
+        offerType: salesCalls.offerType,
+        callType: salesCalls.callType,
+        callDate: salesCalls.callDate,
         userName: users.name,
         userEmail: users.email,
         offerName: offers.name,
+        overallScore: callAnalysis.overallScore,
+        prospectDifficulty: callAnalysis.prospectDifficulty,
+        prospectDifficultyTier: callAnalysis.prospectDifficultyTier,
       })
       .from(salesCalls)
       .innerJoin(users, eq(salesCalls.userId, users.id))
       .leftJoin(offers, eq(salesCalls.offerId, offers.id))
+      .leftJoin(callAnalysis, eq(salesCalls.id, callAnalysis.callId))
       .where(eq(salesCalls.organizationId, organizationId))
       .orderBy(desc(salesCalls.createdAt))
       .limit(50);
 
     return NextResponse.json({
-      calls: calls.map(call => ({
-        ...call,
+      calls: calls.map((call) => ({
+        id: call.id,
+        fileName: call.fileName,
+        status: call.status,
+        duration: call.duration,
         createdAt: call.createdAt.toISOString(),
         completedAt: call.completedAt ? call.completedAt.toISOString() : null,
+        userId: call.userId,
+        prospectName: call.prospectName ?? undefined,
+        offerId: call.offerId,
+        result: call.result,
+        offerType: call.offerType,
+        callType: call.callType,
+        date: call.callDate ? call.callDate.toISOString().slice(0, 10) : call.createdAt.toISOString().slice(0, 10),
+        userName: call.userName,
+        userEmail: call.userEmail,
+        offerName: call.offerName ?? '—',
+        overallScore: call.overallScore ?? undefined,
+        prospectDifficulty: call.prospectDifficulty ?? undefined,
+        difficultyTier: call.prospectDifficultyTier ?? undefined,
       })),
     });
   } catch (error: any) {

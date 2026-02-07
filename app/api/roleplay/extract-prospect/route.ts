@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, prospectAvatars } from '@/db/schema';
+import { salesCalls, prospectAvatars, offers } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { users, userOrganizations } from '@/db/schema';
 import { calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
 
     let transcriptText: string | null = null;
     let sourceCallId: string | null = null;
+    let offerId: string | null = null;
 
     // Check if request is FormData (file upload) or JSON
     const contentType = request.headers.get('content-type') || '';
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData();
       const audioFile = formData.get('audio') as File | null;
       const transcriptInput = formData.get('transcript') as string | null;
+      offerId = formData.get('offerId') as string | null;
       
       if (audioFile) {
         // Transcribe audio file
@@ -58,7 +60,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Handle JSON request
       const body = await request.json();
-      const { callId, transcript } = body;
+      const { callId, transcript, offerId: bodyOfferId } = body;
 
       if (!callId && !transcript) {
         return NextResponse.json(
@@ -69,9 +71,10 @@ export async function POST(request: NextRequest) {
 
       transcriptText = transcript;
       sourceCallId = callId || null;
+      offerId = bodyOfferId || null;
     }
 
-    // If callId provided, fetch transcript from database
+    // NOR ToUCHHH THISS PARTT OOOHH... NOO TRYYY AMMMM AT ALLL
     if (sourceCallId && !transcriptText) {
       const call = await db
         .select()
@@ -107,16 +110,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get offerId from form data or request body
-    let offerId: string | null = null;
-    if (contentType.includes('multipart/form-data')) {
-      const offerIdForm = formData.get('offerId') as string | null;
-      offerId = offerIdForm;
-    } else {
-      const body = await request.json().catch(() => ({}));
-      offerId = body.offerId || null;
-    }
-
+    // Verify offerId was provided
     if (!offerId) {
       return NextResponse.json(
         { error: 'offerId is required. All prospects must belong to an offer.' },

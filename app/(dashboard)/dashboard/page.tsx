@@ -25,6 +25,7 @@ interface PerformanceData {
   totalCalls: number;
   totalRoleplays: number;
   averageOverall: number;
+  averageRoleplayScore: number;
   trend: 'improving' | 'declining' | 'neutral';
   recentAnalyses: Array<{
     id: string;
@@ -234,32 +235,27 @@ export default function DashboardPage() {
 
         <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl shadow-black/5 hover:shadow-primary/10 transition-all hover:scale-[1.02]">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base font-serif font-semibold text-muted-foreground">Total Sessions</CardTitle>
-            <Bot className="h-4 w-4 text-primary" />
-          </CardHeader>
-          <CardContent className="space-y-1">
-            <div className="text-3xl font-semibold bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
-              {performance?.totalAnalyses || 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {performance?.totalCalls || 0} calls, {performance?.totalRoleplays || 0} roleplays
-            </p>
-            <p className="text-xs text-muted-foreground/70 mt-1 italic">
-              Combined total of analyzed calls and practice sessions
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl shadow-black/5 hover:shadow-primary/10 transition-all hover:scale-[1.02]">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-base font-serif font-semibold text-muted-foreground">Practice Sessions</CardTitle>
+            <CardTitle className="text-base font-serif font-semibold text-muted-foreground">Total Roleplay Sessions</CardTitle>
             <Bot className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent className="space-y-1">
             <div className="text-3xl font-semibold bg-linear-to-br from-foreground to-foreground/70 bg-clip-text text-transparent">
               {performance?.totalRoleplays || 0}
             </div>
-            <p className="text-xs text-muted-foreground">Roleplay sessions. Based on {performance?.period ?? range}</p>
+            <p className="text-xs text-muted-foreground">Roleplay sessions in period. Based on {performance?.period ?? range}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl shadow-black/5 hover:shadow-primary/10 transition-all hover:scale-[1.02]">
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-base font-serif font-semibold text-muted-foreground">Average Roleplay Score</CardTitle>
+            <Bot className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className={`text-3xl font-semibold ${getScoreColor(performance?.averageRoleplayScore ?? 0)}`}>
+              {performance?.averageRoleplayScore ?? 0}
+            </div>
+            <p className="text-xs text-muted-foreground">Roleplay only. Based on {performance?.period ?? range}</p>
           </CardContent>
         </Card>
       </div>
@@ -379,12 +375,12 @@ export default function DashboardPage() {
                   </div>
                 </Button>
               </Link>
-              {performance && performance.weaknesses.length > 0 && (
+              {performance && (performance.weaknesses?.length ?? 0) > 0 && (
                 <Link href="/dashboard/roleplay/new">
                   <Button variant="outline" className="w-full justify-start gap-3 h-auto py-3 border-primary/20 bg-primary/5">
                     <Lightbulb className="h-5 w-5 text-yellow-500" />
                     <div className="flex-1 text-left">
-                      <p className="font-medium">Improve {performance.weaknesses[0].category}</p>
+                      <p className="font-medium">Improve {performance.weaknesses?.[0]?.category}</p>
                       <p className="text-xs text-muted-foreground">Focus on your weakest area</p>
                     </div>
                   </Button>

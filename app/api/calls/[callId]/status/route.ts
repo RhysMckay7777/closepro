@@ -101,16 +101,30 @@ export async function GET(
     // If already completed, return current status
     // Also check if this is a roleplay session (callId might be a sessionId)
     if (call[0].status === 'completed') {
-      const analysis = await db
+      const analysisRows = await db
         .select()
         .from(callAnalysis)
         .where(eq(callAnalysis.callId, callId))
         .limit(1);
-
+      const row = analysisRows[0];
+      let analysis: Record<string, unknown> | null = null;
+      if (row) {
+        const skillScoresRaw = row.skillScores ? JSON.parse(row.skillScores) : null;
+        const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
+        const objections = row.objectionDetails && typeof row.objectionDetails === 'string' ? JSON.parse(row.objectionDetails) : [];
+        analysis = {
+          ...row,
+          categoryScores,
+          objections,
+          skillScores: categoryScores,
+          coachingRecommendations: row.coachingRecommendations ? JSON.parse(row.coachingRecommendations) : [],
+          timestampedFeedback: row.timestampedFeedback ? JSON.parse(row.timestampedFeedback) : [],
+        };
+      }
       return NextResponse.json({
         status: 'completed',
         call: call[0],
-        analysis: analysis[0] || null,
+        analysis,
       });
     }
 
@@ -122,16 +136,30 @@ export async function GET(
       .limit(1);
 
     if (roleplay[0] && roleplay[0].analysisId) {
-      const analysis = await db
+      const analysisRows = await db
         .select()
         .from(callAnalysis)
         .where(eq(callAnalysis.id, roleplay[0].analysisId))
         .limit(1);
-
+      const row = analysisRows[0];
+      let analysis: Record<string, unknown> | null = null;
+      if (row) {
+        const skillScoresRaw = row.skillScores ? JSON.parse(row.skillScores) : null;
+        const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
+        const objections = row.objectionDetails && typeof row.objectionDetails === 'string' ? JSON.parse(row.objectionDetails) : [];
+        analysis = {
+          ...row,
+          categoryScores,
+          objections,
+          skillScores: categoryScores,
+          coachingRecommendations: row.coachingRecommendations ? JSON.parse(row.coachingRecommendations) : [],
+          timestampedFeedback: row.timestampedFeedback ? JSON.parse(row.timestampedFeedback) : [],
+        };
+      }
       return NextResponse.json({
         status: 'completed',
         call: null,
-        analysis: analysis[0] || null,
+        analysis,
       });
     }
 
@@ -145,14 +173,25 @@ export async function GET(
         .limit(1);
 
       if (analysis[0]) {
-        // Analysis complete
+        const row = analysis[0];
+        const skillScoresRaw = row.skillScores ? JSON.parse(row.skillScores) : null;
+        const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
+        const objections = row.objectionDetails && typeof row.objectionDetails === 'string' ? JSON.parse(row.objectionDetails) : [];
+        const analysisForClient = {
+          ...row,
+          categoryScores,
+          objections,
+          skillScores: categoryScores,
+          coachingRecommendations: row.coachingRecommendations ? JSON.parse(row.coachingRecommendations) : [],
+          timestampedFeedback: row.timestampedFeedback ? JSON.parse(row.timestampedFeedback) : [],
+        };
         return NextResponse.json({
           status: 'completed',
           call: {
             ...call[0],
             status: 'completed',
           },
-          analysis: analysis[0],
+          analysis: analysisForClient,
         });
       } else {
         // Still analyzing

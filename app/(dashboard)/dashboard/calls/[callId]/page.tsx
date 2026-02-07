@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toastError, toastSuccess } from '@/lib/toast';
+import { SALES_CATEGORIES, getCategoryLabel } from '@/lib/ai/scoring-framework';
 
 export default function CallDetailPage() {
   const params = useParams();
@@ -60,7 +61,7 @@ export default function CallDetailPage() {
           setEditProspectName(c?.prospectName ?? '');
           setEditCallType(c?.callType === 'follow_up' ? 'follow_up' : 'closing_call');
           setEditResult(c?.result ?? '');
-          setEditQualified(c?.qualified === true);
+          setEditQualified(c?.result === 'unqualified' ? false : (c?.qualified !== false));
           setEditCash(c?.cashCollected != null ? String((c.cashCollected / 100).toFixed(2)) : '');
           setEditRevenue(c?.revenueGenerated != null ? String((c.revenueGenerated / 100).toFixed(2)) : '');
           setEditCommissionRatePct(c?.commissionRatePct != null ? String(c.commissionRatePct) : '');
@@ -276,27 +277,50 @@ export default function CallDetailPage() {
             </CardContent>
           </Card>
 
-          {/* 4 Pillars */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {['value', 'trust', 'fit', 'logistics'].map((pillar) => {
-              const pillarData = analysis[`${pillar}Details`] 
-                ? JSON.parse(analysis[`${pillar}Details`])
-                : { score: 0 };
-              const score = analysis[`${pillar}Score`] || pillarData.score || 0;
-
-              return (
-                <Card key={pillar} className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-serif capitalize">{pillar}</CardTitle>
+          {/* 10 Sales Categories (Sales Call Scoring Framework) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
+            {(analysis.categoryScores && typeof analysis.categoryScores === 'object'
+              ? Object.entries(analysis.categoryScores)
+              : (analysis.skillScores && typeof analysis.skillScores === 'object' && !Array.isArray(analysis.skillScores)
+                ? Object.entries(analysis.skillScores)
+                : SALES_CATEGORIES.map((c) => [c.id, null])
+              )
+            )
+              .filter(([, score]) => typeof score === 'number')
+              .map(([id, score]) => (
+                <Card key={String(id)} className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-xs font-serif">{getCategoryLabel(String(id))}</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-3xl font-bold">{score}</div>
-                    <p className="text-xs text-muted-foreground mt-1">out of 100</p>
+                    <div className="text-2xl font-bold">{Number(score)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">out of 10</p>
                   </CardContent>
                 </Card>
-              );
-            })}
+              ))}
           </div>
+          <p className="text-xs text-muted-foreground">Sales categories defined in Knowledge Doc: Sales Call Scoring Framework.</p>
+
+          {/* Objections (pillar classification) */}
+          {analysis.objections && Array.isArray(analysis.objections) && analysis.objections.length > 0 && (
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+              <CardHeader>
+                <CardTitle className="font-serif">Objections</CardTitle>
+                <CardDescription>Classified by pillar (Value, Trust, Fit, Logistics)</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analysis.objections.map((obj: { objection?: string; pillar?: string; handling?: string }, i: number) => (
+                    <div key={i} className="p-3 rounded-lg border border-white/10 bg-white/5">
+                      <p className="font-medium">{obj.objection ?? '—'}</p>
+                      {obj.pillar && <Badge variant="secondary" className="mt-1 capitalize">{obj.pillar}</Badge>}
+                      {obj.handling && <p className="text-sm text-muted-foreground mt-2">{obj.handling}</p>}
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Coaching Recommendations */}
           {analysis.coachingRecommendations && (
@@ -385,8 +409,7 @@ export default function CallDetailPage() {
                       value={editResult || undefined}
                       onValueChange={(value) => {
                         setEditResult(value);
-                        const qualified = value === 'closed' || value === 'lost' ? true : value === 'unqualified' ? false : editQualified;
-                        setEditQualified(qualified);
+                        setEditQualified(value === 'unqualified' ? false : true);
                       }}
                     >
                       <SelectTrigger id="outcome-result">
@@ -401,15 +424,9 @@ export default function CallDetailPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="flex items-center gap-2 pt-8">
-                    <Checkbox
-                      id="outcome-qualified"
-                      checked={editQualified}
-                      onCheckedChange={(v) => setEditQualified(v === true)}
-                    />
-                    <Label htmlFor="outcome-qualified">Qualified (closed/lost = yes, unqualified = no)</Label>
-                  </div>
+                  <p className="text-xs text-muted-foreground">Qualified if result ≠ Unqualified. Only &quot;Unqualified&quot; marks the call as not qualified.</p>
                 </div>
+                {(editResult === 'closed' || editResult === 'deposit') && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="outcome-cash">Cash collected ($)</Label>
@@ -449,8 +466,9 @@ export default function CallDetailPage() {
                     />
                   </div>
                 </div>
+                )}
                 <div className="space-y-2">
-                  <Label htmlFor="outcome-reason">Reason for outcome</Label>
+                  <Label htmlFor="outcome-reason">Why did the prospect buy or not buy? What objections were raised?</Label>
                   <Textarea
                     id="outcome-reason"
                     placeholder="e.g. Prospect agreed to £3,600 program; 3-month payment plan."

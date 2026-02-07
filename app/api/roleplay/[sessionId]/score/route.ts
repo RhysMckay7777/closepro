@@ -95,23 +95,51 @@ export async function POST(
       );
     }
 
-    // Save analysis to roleplay_analysis (not call_analysis — FK to roleplay_sessions)
+    // Detect conversation stages for completion tracking
+    const stagesCompleted = {
+      opening: messages.length >= 2,
+      discovery: analysisResult.categoryScores?.discovery_and_qualification > 3,
+      offer: analysisResult.categoryScores?.pitch_and_presentation > 3,
+      objections: (analysisResult.objections?.length || 0) > 0,
+      close: analysisResult.categoryScores?.closing_instinct > 3,
+    };
+    const isIncomplete = !stagesCompleted.opening || !stagesCompleted.discovery || !stagesCompleted.offer;
+
+    // Save analysis to roleplay_analysis (10-category framework, same as call analysis)
+    console.log('[Roleplay Score] Storing analysis:', {
+      sessionId,
+      overallScore: analysisResult.overallScore,
+      categoryCount: Object.keys(analysisResult.categoryScores || {}).length,
+      prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore,
+      isIncomplete,
+      stagesCompleted,
+    });
+
     const [analysis] = await db
       .insert(roleplayAnalysis)
       .values({
         roleplaySessionId: sessionId,
         overallScore: analysisResult.overallScore,
-        valueScore: analysisResult.value.score,
-        trustScore: analysisResult.trust.score,
-        fitScore: analysisResult.fit.score,
-        logisticsScore: analysisResult.logistics.score,
-        valueDetails: JSON.stringify(analysisResult.value),
-        trustDetails: JSON.stringify(analysisResult.trust),
-        fitDetails: JSON.stringify(analysisResult.fit),
-        logisticsDetails: JSON.stringify(analysisResult.logistics),
-        skillScores: JSON.stringify(analysisResult.skillScores),
+        // DEPRECATED: 4-pillar scores set to null, use skillScores instead
+        valueScore: null,
+        trustScore: null,
+        fitScore: null,
+        logisticsScore: null,
+        // 10-category skill scores (same framework as call analysis)
+        skillScores: JSON.stringify(analysisResult.categoryScores),
+        // Prospect difficulty (from analysis result)
+        prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
+        prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
+        // Coaching and feedback
         coachingRecommendations: JSON.stringify(analysisResult.coachingRecommendations),
         timestampedFeedback: JSON.stringify(analysisResult.timestampedFeedback),
+        // Completion tracking
+        isIncomplete,
+        stagesCompleted: JSON.stringify(stagesCompleted),
+        // Enhanced feedback (from analysis result if available)
+        categoryFeedback: analysisResult.categoryFeedback ? JSON.stringify(analysisResult.categoryFeedback) : null,
+        priorityFixes: analysisResult.priorityFixes ? JSON.stringify(analysisResult.priorityFixes) : null,
+        objectionAnalysis: analysisResult.objectionAnalysis ? JSON.stringify(analysisResult.objectionAnalysis) : null,
       })
       .returning();
 
@@ -129,7 +157,11 @@ export async function POST(
     return NextResponse.json({
       analysis,
       overallScore: analysisResult.overallScore,
-      message: 'Roleplay scored successfully',
+      isIncomplete,
+      stagesCompleted,
+      message: isIncomplete
+        ? 'Roleplay scored as partial - conversation ended before full sales process was completed'
+        : 'Roleplay scored successfully',
     });
   } catch (error: any) {
     console.error('Error scoring roleplay:', error);
@@ -139,3 +171,4 @@ export async function POST(
     );
   }
 }
+

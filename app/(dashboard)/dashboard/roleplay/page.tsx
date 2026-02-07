@@ -20,6 +20,7 @@ interface RoleplaySession {
   actualDifficultyTier: string | null;
   overallScore: number | null;
   offerName: string;
+  prospectName?: string;
   offerType?: string;
   startedAt: string;
   completedAt: string | null;
@@ -242,9 +243,10 @@ export default function RoleplayPage() {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Offer Name</TableHead>
+                  <TableHead>Prospect Name</TableHead>
                   <TableHead>Offer Type</TableHead>
                   <TableHead>Prospect Difficulty</TableHead>
-                  <TableHead>Score</TableHead>
+                  <TableHead>Overall Score</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -273,6 +275,7 @@ export default function RoleplayPage() {
                         <p className="text-xs text-muted-foreground mt-0.5">{getOfferTypeDescription(session.offerType)}</p>
                       )}
                     </TableCell>
+                    <TableCell>{session.prospectName ?? '—'}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         {getOfferTypeIcon(session.offerType)}

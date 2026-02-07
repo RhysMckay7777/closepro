@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, users, userOrganizations } from '@/db/schema';
+import { salesCalls, paymentPlanInstalments, users, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 /**
- * POST - Log a call manually (updates figures but does NOT add to call history)
+ * POST - Log a call manually (updates figures and creates payment plan instalments if applicable)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +36,10 @@ export async function POST(request: NextRequest) {
       reasonForOutcome,
       commissionRatePct,
       objections,
+      // Payment plan fields
+      paymentType, // 'paid_in_full' | 'payment_plan'
+      numberOfInstalments,
+      monthlyAmount,
     } = body;
 
     if (!offerId || !result || !reasonForOutcome) {
@@ -69,7 +73,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user's organization
+    // Get user's organization and default commission rate
     const user = await db
       .select()
       .from(users)
@@ -90,7 +94,7 @@ export async function POST(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, session.user.id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found' },
@@ -108,10 +112,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Qualified from result: closed/lost → qualified; unqualified → not qualified
-    const qualifiedFromResult = result === 'closed' || result === 'lost' ? true : result === 'unqualified' ? false : (qualified ?? null);
+    // Qualified if result ≠ Unqualified; only "Unqualified" marks the call as not qualified
+    const qualifiedFromResult = result !== 'unqualified';
 
-    await db.insert(salesCalls).values({
+    // Determine effective commission rate (per-call override or user default)
+    const userCommissionPct = (user[0] as any).commissionRatePct ?? null;
+    const effectiveCommissionPct = typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100
+      ? Math.round(commissionRatePct)
+      : userCommissionPct;
+
+    // Insert the call record
+    const [insertedCall] = await db.insert(salesCalls).values({
       organizationId,
       userId: session.user.id,
       fileName: 'manual',
@@ -119,7 +130,7 @@ export async function POST(request: NextRequest) {
       status: 'manual',
       offerId: offerId || null,
       offerType: offerType && validOfferTypes.includes(offerType) ? offerType : null,
-      callType: callType && validCallTypes.includes(callType) ? callType : null,
+      callType: callType && validCallTypes.includes(callType) ? callType : 'closing_call',
       result,
       qualified: qualifiedFromResult,
       prospectName: typeof prospectName === 'string' ? prospectName.trim().slice(0, 500) || null : null,
@@ -128,11 +139,59 @@ export async function POST(request: NextRequest) {
       depositTaken: depositTaken ?? null,
       reasonForOutcome: reasonForOutcome || null,
       callDate,
-      commissionRatePct: typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100 ? Math.round(commissionRatePct) : null,
+      commissionRatePct: effectiveCommissionPct,
+    }).returning();
+
+    console.log('[Manual Call] Created call:', {
+      callId: insertedCall.id,
+      result,
+      cashCollected,
+      revenueGenerated,
+      commissionRatePct: effectiveCommissionPct,
+      paymentType,
     });
+
+    // Create payment plan instalments if applicable
+    if (result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
+      const numInstalments = Number(numberOfInstalments);
+      const monthlyAmountCents = Math.round(Number(monthlyAmount) * 100); // Convert to cents if needed
+
+      if (numInstalments > 0 && monthlyAmountCents > 0) {
+        const instalmentValues = [];
+
+        for (let i = 0; i < numInstalments; i++) {
+          // Calculate due date: first instalment is today/callDate, subsequent ones are monthly
+          const dueDate = new Date(callDate);
+          dueDate.setMonth(dueDate.getMonth() + i);
+
+          // Calculate commission for this instalment
+          const commissionAmount = effectiveCommissionPct
+            ? Math.round(monthlyAmountCents * (effectiveCommissionPct / 100))
+            : null;
+
+          instalmentValues.push({
+            salesCallId: insertedCall.id,
+            dueDate,
+            amountCents: monthlyAmountCents,
+            commissionRatePct: effectiveCommissionPct,
+            commissionAmountCents: commissionAmount,
+          });
+        }
+
+        await db.insert(paymentPlanInstalments).values(instalmentValues);
+
+        console.log('[Manual Call] Created payment plan instalments:', {
+          callId: insertedCall.id,
+          count: numInstalments,
+          monthlyAmountCents,
+          commissionRatePct: effectiveCommissionPct,
+        });
+      }
+    }
 
     return NextResponse.json({
       message: 'Call logged successfully (figures updated)',
+      callId: insertedCall.id,
     }, { status: 201 });
   } catch (error: unknown) {
     console.error('Error logging manual call:', error);
@@ -150,3 +209,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

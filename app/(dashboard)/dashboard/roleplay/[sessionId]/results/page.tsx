@@ -5,9 +5,24 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, TrendingUp, Target, Users, Package } from 'lucide-react';
+import { ArrowLeft, TrendingUp, Target, Users, Package, AlertTriangle, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { StageChips } from '@/components/roleplay/StageChips';
+import { MomentFeedbackList } from '@/components/roleplay/MomentFeedbackList';
+import { ObjectionAnalysis } from '@/components/roleplay/ObjectionAnalysis';
+import { CategoryFeedbackSection } from '@/components/roleplay/CategoryFeedbackSection';
+import { extractMomentFeedback } from '@/lib/roleplayApi';
+import {
+  parseStagesCompleted,
+  parseCategoryFeedback,
+  parsePriorityFixes,
+  parseObjectionAnalysis,
+  type StagesCompleted,
+  type CategoryFeedback,
+  type PriorityFix,
+  type ObjectionAnalysisItem
+} from '@/types/roleplay';
 
 interface Analysis {
   id: string;
@@ -23,6 +38,12 @@ interface Analysis {
   skillScores: string;
   coachingRecommendations: string;
   timestampedFeedback: string;
+  // New fields from Section 6
+  isIncomplete?: boolean;
+  stagesCompleted?: string;
+  categoryFeedback?: string;
+  priorityFixes?: string;
+  objectionAnalysis?: string;
 }
 
 interface Session {
@@ -164,6 +185,14 @@ export default function RoleplayResultsPage() {
     );
   }
 
+  // Parse new Section 6 fields
+  const stagesCompleted: StagesCompleted = parseStagesCompleted(analysis.stagesCompleted);
+  const categoryFeedback: CategoryFeedback = parseCategoryFeedback(analysis.categoryFeedback);
+  const priorityFixes: PriorityFix[] = parsePriorityFixes(analysis.priorityFixes);
+  const objectionItems: ObjectionAnalysisItem[] = parseObjectionAnalysis(analysis.objectionAnalysis);
+  const momentFeedback = extractMomentFeedback(analysis.timestampedFeedback);
+  const isIncomplete = analysis.isIncomplete === true;
+
   const valueDetails = JSON.parse(analysis.valueDetails || '{}');
   const trustDetails = JSON.parse(analysis.trustDetails || '{}');
   const fitDetails = JSON.parse(analysis.fitDetails || '{}');
@@ -179,28 +208,20 @@ export default function RoleplayResultsPage() {
   })();
   const skillScoresList: { categoryName: string; skills: [string, number][] }[] = Array.isArray(rawSkillScores)
     ? rawSkillScores.map((item: { category?: string; subSkills?: Record<string, number> }) => ({
-        categoryName: item.category ?? 'Category',
-        skills: Object.entries(item.subSkills ?? {}),
-      }))
+      categoryName: item.category ?? 'Category',
+      skills: Object.entries(item.subSkills ?? {}),
+    }))
     : typeof rawSkillScores === 'object' && rawSkillScores !== null
       ? Object.entries(rawSkillScores).map(([categoryName, val]) => {
-          const skills =
-            typeof val === 'object' && val !== null && !Array.isArray(val)
-              ? Object.entries(val as Record<string, number>).filter(
-                  ([, s]): s is number => typeof s === 'number'
-                ) as [string, number][]
-              : [];
-          return { categoryName, skills };
-        })
+        const skills =
+          typeof val === 'object' && val !== null && !Array.isArray(val)
+            ? Object.entries(val as Record<string, number>).filter(
+              ([, s]): s is number => typeof s === 'number'
+            ) as [string, number][]
+            : [];
+        return { categoryName, skills };
+      })
       : [];
-  const parsedTimestampedFeedback = (() => {
-    try {
-      const p = JSON.parse(analysis.timestampedFeedback || '[]');
-      return Array.isArray(p) ? p : [];
-    } catch {
-      return [];
-    }
-  })();
 
   // Generate diagnostic insight
   const getDiagnosticInsight = () => {
@@ -246,6 +267,21 @@ export default function RoleplayResultsPage() {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
+
+      {/* Incomplete Warning Banner - Section 6.5 */}
+      {isIncomplete && (
+        <div className="bg-orange-500/10 border border-orange-500/50 rounded-lg p-4 flex items-start gap-3">
+          <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium text-orange-700">Roleplay Incomplete</p>
+            <p className="text-sm text-orange-600">
+              This roleplay ended before a full sales conversation was completed.
+              Score is partial and not comparable to full-call scores.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -281,6 +317,14 @@ export default function RoleplayResultsPage() {
         </div>
       </div>
 
+      {/* Stage Chips - Section 6.5 */}
+      {Object.keys(stagesCompleted).length > 0 && (
+        <Card className="p-4">
+          <h3 className="text-sm font-medium mb-3">Conversation Stages</h3>
+          <StageChips stagesCompleted={stagesCompleted} />
+        </Card>
+      )}
+
       {/* Overall Score */}
       <Card className="p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -293,11 +337,59 @@ export default function RoleplayResultsPage() {
               </p>
             )}
           </div>
-          <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysis.overallScore)}`}>
-            {analysis.overallScore}
+          <div className="flex items-center gap-3">
+            <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysis.overallScore)}`}>
+              {analysis.overallScore}
+            </div>
+            {isIncomplete && (
+              <Badge variant="outline" className="bg-orange-500/20 text-orange-700 border-orange-500/50">
+                Partial
+              </Badge>
+            )}
           </div>
         </div>
       </Card>
+
+      {/* Priority Fixes - Section 6.6 */}
+      {priorityFixes.length > 0 && (
+        <Card className="p-4 sm:p-6">
+          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+            <Wrench className="h-5 w-5" />
+            Priority Fixes
+          </h2>
+          <div className="space-y-4">
+            {priorityFixes.map((fix, index) => (
+              <div key={index} className="border-l-4 border-primary pl-4 py-2">
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant={fix.priority === 1 ? 'destructive' : fix.priority === 2 ? 'default' : 'secondary'}>
+                    Priority #{fix.priority}
+                  </Badge>
+                  <span className="font-medium">{fix.category}</span>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="font-medium text-red-600">What went wrong: </span>
+                    <span>{fix.whatWentWrong}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-orange-600">Why it mattered: </span>
+                    <span>{fix.whyItMattered}</span>
+                  </div>
+                  <div>
+                    <span className="font-medium text-green-600">What to do differently: </span>
+                    <span>{fix.whatToDoDifferently}</span>
+                  </div>
+                  {fix.transcriptSegment && (
+                    <div className="mt-2 p-2 bg-muted rounded text-xs text-muted-foreground">
+                      &quot;{fix.transcriptSegment}&quot;
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Prospect Difficulty Details */}
       {session?.prospectAvatar && (
@@ -368,6 +460,16 @@ export default function RoleplayResultsPage() {
             )}
           </div>
         </Card>
+      )}
+
+      {/* Category Feedback - Section 6.6/6.7 */}
+      {Object.keys(categoryFeedback).length > 0 && (
+        <CategoryFeedbackSection categoryFeedback={categoryFeedback} />
+      )}
+
+      {/* Objection Analysis - Section 6.9 */}
+      {objectionItems.length > 0 && (
+        <ObjectionAnalysis items={objectionItems} />
       )}
 
       {/* Four Pillars */}
@@ -589,60 +691,9 @@ export default function RoleplayResultsPage() {
         </Card>
       )}
 
-      {/* Timestamped Feedback */}
-      {parsedTimestampedFeedback.length > 0 && (
-        <Card className="p-4 sm:p-6">
-          <h2 className="text-xl font-semibold mb-4">Moment-by-Moment Feedback</h2>
-          <div className="space-y-3">
-            {parsedTimestampedFeedback.slice(0, 10).map((feedback: { type?: string; pillar?: string; timestamp?: number; message?: string; transcriptSegment?: string }, i: number) => (
-              <div
-                key={i}
-                className={`border-l-4 pl-4 p-2 rounded-r-lg transition-colors cursor-pointer hover:bg-muted/50 ${feedback.type === 'strength' ? 'border-green-500' :
-                  feedback.type === 'weakness' ? 'border-red-500' :
-                    feedback.type === 'opportunity' ? 'border-blue-500' :
-                      'border-yellow-500'
-                  }`}
-                onClick={() => {
-                  if (feedback.timestamp) {
-                    router.push(`/dashboard/roleplay/${sessionId}?timestamp=${feedback.timestamp}`);
-                  }
-                }}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge
-                    variant={
-                      feedback.type === 'strength' ? 'default' :
-                        feedback.type === 'weakness' ? 'destructive' :
-                          feedback.type === 'opportunity' ? 'secondary' :
-                            'outline'
-                    }
-                  >
-                    {feedback.type}
-                  </Badge>
-                  {feedback.pillar && (
-                    <Badge variant="outline">{feedback.pillar}</Badge>
-                  )}
-                  {feedback.timestamp && (
-                    <Badge variant="outline" className="ml-auto text-xs">
-                      {Math.floor(feedback.timestamp / 1000 / 60)}:{(Math.floor(feedback.timestamp / 1000) % 60).toString().padStart(2, '0')}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-sm font-medium mb-1">{feedback.message}</p>
-                {feedback.transcriptSegment && (
-                  <div className="mt-2 p-2 bg-muted rounded text-xs text-muted-foreground">
-                    &quot;{feedback.transcriptSegment}&quot;
-                  </div>
-                )}
-                {feedback.timestamp && (
-                  <p className="text-xs text-primary mt-2">
-                    Click to jump to this moment • <Link href={`/dashboard/roleplay/new?offerId=${session?.prospectAvatar?.offerId ?? ''}&rerunFrom=${feedback.timestamp}`} className="underline">Rerun from here</Link>
-                  </p>
-                )}
-              </div>
-            ))}
-          </div>
-        </Card>
+      {/* Moment-by-Moment Feedback with Re-Practice - Section 6.8 */}
+      {momentFeedback.length > 0 && (
+        <MomentFeedbackList sessionId={sessionId} items={momentFeedback} />
       )}
 
       {/* Actions */}

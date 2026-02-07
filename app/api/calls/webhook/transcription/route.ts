@@ -82,21 +82,20 @@ export async function POST(request: NextRequest) {
             }
           }
 
-          // Save analysis
+          // Save analysis (10-category framework + prospect difficulty)
           await db
             .insert(callAnalysis)
             .values({
               callId: call.id,
               overallScore: analysisResult.overallScore,
-              valueScore: analysisResult.value.score,
-              trustScore: analysisResult.trust.score,
-              fitScore: analysisResult.fit.score,
-              logisticsScore: analysisResult.logistics.score,
-              valueDetails: JSON.stringify(analysisResult.value),
-              trustDetails: JSON.stringify(analysisResult.trust),
-              fitDetails: JSON.stringify(analysisResult.fit),
-              logisticsDetails: JSON.stringify(analysisResult.logistics),
-              skillScores: JSON.stringify(analysisResult.skillScores),
+              valueScore: null,
+              trustScore: null,
+              fitScore: null,
+              logisticsScore: null,
+              skillScores: JSON.stringify(analysisResult.categoryScores),
+              objectionDetails: JSON.stringify(analysisResult.objections ?? []),
+              prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
+              prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
               coachingRecommendations: JSON.stringify(enhancedRecommendations),
               timestampedFeedback: JSON.stringify(analysisResult.timestampedFeedback),
             });

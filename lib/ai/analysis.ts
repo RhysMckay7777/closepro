@@ -3,6 +3,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
+import { SALES_CATEGORIES, type SalesCategoryId } from './scoring-framework';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -16,6 +17,17 @@ const anthropic = ANTHROPIC_API_KEY
 const groq = GROQ_API_KEY
   ? new Groq({ apiKey: GROQ_API_KEY })
   : null;
+
+/** 10-category score (each 0-10). Keys are SalesCategoryId. */
+export type CategoryScores = Partial<Record<SalesCategoryId, number>>;
+
+/** Single objection with pillar classification (Value, Trust, Fit, Logistics). */
+export interface ObjectionEntry {
+  objection: string;
+  pillar: 'value' | 'trust' | 'fit' | 'logistics';
+  handling?: string;
+  howRepHandled?: string;
+}
 
 export interface SkillScore {
   category: string;
@@ -70,27 +82,73 @@ export interface CallOutcomeSuggestion {
 
 export interface CallAnalysisResult {
   overallScore: number; // 0-100
-  
-  // 4 Pillars
-  value: PillarDetails;
-  trust: PillarDetails;
-  fit: PillarDetails;
-  logistics: PillarDetails;
-  
-  // Skill scores (10 categories, 40+ sub-skills)
+
+  /** 10 category scores (each 0-10). Primary scoring per Sales Call Scoring Framework. */
+  categoryScores: CategoryScores;
+
+  /** Objections with pillar classification only (not primary scores). */
+  objections: ObjectionEntry[];
+
+  /** Legacy: skill scores as array for backward compat; derived from categoryScores when persisting. */
   skillScores: SkillScore[];
-  
+
   // Coaching recommendations
   coachingRecommendations: CoachingRecommendation[];
-  
+
   // Timestamped feedback
   timestampedFeedback: TimestampedFeedback[];
-  
-  // Prospect difficulty assessment (for contextualizing performance)
+
+  // Prospect difficulty assessment (for call list and reporting)
   prospectDifficulty?: ProspectDifficultyAssessment;
-  
+
   // Optional outcome suggestion for sales figures (when analysisIntent is update_figures)
   outcome?: CallOutcomeSuggestion;
+
+  // Completion tracking (for roleplay)
+  stagesCompleted?: {
+    opening: boolean;
+    discovery: boolean;
+    offer: boolean;
+    objections: boolean;
+    close: boolean;
+  };
+  isIncomplete?: boolean;
+
+  // Enhanced feedback (for roleplay results)
+  categoryFeedback?: CategoryFeedback[];
+  priorityFixes?: PriorityFix[];
+  objectionAnalysis?: ObjectionAnalysis[];
+}
+
+/** Per-category feedback for results display */
+export interface CategoryFeedback {
+  category: string;
+  categoryId: string;
+  score: number;
+  whatWasDoneWell: string;
+  whatWasMissing: string;
+  whatToImproveNextTime: string;
+}
+
+/** Priority fix item for actionable improvements */
+export interface PriorityFix {
+  priority: number; // 1-5
+  category: string;
+  whatWentWrong: string;
+  whyItMattered: string;
+  whatToDoDifferently: string;
+  messageIndex?: number;
+  transcriptSegment?: string;
+}
+
+/** Detailed objection analysis */
+export interface ObjectionAnalysis {
+  objection: string;
+  pillar: 'value' | 'trust' | 'fit' | 'logistics';
+  messageIndex?: number;
+  howRepHandled: string;
+  wasHandledWell: boolean;
+  howCouldBeHandledBetter: string;
 }
 
 /**
@@ -104,7 +162,7 @@ export async function analyzeCall(
 ): Promise<CallAnalysisResult> {
   // Build structured prompt with category context
   const prompt = buildAnalysisPrompt(transcript, transcriptJson, offerCategory, customerStage);
-  const systemPrompt = `You are an expert sales coach analyzing sales calls. You evaluate calls across 4 pillars (Value, Trust, Fit, Logistics) and 10 skill categories with 40+ sub-skills. Provide structured, actionable feedback. Always return valid JSON.`;
+  const systemPrompt = `You are an expert sales coach analyzing sales calls. You evaluate calls using the Sales Call Scoring Framework: one overall score (0-100) and 10 category scores (each 0-10). Objections are classified by pillar (Value, Trust, Fit, Logistics) only. Provide structured, actionable feedback. Always return valid JSON.`;
 
   // Try Groq first (cheaper, faster) if enabled, otherwise try Anthropic
   if (USE_GROQ && groq) {
@@ -165,7 +223,7 @@ export async function analyzeCall(
       const text = content.text;
       const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/);
       const jsonText = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : text;
-      
+
       const analysis = JSON.parse(jsonText) as CallAnalysisResult;
       return normalizeAnalysis(analysis, offerCategory, customerStage);
     } catch (error: any) {
@@ -214,7 +272,7 @@ function buildAnalysisPrompt(
   // Import category rules
   const { getCategoryBehaviorRules } = require('./roleplay/offer-intelligence');
   const categoryContext = offerCategory ? getCategoryBehaviorRules(offerCategory, customerStage) : null;
-  
+
   const categoryGuidance = categoryContext ? `
 OFFER CATEGORY CONTEXT:
 Category: ${offerCategory}
@@ -241,25 +299,21 @@ ${transcript.length > 6000 ? transcript.substring(0, 6000) + '\n... (truncated f
 SPEAKER TIMESTAMPS (sample):
 ${JSON.stringify(transcriptJson.utterances.slice(0, 30), null, 2)}${transcriptJson.utterances.length > 30 ? `\n... (${transcriptJson.utterances.length - 30} more utterances)` : ''}
 
-EVALUATION FRAMEWORK:
+EVALUATION FRAMEWORK (Sales Call Scoring – 10 Category Framework):
 
-1. FOUR PILLARS (each scored 0-100):
-   - VALUE: Did the rep effectively communicate value proposition?
-   - TRUST: Did the rep build trust and rapport?
-   - FIT: Did the rep identify if the prospect is a good fit?
-   - LOGISTICS: Did the rep handle logistics, next steps, and closing?
+1. OVERALL SCORE (0-100) and 10 CATEGORY SCORES (each 0-10). Use these exact category IDs:
+   - authority_leadership: Authority & Leadership
+   - structure_framework: Structure & Framework
+   - communication_storytelling: Communication & Storytelling
+   - discovery_diagnosis: Discovery Depth & Diagnosis
+   - gap_urgency: Gap & Urgency
+   - value_offer_positioning: Value & Offer Positioning
+   - trust_safety_ethics: Trust, Safety & Ethics
+   - adaptation_calibration: Adaptation & Calibration
+   - objection_handling: Objection Handling & Preemption
+   - closing_commitment: Closing & Commitment Integrity
 
-2. SKILL CATEGORIES (10 categories, 40+ sub-skills):
-   - Opening & Rapport Building
-   - Discovery & Questioning
-   - Value Communication
-   - Objection Handling
-   - Closing Techniques
-   - Active Listening
-   - Tone & Energy
-   - Pacing & Flow
-   - Follow-up & Next Steps
-   - Professionalism
+2. OBJECTIONS (pillar classification only). For each objection raised: classify as value | trust | fit | logistics; note how rep handled it.
 
 3. PROSPECT DIFFICULTY ASSESSMENT (50-point model):
    Analyze the PROSPECT's difficulty to contextualize the rep's performance:
@@ -299,37 +353,31 @@ EVALUATION FRAMEWORK:
 Return your analysis as JSON in this exact format:
 {
   "overallScore": 75,
-  "value": {
-    "score": 80,
-    "strengths": ["..."],
-    "weaknesses": ["..."],
-    "breakdown": "..."
+  "categoryScores": {
+    "authority_leadership": 7,
+    "structure_framework": 8,
+    "communication_storytelling": 7,
+    "discovery_diagnosis": 6,
+    "gap_urgency": 7,
+    "value_offer_positioning": 8,
+    "trust_safety_ethics": 7,
+    "adaptation_calibration": 6,
+    "objection_handling": 7,
+    "closing_commitment": 8
   },
-  "trust": { ... },
-  "fit": { ... },
-  "logistics": { ... },
-  "skillScores": [
-    {
-      "category": "Opening & Rapport Building",
-      "subSkills": {
-        "Warm greeting": 85,
-        "Personal connection": 70,
-        ...
-      }
-    },
-    ...
+  "objections": [
+    { "objection": "I need to think about it", "pillar": "trust", "handling": "Rep acknowledged and asked what specifically to think about." }
   ],
   "coachingRecommendations": [
     {
       "priority": "high",
-      "category": "Objection Handling",
+      "category": "objection_handling",
       "issue": "...",
       "explanation": "...",
       "timestamp": 120000,
       "transcriptSegment": "...",
       "action": "..."
-    },
-    ...
+    }
   ],
   "timestampedFeedback": [
     {
@@ -338,8 +386,7 @@ Return your analysis as JSON in this exact format:
       "message": "...",
       "transcriptSegment": "...",
       "pillar": "trust"
-    },
-    ...
+    }
   ],
   "prospectDifficulty": {
     "positionProblemAlignment": 7,
@@ -364,15 +411,56 @@ Return your analysis as JSON in this exact format:
 /**
  * Normalize and validate analysis results
  */
-function normalizeAnalysis(analysis: any, offerCategory?: 'b2c_health' | 'b2c_relationships' | 'b2c_wealth' | 'mixed_wealth' | 'b2b_services', customerStage?: 'aspiring' | 'current' | 'mixed'): CallAnalysisResult {
-  // Ensure all scores are 0-100
+function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_relationships' | 'b2c_wealth' | 'mixed_wealth' | 'b2b_services', _customerStage?: 'aspiring' | 'current' | 'mixed'): CallAnalysisResult {
   const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
 
-  // Apply category-specific scoring adjustments if category is provided
-  const { getCategoryBehaviorRules } = require('./roleplay/offer-intelligence');
-  const categoryRules = offerCategory ? getCategoryBehaviorRules(offerCategory, customerStage) : null;
-  
-  // Normalize prospect difficulty if present
+  // 10-category scores (each 0-10)
+  const clamp10 = (n: number) => Math.max(0, Math.min(10, Math.round(n)));
+  const categoryScores: CategoryScores = {};
+  const rawCategoryScores = analysis.categoryScores && typeof analysis.categoryScores === 'object' ? analysis.categoryScores : {};
+  for (const { id } of SALES_CATEGORIES) {
+    const v = rawCategoryScores[id];
+    if (typeof v === 'number') categoryScores[id as SalesCategoryId] = clamp10(v);
+  }
+  if (Object.keys(categoryScores).length === 0 && Array.isArray(analysis.skillScores) && analysis.skillScores.length > 0) {
+    const nameToId: Record<string, SalesCategoryId> = {
+      'Authority & Leadership': 'authority_leadership',
+      'Structure & Framework': 'structure_framework',
+      'Communication & Storytelling': 'communication_storytelling',
+      'Discovery Depth & Diagnosis': 'discovery_diagnosis',
+      'Gap & Urgency': 'gap_urgency',
+      'Value & Offer Positioning': 'value_offer_positioning',
+      'Trust, Safety & Ethics': 'trust_safety_ethics',
+      'Adaptation & Calibration': 'adaptation_calibration',
+      'Objection Handling & Preemption': 'objection_handling',
+      'Closing & Commitment Integrity': 'closing_commitment',
+    };
+    for (const s of analysis.skillScores.slice(0, 10)) {
+      const id = nameToId[s.category];
+      if (id) {
+        const score = typeof s.subSkills === 'object' ? (Object.values(s.subSkills) as number[]).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0) / Math.max(1, Object.keys(s.subSkills).length) : 0;
+        categoryScores[id] = clamp10(score);
+      }
+    }
+  }
+
+  // Objections (pillar classification only)
+  const objections: ObjectionEntry[] = [];
+  if (Array.isArray(analysis.objections)) {
+    for (const o of analysis.objections) {
+      const pillar = o.pillar && ['value', 'trust', 'fit', 'logistics'].includes(o.pillar) ? o.pillar : undefined;
+      if (o.objection && pillar) {
+        objections.push({
+          objection: String(o.objection).slice(0, 500),
+          pillar,
+          handling: o.handling ? String(o.handling).slice(0, 500) : undefined,
+          howRepHandled: o.howRepHandled ? String(o.howRepHandled).slice(0, 500) : undefined,
+        });
+      }
+    }
+  }
+
+  // Prospect difficulty
   let prospectDifficulty: ProspectDifficultyAssessment | undefined;
   if (analysis.prospectDifficulty) {
     const pd = analysis.prospectDifficulty;
@@ -388,36 +476,11 @@ function normalizeAnalysis(analysis: any, offerCategory?: 'b2c_health' | 'b2c_re
     };
   }
 
-  // Normalize pillars with category-specific weights
-  const valuePillar = normalizePillar(analysis.value);
-  const trustPillar = normalizePillar(analysis.trust);
-  const fitPillar = normalizePillar(analysis.fit);
-  const logisticsPillar = normalizePillar(analysis.logistics);
+  const overallScore = clamp(analysis.overallScore || 0);
 
-  // Calculate weighted overall score if category rules exist
-  let overallScore = clamp(analysis.overallScore || 0);
-  if (categoryRules) {
-    const weightedScore = 
-      valuePillar.score * categoryRules.scoringExpectations.valueScoreWeight +
-      trustPillar.score * categoryRules.scoringExpectations.trustScoreWeight +
-      fitPillar.score * categoryRules.scoringExpectations.fitScoreWeight +
-      logisticsPillar.score * categoryRules.scoringExpectations.logisticsScoreWeight;
-    overallScore = clamp(weightedScore);
-  }
+  let coachingRecommendations = Array.isArray(analysis.coachingRecommendations) ? analysis.coachingRecommendations : [];
+  const timestampedFeedback = Array.isArray(analysis.timestampedFeedback) ? analysis.timestampedFeedback : [];
 
-  // Enhance coaching recommendations with category-specific insights
-  let coachingRecommendations = Array.isArray(analysis.coachingRecommendations) 
-    ? analysis.coachingRecommendations 
-    : [];
-  
-  if (categoryRules && coachingRecommendations.length > 0) {
-    coachingRecommendations = coachingRecommendations.map((rec: any) => ({
-      ...rec,
-      explanation: `${rec.explanation} ${categoryRules.insightFocus.length > 0 ? `Consider focusing on: ${categoryRules.insightFocus.join(', ')}.` : ''}`,
-    }));
-  }
-
-  // Normalize optional outcome suggestion (accept camelCase or snake_case from AI)
   const validResults = ['no_show', 'closed', 'lost', 'unqualified', 'deposit'] as const;
   let outcome: CallOutcomeSuggestion | undefined;
   if (analysis.outcome && typeof analysis.outcome === 'object') {
@@ -438,17 +501,18 @@ function normalizeAnalysis(analysis: any, offerCategory?: 'b2c_health' | 'b2c_re
     }
   }
 
+  const skillScores: SkillScore[] = SALES_CATEGORIES.map((c) => ({
+    category: c.label,
+    subSkills: { [c.id]: categoryScores[c.id] ?? 0 },
+  }));
+
   return {
     overallScore,
-    value: valuePillar,
-    trust: trustPillar,
-    fit: fitPillar,
-    logistics: logisticsPillar,
-    skillScores: Array.isArray(analysis.skillScores) ? analysis.skillScores : [],
+    categoryScores,
+    objections,
+    skillScores,
     coachingRecommendations,
-    timestampedFeedback: Array.isArray(analysis.timestampedFeedback)
-      ? analysis.timestampedFeedback
-      : [],
+    timestampedFeedback,
     prospectDifficulty,
     outcome,
   };

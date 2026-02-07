@@ -255,7 +255,7 @@ export const salesCalls = pgTable('sales_calls', {
   transcript: text('transcript'), // Full transcript text
   transcriptJson: text('transcript_json'), // JSON with speaker diarization and timestamps
   metadata: text('metadata'), // JSON string for additional data (deal stage, outcome, etc.)
-  
+
   // Calls system fields
   offerId: uuid('offer_id').references(() => offers.id, { onDelete: 'set null' }),
   offerType: offerCategoryEnum('offer_type'),
@@ -284,30 +284,48 @@ export const callAnalysis = pgTable('call_analysis', {
   id: uuid('id').defaultRandom().primaryKey(),
   callId: uuid('call_id').notNull().references(() => salesCalls.id, { onDelete: 'cascade' }),
   overallScore: integer('overall_score'), // 0-100 overall score
-  
+
   // 4 Pillars (0-100 each)
   valueScore: integer('value_score'),
   trustScore: integer('trust_score'),
   fitScore: integer('fit_score'),
   logisticsScore: integer('logistics_score'),
-  
+
   // Pillar details (JSON)
   valueDetails: text('value_details'), // JSON with breakdown, strengths, weaknesses
   trustDetails: text('trust_details'),
   fitDetails: text('fit_details'),
   logisticsDetails: text('logistics_details'),
-  
-  // Skill scores (10 categories, 40+ sub-skills) - stored as JSON
-  skillScores: text('skill_scores'), // JSON: { category: { subSkill: score } }
-  
+
+  // Skill scores (10 categories) - stored as JSON: { categoryId: score } per agreed framework
+  skillScores: text('skill_scores'), // JSON: { authority_leadership: 7, structure_framework: 8, ... }
+
+  // Objection breakdown (pillar classification only) - JSON array of { objection, pillar, handling }
+  objectionDetails: text('objection_details'),
+
+  // Prospect difficulty (from AI analysis, for call list and reporting)
+  prospectDifficulty: integer('prospect_difficulty'), // 0-50
+  prospectDifficultyTier: text('prospect_difficulty_tier'), // easy | realistic | hard | elite | near_impossible
+
   // AI coaching recommendations
   coachingRecommendations: text('coaching_recommendations'), // JSON array of recommendations
-  
+
   // Timestamped feedback
   timestampedFeedback: text('timestamped_feedback'), // JSON array of { timestamp, type, message, transcriptSegment }
-  
+
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// Payment plan instalments (future cash/commission events for figures)
+export const paymentPlanInstalments = pgTable('payment_plan_instalments', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  salesCallId: uuid('sales_call_id').notNull().references(() => salesCalls.id, { onDelete: 'cascade' }),
+  dueDate: timestamp('due_date').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  commissionRatePct: integer('commission_rate_pct'), // 0-100, from deal or user default
+  commissionAmountCents: integer('commission_amount_cents'), // computed or stored
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
 // Offers table (Layer 1: Offer Intelligence)
@@ -324,11 +342,11 @@ export const offers = pgTable('offers', {
   supportChannels: text('support_channels'), // JSON array
   touchpointsFrequency: text('touchpoints_frequency'),
   implementationResponsibility: text('implementation_responsibility'), // 'prospect_heavy', 'provider_heavy', 'balanced'
-  
+
   // Updated fields
   coreOfferPrice: text('core_offer_price'), // Single price (replaces priceRange)
   priceRange: text('price_range'), // Keep for backward compatibility, will be migrated
-  
+
   // New fields per spec
   customerStage: customerStageEnum('customer_stage'), // 'aspiring', 'current', 'mixed'
   coreProblems: text('core_problems'), // Free text (replaces primaryProblemsSolved structure)
@@ -343,7 +361,7 @@ export const offers = pgTable('offers', {
   guaranteesRefundTerms: text('guarantees_refund_terms'), // Free text
   primaryFunnelSource: primaryFunnelSourceEnum('primary_funnel_source'), // Enum
   funnelContextAdditional: text('funnel_context_additional'), // Additional context
-  
+
   // Legacy fields (keep for backward compatibility)
   timeToResult: text('time_to_result'),
   effortRequired: text('effort_required'), // 'low', 'medium', 'high'
@@ -358,7 +376,7 @@ export const offers = pgTable('offers', {
   disqualifiers: text('disqualifiers'), // JSON array
   softDisqualifiers: text('soft_disqualifiers'), // JSON array
   bestFitNotes: text('best_fit_notes'),
-  
+
   isTemplate: boolean('is_template').notNull().default(false), // Practice templates
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -374,7 +392,7 @@ export const prospectAvatars = pgTable('prospect_avatars', {
   name: text('name').notNull(), // Avatar name/description
   sourceType: text('source_type').notNull().default('manual'), // 'manual', 'transcript_derived', 'auto_generated'
   sourceTranscriptId: uuid('source_transcript_id').references(() => salesCalls.id, { onDelete: 'set null' }),
-  
+
   // 50-Point Difficulty Model (Layer 2)
   // Layer A: Persuasion Difficulty (40 points)
   positionProblemAlignment: integer('position_problem_alignment').notNull(), // 0-10
@@ -387,7 +405,7 @@ export const prospectAvatars = pgTable('prospect_avatars', {
   // Calculated totals
   difficultyIndex: integer('difficulty_index').notNull(), // 0-50 (calculated: Layer A + Layer B)
   difficultyTier: text('difficulty_tier').notNull(), // 'easy', 'realistic', 'hard', 'elite', 'near_impossible'
-  
+
   // Prospect Profile Details
   avatarUrl: text('avatar_url'), // Optional: NanoBanana or other human-style portrait URL
   positionDescription: text('position_description'), // Current situation
@@ -397,7 +415,7 @@ export const prospectAvatars = pgTable('prospect_avatars', {
   ambitionDrivers: text('ambition_drivers'), // JSON array
   resistanceStyle: text('resistance_style'), // JSON: objection patterns, tone, etc.
   behaviouralBaseline: text('behavioural_baseline'), // JSON: how they typically respond
-  
+
   isTemplate: boolean('is_template').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -409,28 +427,28 @@ export const roleplaySessions = pgTable('roleplay_sessions', {
   id: uuid('id').defaultRandom().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  
+
   // Session Configuration
   mode: text('mode').notNull().default('manual'), // 'manual', 'transcript_replay'
   offerId: uuid('offer_id').notNull().references(() => offers.id, { onDelete: 'restrict' }),
   prospectAvatarId: uuid('prospect_avatar_id').references(() => prospectAvatars.id, { onDelete: 'set null' }),
   selectedDifficulty: text('selected_difficulty'), // 'easy', 'intermediate', 'hard', 'expert' (user selection)
   actualDifficultyTier: text('actual_difficulty_tier'), // Calculated from avatar
-  
+
   // Transcript Replay Mode
   sourceCallId: uuid('source_call_id').references(() => salesCalls.id, { onDelete: 'set null' }), // If replaying a call
-  
+
   // Session State
   status: text('status').notNull().default('in_progress'), // 'in_progress', 'completed', 'abandoned'
   inputMode: text('input_mode').notNull().default('text'), // 'text', 'voice'
-  
+
   // Scoring (set after completion)
   overallScore: integer('overall_score'), // 0-100
   analysisId: uuid('analysis_id'), // References roleplay_analysis.id (FK applied via migration to avoid circular def)
-  
+
   // Metadata
   metadata: text('metadata'), // JSON for additional data
-  
+
   startedAt: timestamp('started_at').notNull().defaultNow(),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -450,29 +468,51 @@ export const roleplayMessages = pgTable('roleplay_messages', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
-// Roleplay analysis table (4 pillars + overall score) — for AI roleplay sessions only
+// Roleplay analysis table — for AI roleplay sessions only
+// Uses the same 10-category scoring framework as call_analysis via skillScores JSON
 export const roleplayAnalysis = pgTable('roleplay_analysis', {
   id: uuid('id').defaultRandom().primaryKey(),
   roleplaySessionId: uuid('roleplay_session_id').notNull().references(() => roleplaySessions.id, { onDelete: 'cascade' }),
   overallScore: integer('overall_score'), // 0-100
-  
-  valueScore: integer('value_score'),
-  trustScore: integer('trust_score'),
-  fitScore: integer('fit_score'),
-  logisticsScore: integer('logistics_score'),
-  
-  valueDetails: text('value_details'),
-  trustDetails: text('trust_details'),
-  fitDetails: text('fit_details'),
-  logisticsDetails: text('logistics_details'),
-  
+
+  // DEPRECATED: 4-pillar scoring replaced by 10-category framework in skillScores
+  // Kept for backwards compatibility only — do not use for new features
+  valueScore: integer('value_score'), // @deprecated - use skillScores
+  trustScore: integer('trust_score'), // @deprecated - use skillScores
+  fitScore: integer('fit_score'), // @deprecated - use skillScores
+  logisticsScore: integer('logistics_score'), // @deprecated - use skillScores
+
+  // DEPRECATED: pillar details replaced by coaching recommendations
+  valueDetails: text('value_details'), // @deprecated
+  trustDetails: text('trust_details'), // @deprecated
+  fitDetails: text('fit_details'), // @deprecated
+  logisticsDetails: text('logistics_details'), // @deprecated
+
+  // 10-category skill scores (JSON: { category_id: score 0-10 })
+  // Uses SALES_CATEGORIES from lib/ai/scoring-framework.ts
   skillScores: text('skill_scores'),
+
+  // Prospect difficulty assessment (replicates call_analysis fields)
+  prospectDifficulty: integer('prospect_difficulty'), // 0-50 total difficulty index
+  prospectDifficultyTier: text('prospect_difficulty_tier'), // 'easy' | 'realistic' | 'hard' | 'elite'
+
+  // Coaching and timestamped feedback
   coachingRecommendations: text('coaching_recommendations'),
   timestampedFeedback: text('timestamped_feedback'),
-  
+
+  // Completion tracking
+  isIncomplete: boolean('is_incomplete').default(false), // True if roleplay ended before full conversation
+  stagesCompleted: text('stages_completed'), // JSON: { opening, discovery, offer, objections, close: boolean }
+
+  // Enhanced feedback (JSON columns)
+  categoryFeedback: text('category_feedback'), // JSON: per-category what-was-done-well/missing/improve
+  priorityFixes: text('priority_fixes'), // JSON: 3-5 priority items with whatWentWrong/whyItMattered/whatToDo
+  objectionAnalysis: text('objection_analysis'), // JSON: detailed objection handling evaluation
+
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
+
 
 // Relations for new tables
 export const salesCallsRelations = relations(salesCalls, ({ one, many }) => ({
@@ -495,6 +535,14 @@ export const salesCallsRelations = relations(salesCalls, ({ one, many }) => ({
   analysis: one(callAnalysis, {
     fields: [salesCalls.id],
     references: [callAnalysis.callId],
+  }),
+  paymentPlanInstalments: many(paymentPlanInstalments),
+}));
+
+export const paymentPlanInstalmentsRelations = relations(paymentPlanInstalments, ({ one }) => ({
+  salesCall: one(salesCalls, {
+    fields: [paymentPlanInstalments.salesCallId],
+    references: [salesCalls.id],
   }),
 }));
 
@@ -585,6 +633,8 @@ export type SalesCall = typeof salesCalls.$inferSelect;
 export type NewSalesCall = typeof salesCalls.$inferInsert;
 export type CallAnalysis = typeof callAnalysis.$inferSelect;
 export type NewCallAnalysis = typeof callAnalysis.$inferInsert;
+export type PaymentPlanInstalment = typeof paymentPlanInstalments.$inferSelect;
+export type NewPaymentPlanInstalment = typeof paymentPlanInstalments.$inferInsert;
 export type Offer = typeof offers.$inferSelect;
 export type NewOffer = typeof offers.$inferInsert;
 export type ProspectAvatar = typeof prospectAvatars.$inferSelect;

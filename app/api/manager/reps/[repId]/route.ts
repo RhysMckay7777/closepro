@@ -65,7 +65,13 @@ export async function GET(
       )
       .limit(1);
 
-    const organizationId = userOrg[0]?.organizationId || user[0].organizationId;
+    const organizationId = userOrg[0]?.organizationId ?? user[0].organizationId ?? null;
+    if (organizationId == null) {
+      return NextResponse.json(
+        { error: 'No organization context' },
+        { status: 403 }
+      );
+    }
 
     const repOrg = await db
       .select()

@@ -18,6 +18,7 @@ interface Call {
   id: string;
   date: string;
   offerName: string;
+  prospectName?: string;
   offerType: string;
   callType: string;
   result: string;
@@ -42,16 +43,17 @@ export default function CallsPage() {
     fetchCalls();
   }, []);
 
-    const fetchCalls = async () => {
-      try {
-        const response = await fetch('/api/calls');
-        if (response.ok) {
-          const data = await response.json();
+  const fetchCalls = async () => {
+    try {
+      const response = await fetch('/api/calls');
+      if (response.ok) {
+        const data = await response.json();
         // Transform the data to match our Call interface
         const transformedCalls = (data.calls || []).map((call: any) => ({
           id: call.id,
           date: call.createdAt || call.date,
           offerName: call.offerName || 'Unknown Offer',
+          prospectName: call.prospectName,
           offerType: call.offerType || 'Unknown',
           callType: call.callType || 'closing_call',
           result: call.result || 'unknown',
@@ -61,10 +63,10 @@ export default function CallsPage() {
           createdAt: call.createdAt,
         }));
         setCalls(transformedCalls);
-        }
-      } catch (err) {
-        console.error('Error fetching calls:', err);
-      } finally {
+      }
+    } catch (err) {
+      console.error('Error fetching calls:', err);
+    } finally {
       setLoading(false);
     }
   };
@@ -209,36 +211,36 @@ export default function CallsPage() {
           <div className="hidden sm:block shrink-0 w-14 h-14 text-muted-foreground/70">
             <EmptyCallsIllustration className="w-full h-full" />
           </div>
-      <div>
+          <div>
             <h1 className="text-2xl sm:text-3xl font-bold">Calls</h1>
             <p className="text-sm sm:text-base text-muted-foreground mt-1">
               View and manage your sales call history
-                  </p>
-                </div>
-              </div>
+            </p>
+          </div>
+        </div>
         <Link href="/dashboard/calls/new">
           <Button>
             <Plus className="h-4 w-4 mr-2" />
             Add New Call
-              </Button>
+          </Button>
         </Link>
-          </div>
+      </div>
 
-          {/* Filters */}
+      {/* Filters */}
       <Card className="p-4">
         <div className="flex flex-col sm:flex-row gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search calls..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search calls..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9"
+            />
+          </div>
           <Select value={offerTypeFilter} onValueChange={setOfferTypeFilter}>
-                <SelectTrigger className="w-full sm:w-[180px]">
-                  <Filter className="h-4 w-4 mr-2" />
+            <SelectTrigger className="w-full sm:w-[180px]">
+              <Filter className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Offer Type" />
             </SelectTrigger>
             <SelectContent>
@@ -277,26 +279,26 @@ export default function CallsPage() {
           <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Difficulty" />
-                </SelectTrigger>
-                <SelectContent>
+            </SelectTrigger>
+            <SelectContent>
               <SelectItem value="all">All Difficulties</SelectItem>
               <SelectItem value="easy">Easy</SelectItem>
               <SelectItem value="realistic">Realistic</SelectItem>
               <SelectItem value="hard">Hard</SelectItem>
               <SelectItem value="elite">Elite</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            </SelectContent>
+          </Select>
+        </div>
       </Card>
 
       {/* Call History Table */}
       {loading ? (
         <Card className="p-12">
           <div className="flex items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            </div>
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+          </div>
         </Card>
-          ) : filteredCalls.length === 0 ? (
+      ) : filteredCalls.length === 0 ? (
         <Card className="p-8 sm:p-12">
           <Empty>
             <EmptyHeader>
@@ -319,18 +321,18 @@ export default function CallsPage() {
                   </Button>
                 </Link>
               ) : (
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setSearchQuery('');
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchQuery('');
                     setOfferTypeFilter('all');
                     setCallTypeFilter('all');
                     setResultFilter('all');
                     setDifficultyFilter('all');
-                }}
-              >
-                Clear Filters
-              </Button>
+                  }}
+                >
+                  Clear Filters
+                </Button>
               )}
             </EmptyContent>
           </Empty>
@@ -343,9 +345,9 @@ export default function CallsPage() {
                 <TableRow>
                   <TableHead>Date</TableHead>
                   <TableHead>Offer Name</TableHead>
+                  <TableHead>Prospect Name</TableHead>
                   <TableHead>Offer Type</TableHead>
-                  <TableHead>Call Type</TableHead>
-                  <TableHead>Result</TableHead>
+                  <TableHead>Call Result</TableHead>
                   <TableHead>Prospect Difficulty</TableHead>
                   <TableHead>Overall Score</TableHead>
                 </TableRow>
@@ -369,15 +371,15 @@ export default function CallsPage() {
                               <ChevronRight className="h-4 w-4" />
                             )}
                             {monthData.label} ({monthData.calls.length} call{monthData.calls.length !== 1 ? 's' : ''})
-              </div>
+                          </div>
                         </TableCell>
                       </TableRow>
                       {isExpanded && monthData.calls.map((call) => (
                         <TableRow
-                    key={call.id}
+                          key={call.id}
                           className="cursor-pointer hover:bg-accent/50"
-                      onClick={() => router.push(`/dashboard/calls/${call.id}`)}
-                    >
+                          onClick={() => router.push(`/dashboard/calls/${call.id}`)}
+                        >
                           <TableCell>
                             {new Date(call.date).toLocaleDateString('en-US', {
                               month: 'short',
@@ -386,10 +388,10 @@ export default function CallsPage() {
                             })}
                           </TableCell>
                           <TableCell className="font-medium">{call.offerName}</TableCell>
+                          <TableCell className="text-muted-foreground">{call.prospectName ?? '—'}</TableCell>
                           <TableCell>
                             <Badge variant="outline">{getOfferTypeLabel(call.offerType)}</Badge>
                           </TableCell>
-                          <TableCell>{getCallTypeLabel(call.callType)}</TableCell>
                           <TableCell>
                             <Badge variant={getResultBadgeVariant(call.result)}>
                               {getResultLabel(call.result)}
@@ -418,9 +420,9 @@ export default function CallsPage() {
                 })}
               </TableBody>
             </Table>
-              </div>
+          </div>
         </Card>
-          )}
+      )}
     </div>
   );
 }
