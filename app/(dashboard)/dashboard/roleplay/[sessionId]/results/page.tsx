@@ -223,9 +223,9 @@ export default function RoleplayResultsPage() {
       ? Object.entries(rawSkillScores).map(([categoryName, val]) => {
         const skills =
           typeof val === 'object' && val !== null && !Array.isArray(val)
-            ? Object.entries(val as Record<string, number>).filter(
-              ([, s]): s is number => typeof s === 'number'
-            ) as [string, number][]
+            ? (Object.entries(val as Record<string, number>).filter(
+              (entry) => typeof entry[1] === 'number'
+            ) as [string, number][])
             : [];
         return { categoryName, skills };
       })
