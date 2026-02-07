@@ -24,7 +24,7 @@ export const seo = {
     'close rate',
     'sales roleplay',
     'sales analytics',
-  ],
+  ] as string[],
   twitterHandle: '', // e.g. @closepro
   ogImagePath: '/og.png', // optional: add og.png to public/
 } as const;
