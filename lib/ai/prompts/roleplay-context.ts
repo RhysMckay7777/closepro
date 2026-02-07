@@ -5,6 +5,8 @@
  * Centralizes knowledge from Connor's framework docs for easy extension.
  */
 
+import { getCondensedExamples, getObjectionExamples, getOpeningExamples } from '../knowledge/real-call-examples';
+
 /**
  * 10-Category Sales Framework Summary
  * Used in analysis and roleplay prompts
@@ -46,11 +48,11 @@ export const PROSPECT_DIFFICULTY_CONTEXT = `
 - **Execution Resistance** (0-10): Ability to proceed if convinced (money, time, authority)
 
 ### Difficulty Tiers
-- **Easy** (0-15): Warm, motivated, minimal objections
-- **Realistic** (16-25): Normal skepticism, reasonable objections
-- **Hard** (26-35): Skeptical, multiple objections, needs proof
-- **Elite** (36-45): High authority, sophisticated objections, little patience
-- **Near Impossible** (46-50): Hostile, severe blockers, unlikely to close
+- **Easy** (42-50): Warm, motivated, minimal objections
+- **Realistic** (36-41): Normal skepticism, reasonable objections
+- **Hard** (30-35): Skeptical, multiple objections, needs proof
+- **Elite** (25-29): High authority, sophisticated objections, little patience
+- **Near Impossible** (<25): Hostile, severe blockers, unlikely to close
 `;
 
 /**
@@ -75,6 +77,23 @@ This is a high-ticket sales environment ($3,000-$50,000+ programs). Key characte
 - **Trust**: "How do I know you can help me?"
 - **Fit**: "Will this work for my specific situation?"
 - **Logistics**: "I don't have time/money/need to talk to spouse"
+`;
+
+/**
+ * Real Call Examples - Training Data
+ * Extracted from actual high-ticket sales calls
+ */
+export const REAL_CALL_EXAMPLES_CONTEXT = `
+## Real Call Examples (Training Data)
+
+The following are extracted from real high-ticket sales calls.
+Use these to understand:
+- How real prospects speak and behave
+- What realistic objections sound like
+- How experienced closers handle different situations
+- What natural conversation flow looks like
+
+${getCondensedExamples(3)}
 `;
 
 /**
@@ -117,9 +136,23 @@ ${SALES_FRAMEWORK_CONTEXT}
 
 ${HIGH_TICKET_CONTEXT}
 
+${REAL_CALL_EXAMPLES_CONTEXT}
+
 When analyzing this conversation, evaluate the rep's performance against these frameworks.
 Provide specific, actionable feedback referencing exact moments in the transcript.
 Avoid vague advice like "build more rapport" - instead identify specific behaviors.
+
+### What Good Looks Like (From Real Calls)
+- Discovery questions that dig into specifics, not surface-level
+- Objection handling that explores before answering
+- Closing attempts that feel like natural next steps
+- Rapport building through genuine curiosity, not scripts
+
+### What Bad Looks Like
+- Rushing to pitch before understanding pain
+- Accepting "I need to think about it" without exploring
+- Feature-dumping instead of asking questions
+- Losing control to prospect tangents
 `;
 
 /**
@@ -131,12 +164,27 @@ ${PROSPECT_DIFFICULTY_CONTEXT}
 
 ${REALISTIC_PROSPECT_BEHAVIOR}
 
+${REAL_CALL_EXAMPLES_CONTEXT}
+
 You are a realistic prospect in a high-ticket sales roleplay. Your behavior should:
 1. Match real prospects from the transcripts, not scripted bots
 2. Adapt naturally based on the rep's performance
 3. Raise genuine objections at appropriate moments
 4. Never give coaching advice - just act as the prospect
 5. Show hesitation, ask follow-ups, challenge claims like a real person would
+
+### Opening Lines (Match These Patterns)
+${getOpeningExamples().slice(0, 3).map(o =>
+    `- [${o.context}]: "${o.prospectBehavior}"`
+).join('\n')}
+
+### Objection Patterns (Use These Styles)
+${(() => {
+        const objections = getObjectionExamples();
+        return Object.entries(objections).map(([type, objs]) =>
+            objs.slice(0, 1).map(o => `- [${type}]: "${o.objection}"`).join('\n')
+        ).join('\n');
+    })()}
 `;
 
 /**
@@ -174,3 +222,4 @@ Avoid generic advice. Be specific to this conversation and this offer type.
 Example BAD: "Build more rapport"
 Example GOOD: "When the prospect mentioned their failed attempt at [X], you moved to the pitch instead of exploring the emotional impact. Ask: 'How did that failure affect your confidence in trying again?'"
 `;
+
