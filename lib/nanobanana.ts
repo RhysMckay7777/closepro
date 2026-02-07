@@ -248,26 +248,52 @@ async function generateImageDev(options: GenerateImageOptions): Promise<Generate
 }
 
 /**
- * Build a prompt for a realistic human headshot (not stiff corporate).
+ * Build a prompt for a realistic human headshot photo.
+ * IMPORTANT: Explicitly prevents cartoon/avatar/illustration styles.
  * Optional context (e.g. position/role) adds variety and alignment with the prospect.
  */
 export function buildProspectAvatarPrompt(
   name?: string,
   context?: string | null
 ): string {
-  const base =
-    'Photorealistic headshot portrait, natural lighting, realistic skin and expression, ' +
-    'approachable and diverse, head and shoulders, neutral or soft background, ' +
-    'high quality photo, professional but natural, not stiff or corporate';
+  // Strong emphasis on REAL human photo, not cartoon/avatar/illustration
+  const base = [
+    'Professional headshot photograph of a real human person',
+    'ultra-realistic photo style',
+    'natural lighting',
+    'genuine facial features with realistic skin texture and details',
+    'authentic human expression',
+    'head and shoulders framing',
+    'soft neutral or blurred background',
+    'high resolution photograph',
+    'NOT a cartoon',
+    'NOT an avatar',
+    'NOT an illustration',
+    'NOT CGI or 3D render',
+    'NOT anime or anime-style',
+    'real photography only'
+  ].join(', ');
+
   const parts = [base];
+
+  // Add demographic hints from name if provided
   if (name?.trim()) {
-    parts.push(`person named ${name.trim()}`);
+    // Don't include actual name in prompt, just use for variety
+    const seed = name.toLowerCase();
+    // Add some random demographic variation based on name hash
+    const hash = seed.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    const ages = ['late 20s', 'early 30s', 'mid 30s', 'early 40s', 'mid 40s'];
+    const age = ages[hash % ages.length];
+    parts.push(`${age} professional`);
   }
+
+  // Add context for more specific character
   if (context?.trim()) {
-    const safe = context.trim().slice(0, 80).replace(/[^\w\s,.-]/g, '');
+    const safe = context.trim().slice(0, 100).replace(/[^\w\s,.-]/g, '');
     if (safe) {
-      parts.push(`person who could be ${safe}`);
+      parts.push(`who works in or could be described as: ${safe}`);
     }
   }
+
   return parts.join(', ');
 }

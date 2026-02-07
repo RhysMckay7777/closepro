@@ -1,11 +1,13 @@
 /**
  * Deterministic avatar URL for prospects (no DB field required).
- * Uses DiceBear avataaars with prospect id/name as seed for stable, unique images.
+ * Uses DiceBear 'notionists' style for a more professional look.
+ * Falls back to this only when NanoBanana human portrait not available.
  */
 export function getProspectAvatarUrl(prospectId: string, name?: string): string {
   const seed = name ? `${prospectId}-${name}` : prospectId;
   const encoded = encodeURIComponent(seed);
-  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encoded}&size=128`;
+  // Use notionists style for professional, non-cartoon appearance
+  return `https://api.dicebear.com/7.x/notionists/svg?seed=${encoded}&size=128&backgroundColor=b6e3f4,c0aede,d1d4f9`;
 }
 
 /**

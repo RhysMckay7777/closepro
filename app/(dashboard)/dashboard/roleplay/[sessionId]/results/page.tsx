@@ -193,19 +193,27 @@ export default function RoleplayResultsPage() {
   const momentFeedback = extractMomentFeedback(analysis.timestampedFeedback);
   const isIncomplete = analysis.isIncomplete === true;
 
-  const valueDetails = JSON.parse(analysis.valueDetails || '{}');
-  const trustDetails = JSON.parse(analysis.trustDetails || '{}');
-  const fitDetails = JSON.parse(analysis.fitDetails || '{}');
-  const logisticsDetails = JSON.parse(analysis.logisticsDetails || '{}');
-  const recommendations = JSON.parse(analysis.coachingRecommendations || '[]');
-  // skillScores can be array (e.g. [{ category, subSkills }]) or object; normalize to list of { categoryName, skills: [name, score][] }
-  const rawSkillScores = (() => {
-    try {
-      return JSON.parse(analysis.skillScores || '[]');
-    } catch {
-      return [];
+  // Safe parse helper - handles both string and already-parsed object responses
+  const safeParse = (val: unknown, fallback: unknown = {}) => {
+    if (val === null || val === undefined) return fallback;
+    if (typeof val === 'object') return val; // Already parsed
+    if (typeof val === 'string') {
+      try {
+        return JSON.parse(val);
+      } catch {
+        return fallback;
+      }
     }
-  })();
+    return fallback;
+  };
+
+  const valueDetails = safeParse(analysis.valueDetails, {});
+  const trustDetails = safeParse(analysis.trustDetails, {});
+  const fitDetails = safeParse(analysis.fitDetails, {});
+  const logisticsDetails = safeParse(analysis.logisticsDetails, {});
+  const recommendations = safeParse(analysis.coachingRecommendations, []);
+  // skillScores can be array (e.g. [{ category, subSkills }]) or object; normalize to list of { categoryName, skills: [name, score][] }
+  const rawSkillScores = safeParse(analysis.skillScores, []);
   const skillScoresList: { categoryName: string; skills: [string, number][] }[] = Array.isArray(rawSkillScores)
     ? rawSkillScores.map((item: { category?: string; subSkills?: Record<string, number> }) => ({
       categoryName: item.category ?? 'Category',
