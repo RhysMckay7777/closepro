@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -61,6 +61,8 @@ export default function FiguresPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [figures, setFigures] = useState<FiguresData | null>(null);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const commissionTableRef = useRef<HTMLDivElement>(null);
 
   const fetchFigures = useCallback(async () => {
     const monthParam = toMonthParam(month, year);
@@ -311,7 +313,7 @@ export default function FiguresPage() {
                 <p className="text-xs text-muted-foreground">Your default commission % (set in profile if available)</p>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">{figures.commissionRatePct != null ? `${figures.commissionRatePct}%` : '—'}</p>
+                <p className="text-3xl font-bold">{figures.commissionRatePct != null ? `${figures.commissionRatePct}%` : '0%'}</p>
               </CardContent>
             </Card>
             <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
@@ -327,7 +329,7 @@ export default function FiguresPage() {
 
           {/* Commission table: Date, Offer, Prospect Name, Cash Collected, Revenue, Commission %, Commission Amount – exportable as PDF */}
           {figures.salesList && figures.salesList.length > 0 && (
-            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl" id="commission-table">
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl" id="commission-table" ref={commissionTableRef}>
               <CardHeader className="pb-2 flex flex-row items-center justify-between gap-4">
                 <div>
                   <CardTitle className="text-sm font-semibold">Total Commission (Month)</CardTitle>
@@ -336,51 +338,27 @@ export default function FiguresPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
-                    const printWindow = window.open('', '_blank');
-                    if (!printWindow) return;
-                    const monthLabel = MONTHS[Number(month) - 1];
-                    const html = `
-                      <!DOCTYPE html>
-                      <html>
-                        <head><title>Commission - ${monthLabel} ${year}</title></head>
-                        <body style="font-family: system-ui; padding: 24px;">
-                          <h1>Total Commission (Month) – ${monthLabel} ${year}</h1>
-                          <table style="width:100%; border-collapse: collapse; margin-top: 16px;">
-                            <thead>
-                              <tr style="border-bottom: 2px solid #333;">
-                                <th style="text-align:left; padding: 8px;">Date</th>
-                                <th style="text-align:left; padding: 8px;">Offer</th>
-                                <th style="text-align:left; padding: 8px;">Prospect Name</th>
-                                <th style="text-align:right; padding: 8px;">Cash Collected</th>
-                                <th style="text-align:right; padding: 8px;">Revenue</th>
-                                <th style="text-align:right; padding: 8px;">Commission %</th>
-                                <th style="text-align:right; padding: 8px;">Commission Amount</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              ${(figures.salesList ?? []).map((row) => `
-                                <tr style="border-bottom: 1px solid #ddd;">
-                                  <td style="padding: 8px;">${row.date}</td>
-                                  <td style="padding: 8px;">${row.offerName}</td>
-                                  <td style="padding: 8px;">${row.prospectName || '—'}</td>
-                                  <td style="text-align:right; padding: 8px;">$${(row.cashCollected / 100).toLocaleString()}</td>
-                                  <td style="text-align:right; padding: 8px;">$${(row.revenueGenerated / 100).toLocaleString()}</td>
-                                  <td style="text-align:right; padding: 8px;">${row.commissionPct}%</td>
-                                  <td style="text-align:right; padding: 8px;">$${(row.commissionAmount / 100).toLocaleString()}</td>
-                                </tr>
-                              `).join('')}
-                            </tbody>
-                          </table>
-                        </body>
-                      </html>
-                    `;
-                    printWindow.document.write(html);
-                    printWindow.document.close();
-                    setTimeout(() => { printWindow.print(); printWindow.onafterprint = () => printWindow.close(); }, 250);
+                  disabled={exportingPdf}
+                  onClick={async () => {
+                    if (!commissionTableRef.current) return;
+                    setExportingPdf(true);
+                    try {
+                      const html2canvas = (await import('html2canvas')).default;
+                      const { jsPDF } = await import('jspdf');
+                      const canvas = await html2canvas(commissionTableRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                      const imgData = canvas.toDataURL('image/png');
+                      const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] });
+                      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+                      const monthLabel = MONTHS[Number(month) - 1];
+                      pdf.save(`Commission_${monthLabel}_${year}.pdf`);
+                    } catch (err) {
+                      console.error('PDF export error', err);
+                    } finally {
+                      setExportingPdf(false);
+                    }
                   }}
                 >
-                  <FileDown className="h-4 w-4 mr-2" />
+                  {exportingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}
                   Export PDF
                 </Button>
               </CardHeader>

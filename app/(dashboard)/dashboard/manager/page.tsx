@@ -164,7 +164,7 @@ export default function ManagerDashboardPage() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Average value communication score
+              Average value & offer positioning score
             </p>
           </Card>
 
@@ -179,7 +179,7 @@ export default function ManagerDashboardPage() {
               </span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Average trust building score
+              Average trust, safety & ethics score
             </p>
           </Card>
 

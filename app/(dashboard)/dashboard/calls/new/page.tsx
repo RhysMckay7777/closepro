@@ -69,6 +69,7 @@ export default function NewCallPage() {
     paymentType: 'paid_in_full' as 'paid_in_full' | 'payment_plan',
     numberOfInstalments: '',
     monthlyAmount: '',
+    nextFollowUpDate: '',
   });
 
   // Upload & Analyse (merged: transcript text, transcript file, or audio file)
@@ -828,6 +829,18 @@ export default function NewCallPage() {
                     required
                   />
                 </div>
+
+                {followUpForm.outcome === 'further_follow_up' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="next-follow-up-date">Next Follow-Up Date</Label>
+                    <Input
+                      id="next-follow-up-date"
+                      type="date"
+                      value={followUpForm.nextFollowUpDate}
+                      onChange={(e) => setFollowUpForm({ ...followUpForm, nextFollowUpDate: e.target.value })}
+                    />
+                  </div>
+                )}
 
                 {followUpForm.outcome === 'closed' && (
                   <div className="space-y-4">

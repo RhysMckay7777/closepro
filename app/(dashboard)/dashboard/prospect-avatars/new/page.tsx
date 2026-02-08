@@ -30,7 +30,6 @@ function NewProspectAvatarContent() {
 
   const [formData, setFormData] = useState({
     name: '',
-    problems: [''],
     positionDescription: '',
     voiceStyle: '',
     // 5 sliders (1-10 each)
@@ -65,17 +64,17 @@ function NewProspectAvatarContent() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name) {
       toastError('Please provide a name for this prospect avatar');
       return;
     }
 
-    const problems = formData.problems.filter(p => p.trim());
-    if (problems.length === 0) {
-      toastError('Please provide at least one problem');
-      return;
-    }
+    // Extract problem-like sentences from positionDescription for backward compat
+    const problems = formData.positionDescription
+      .split(/[.;\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 5);
 
     setLoading(true);
     try {
@@ -140,11 +139,11 @@ function NewProspectAvatarContent() {
       <div className="mb-4 sm:mb-6">
         {offerId && (
           <Link href={`/dashboard/offers/${offerId}`}>
-          <Button variant="ghost" size="sm" className="mb-2">
-            <ArrowLeft className="h-4 w-4 mr-2" />
+            <Button variant="ghost" size="sm" className="mb-2">
+              <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Offer
-          </Button>
-        </Link>
+            </Button>
+          </Link>
         )}
         <h1 className="text-2xl sm:text-3xl font-bold">Create Prospect Avatar</h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-1">
@@ -156,7 +155,7 @@ function NewProspectAvatarContent() {
         <Card className="p-4 sm:p-6 space-y-4 sm:space-y-6">
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">Basic Information</h2>
-            
+
             <div className="space-y-2">
               <Label htmlFor="name">Prospect Name *</Label>
               <Input
@@ -250,46 +249,8 @@ function NewProspectAvatarContent() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Problems (Offer-Relevant)</Label>
-                <p className="text-xs text-muted-foreground mb-2">
-                  What problems does this prospect have that the offer is designed to solve? (You can also include these in the description above)
-                </p>
-                {formData.problems.map((problem, index) => (
-                  <div key={index} className="flex gap-2">
-                    <Input
-                      value={problem}
-                      onChange={(e) => {
-                        const updated = [...formData.problems];
-                        updated[index] = e.target.value;
-                        setFormData({ ...formData, problems: updated });
-                      }}
-                      placeholder="e.g., Lack of time to exercise"
-                    />
-                    {formData.problems.length > 1 && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        onClick={() => {
-                          const updated = formData.problems.filter((_, i) => i !== index);
-                          setFormData({ ...formData, problems: updated });
-                        }}
-                      >
-                        ×
-                      </Button>
-                    )}
-                  </div>
-                ))}
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setFormData({ ...formData, problems: [...formData.problems, ''] })}
-                >
-                  Add Another Problem
-                </Button>
-              </div>
+
+
 
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
@@ -427,10 +388,10 @@ function NewProspectAvatarContent() {
               </Link>
             ) : (
               <Link href="/dashboard/offers" className="flex-1">
-              <Button type="button" variant="outline" className="w-full">
-                Cancel
-              </Button>
-            </Link>
+                <Button type="button" variant="outline" className="w-full">
+                  Cancel
+                </Button>
+              </Link>
             )}
             <Button type="submit" disabled={loading} className="flex-1 w-full sm:w-auto">
               {loading ? (

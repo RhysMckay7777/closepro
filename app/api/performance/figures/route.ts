@@ -5,6 +5,8 @@ import { db } from '@/db';
 import { salesCalls, users, offers } from '@/db/schema';
 import { eq, or, and, isNull, sql } from 'drizzle-orm';
 
+export const maxDuration = 60;
+
 function emptyFigures(month: string, schemaHint?: boolean) {
   return {
     month,

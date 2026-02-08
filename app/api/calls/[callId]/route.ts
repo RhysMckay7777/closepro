@@ -5,6 +5,8 @@ import { db } from '@/db';
 import { salesCalls, callAnalysis, users } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
+export const maxDuration = 60;
+
 /**
  * Get call details and analysis
  */

@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, user[0].id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found' },
@@ -138,16 +138,27 @@ export async function POST(request: NextRequest) {
       await incrementUsage(organizationId, 'calls');
     }
 
-    // Run transcription then analysis in background (non-blocking)
-    transcribeAndAnalyzeAsync(call.id, audioBuffer, file.name, analysisIntent).catch(
-      (err) => console.error('Background transcribe/analyze error:', err)
-    );
+    // Run transcription + analysis INLINE (awaited) so it completes
+    // before the HTTP response is sent. maxDuration = 120 keeps the
+    // Vercel function alive for the full cycle.
+    try {
+      await transcribeAndAnalyzeAsync(call.id, audioBuffer, file.name, analysisIntent);
 
-    return NextResponse.json({
-      callId: call.id,
-      status: 'transcribing',
-      message: 'Upload received. Transcription in progress...',
-    }, { status: 201 });
+      return NextResponse.json({
+        callId: call.id,
+        status: 'completed',
+        message: 'Upload received. Transcription and analysis complete.',
+      }, { status: 201 });
+    } catch (analysisErr: unknown) {
+      console.error('Inline transcribe/analyze error:', analysisErr);
+      // The helper already sets DB status to 'failed', so just return
+      // a response the frontend can handle.
+      return NextResponse.json({
+        callId: call.id,
+        status: 'failed',
+        message: 'Upload succeeded but analysis failed. You can retry from the call detail page.',
+      }, { status: 201 });
+    }
   } catch (error: unknown) {
     console.error('Error uploading call:', error);
     let msg = error instanceof Error ? error.message : 'Failed to upload call';

@@ -8,6 +8,8 @@ import { users, userOrganizations } from '@/db/schema';
 import { calculateDifficultyIndex, mapDifficultySelectionToProfile } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
 
+export const maxDuration = 60;
+
 /**
  * GET - List all prospect avatars for a specific offer
  * Requires offerId query parameter
@@ -175,7 +177,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!name || positionProblemAlignment === undefined || painAmbitionIntensity === undefined ||
-        perceivedNeedForHelp === undefined || !authorityLevel || funnelContext === undefined) {
+      perceivedNeedForHelp === undefined || !authorityLevel || funnelContext === undefined) {
       return NextResponse.json(
         { error: 'Missing required fields: name, positionProblemAlignment, painAmbitionIntensity, perceivedNeedForHelp, authorityLevel, funnelContext' },
         { status: 400 }

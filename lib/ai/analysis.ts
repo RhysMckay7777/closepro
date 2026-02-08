@@ -4,6 +4,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import { SALES_CATEGORIES, type SalesCategoryId } from './scoring-framework';
+import { getCondensedExamples } from './knowledge/real-call-examples';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -289,10 +290,19 @@ When scoring, adjust expectations based on category:
 - Consider baseline expectations when evaluating performance
 ` : '';
 
+  // Real call examples for scoring calibration
+  const realExamples = getCondensedExamples(3);
+  const realExamplesSection = realExamples ? `
+REAL CALL REFERENCE EXAMPLES:
+The following are extracted from real high-ticket sales calls.
+Use these to calibrate your scoring — understand what good and bad performance looks like in practice.
+
+${realExamples}
+` : '';
+
   return `Analyze this sales call transcript and provide a comprehensive evaluation.
 ${categoryGuidance}
-TRANSCRIPT:
-
+${realExamplesSection}
 TRANSCRIPT:
 ${transcript.length > 6000 ? transcript.substring(0, 6000) + '\n... (truncated for faster analysis)' : transcript}
 
@@ -485,7 +495,7 @@ function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_r
   let outcome: CallOutcomeSuggestion | undefined;
   if (analysis.outcome && typeof analysis.outcome === 'object') {
     const o = analysis.outcome as Record<string, unknown>;
-    const result = typeof o.result === 'string' && validResults.includes(o.result as any) ? o.result : undefined;
+    const result = typeof o.result === 'string' && validResults.includes(o.result as any) ? o.result as CallOutcomeSuggestion['result'] : undefined;
     const cashCollectedRaw = o.cashCollected ?? o.cash_collected;
     const revenueGeneratedRaw = o.revenueGenerated ?? o.revenue_generated;
     const reasonRaw = o.reasonForOutcome ?? o.reason_for_outcome;
@@ -496,7 +506,7 @@ function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_r
       revenueGenerated: typeof revenueGeneratedRaw === 'number' && revenueGeneratedRaw >= 0 ? Math.round(revenueGeneratedRaw) : undefined,
       reasonForOutcome: typeof reasonRaw === 'string' ? String(reasonRaw).trim().slice(0, 2000) : undefined,
     };
-    if (!result && outcome.qualified === undefined && outcome.cashCollected === undefined && outcome.revenueGenerated === undefined && !outcome.reasonForOutcome) {
+    if (!result && outcome?.qualified === undefined && outcome?.cashCollected === undefined && outcome?.revenueGenerated === undefined && !outcome?.reasonForOutcome) {
       outcome = undefined;
     }
   }

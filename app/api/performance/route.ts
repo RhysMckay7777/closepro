@@ -3,8 +3,10 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls, callAnalysis, roleplaySessions, roleplayAnalysis, offers } from '@/db/schema';
-import { eq, and, gte, lt, lte, desc } from 'drizzle-orm';
+import { eq, and, gte, lt, lte, desc, sql } from 'drizzle-orm';
 import { SALES_CATEGORIES, getCategoryLabel } from '@/lib/ai/scoring-framework';
+
+export const maxDuration = 60;
 
 export type PerformanceRange = 'this_week' | 'this_month' | 'last_month' | 'last_quarter' | 'last_year';
 
@@ -114,6 +116,7 @@ export async function GET(request: NextRequest) {
         fitScore: callAnalysis.fitScore,
         logisticsScore: callAnalysis.logisticsScore,
         skillScores: callAnalysis.skillScores,
+        objectionDetails: callAnalysis.objectionDetails,
         createdAt: salesCalls.createdAt,
       })
       .from(callAnalysis)
@@ -156,6 +159,7 @@ export async function GET(request: NextRequest) {
         fitScore: roleplayAnalysis.fitScore,
         logisticsScore: roleplayAnalysis.logisticsScore,
         skillScores: roleplayAnalysis.skillScores,
+        objectionAnalysis: roleplayAnalysis.objectionAnalysis,
         createdAt: roleplaySessions.createdAt,
         offerId: roleplaySessions.offerId,
         offerCategory: offers.offerCategory,
@@ -426,6 +430,81 @@ export async function GET(request: NextRequest) {
     });
     byOffer.sort((a, b) => b.averageScore - a.averageScore);
 
+    // Objection insights — aggregate from objectionDetails (calls) and objectionAnalysis (roleplays)
+    const objectionCounts: Record<string, { count: number; pillar: string }> = {};
+    const pillarHandlingScores: Record<string, { total: number; count: number }> = {};
+
+    const parseObjections = (raw: string | null | undefined): any[] => {
+      if (!raw) return [];
+      try {
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        return Array.isArray(parsed) ? parsed : [];
+      } catch { return []; }
+    };
+
+    // Process call objection data
+    callAnalyses.forEach(a => {
+      const objections = parseObjections((a as any).objectionDetails);
+      objections.forEach((obj: any) => {
+        const text = obj.objection || obj.text || 'Unknown';
+        const pillar = obj.pillar || obj.classification || 'Unknown';
+        const handling = typeof obj.handling === 'number' ? obj.handling : (typeof obj.score === 'number' ? obj.score : null);
+        const key = text.toLowerCase().trim();
+        if (!objectionCounts[key]) objectionCounts[key] = { count: 0, pillar };
+        objectionCounts[key].count += 1;
+        if (handling != null) {
+          if (!pillarHandlingScores[pillar]) pillarHandlingScores[pillar] = { total: 0, count: 0 };
+          pillarHandlingScores[pillar].total += handling;
+          pillarHandlingScores[pillar].count += 1;
+        }
+      });
+    });
+
+    // Process roleplay objection data
+    roleplayAnalyses.forEach(a => {
+      const objections = parseObjections((a as any).objectionAnalysis);
+      objections.forEach((obj: any) => {
+        const text = obj.objection || obj.text || 'Unknown';
+        const pillar = obj.pillar || obj.classification || 'Unknown';
+        const handling = typeof obj.handling === 'number' ? obj.handling : (typeof obj.score === 'number' ? obj.score : null);
+        const key = text.toLowerCase().trim();
+        if (!objectionCounts[key]) objectionCounts[key] = { count: 0, pillar };
+        objectionCounts[key].count += 1;
+        if (handling != null) {
+          if (!pillarHandlingScores[pillar]) pillarHandlingScores[pillar] = { total: 0, count: 0 };
+          pillarHandlingScores[pillar].total += handling;
+          pillarHandlingScores[pillar].count += 1;
+        }
+      });
+    });
+
+    // Build objection insights
+    const topObjections = Object.entries(objectionCounts)
+      .sort((a, b) => b[1].count - a[1].count)
+      .slice(0, 5)
+      .map(([text, data]) => ({ text, count: data.count, pillar: data.pillar }));
+
+    const pillarAverages = Object.entries(pillarHandlingScores).map(([pillar, data]) => ({
+      pillar,
+      averageHandling: data.count > 0 ? Math.round((data.total / data.count) * 10) / 10 : 0,
+      count: data.count,
+    })).sort((a, b) => a.averageHandling - b.averageHandling);
+
+    const weakestPillar = pillarAverages.length > 0 ? pillarAverages[0] : null;
+    let objectionGuidance = '';
+    if (weakestPillar) {
+      objectionGuidance = `Your weakest objection handling is in ${weakestPillar.pillar} objections (avg ${weakestPillar.averageHandling}/10). Focus on building stronger responses to ${weakestPillar.pillar.toLowerCase()}-based concerns.`;
+    } else if (topObjections.length > 0) {
+      objectionGuidance = `You encounter "${topObjections[0].text}" most often (${topObjections[0].count}x). Prepare a stronger script for this objection.`;
+    }
+
+    const objectionInsights = topObjections.length > 0 ? {
+      topObjections,
+      pillarBreakdown: pillarAverages,
+      weakestArea: weakestPillar ? { pillar: weakestPillar.pillar, averageHandling: weakestPillar.averageHandling } : null,
+      guidance: objectionGuidance,
+    } : null;
+
     // AI insight (template-driven from top/bottom categories and difficulty)
     const bestCat = skillCategories[0];
     const worstCat = skillCategories[skillCategories.length - 1];
@@ -507,6 +586,7 @@ export async function GET(request: NextRequest) {
       byOfferType,
       byDifficulty,
       byOffer,
+      objectionInsights,
       aiInsight,
       weeklySummary,
       monthlySummary,

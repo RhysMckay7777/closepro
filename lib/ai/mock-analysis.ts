@@ -29,7 +29,7 @@ export function generateMockAnalysis(
   const coachingRecommendations: CoachingRecommendation[] = [
     {
       priority: 'high',
-      category: 'Value Communication',
+      category: 'Value & Offer Positioning',
       issue: 'ROI presentation needs strengthening',
       explanation: 'The value was communicated but lacked concrete numbers that would make the ROI undeniable.',
       timestamp: Math.floor(duration * 0.3),
@@ -47,7 +47,7 @@ export function generateMockAnalysis(
     },
     {
       priority: 'low',
-      category: 'Closing Techniques',
+      category: 'Closing & Commitment Integrity',
       issue: 'Could create more urgency',
       explanation: 'The close was attempted but lacked urgency drivers that would accelerate decision-making.',
       timestamp: Math.floor(duration * 0.8),

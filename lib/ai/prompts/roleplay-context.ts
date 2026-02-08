@@ -6,26 +6,18 @@
  */
 
 import { getCondensedExamples, getObjectionExamples, getOpeningExamples } from '../knowledge/real-call-examples';
+import { SALES_CATEGORIES, getCategoryLabel } from '../scoring-framework';
 
 /**
  * 10-Category Sales Framework Summary
- * Used in analysis and roleplay prompts
+ * Built dynamically from scoring-framework.ts so prompt always matches the canonical source.
  */
 export const SALES_FRAMEWORK_CONTEXT = `
 ## 10-Category Sales Scoring Framework
 
 Score each category 0-10 based on the rep's performance:
 
-1. **Opening & Rapport** - First impressions, tonality, building immediate connection
-2. **Discovery & Qualification** - Depth of questions, uncovering pain/goals, qualification
-3. **Need Identification** - Identifying core problems and desired outcomes
-4. **Pitch & Presentation** - Clarity, value articulation, storytelling
-5. **Objection Handling** - Addressing concerns, reframing, maintaining control
-6. **Value Building** - Demonstrating ROI, creating emotional and logical value
-7. **Trust Building** - Authority, credibility, social proof
-8. **Urgency & Scarcity** - Creating time pressure appropriately
-9. **Closing Instinct** - Recognizing buying signals, asking for the sale
-10. **Overall Call Control** - Pacing, handling tangents, maintaining frame
+${SALES_CATEGORIES.map((c, i) => `${i + 1}. **${c.label}**`).join('\n')}
 
 Each category has sub-skills. Focus on specific behaviors, not vague assessments.
 `;

@@ -237,6 +237,27 @@ export default function CallDetailPage() {
         </div>
       </div>
 
+      {/* Call Recording Playback */}
+      {call.fileUrl && (
+        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-serif">Call Recording</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <audio
+              controls
+              className="w-full"
+              preload="metadata"
+            >
+              <source src={call.fileUrl} type="audio/mpeg" />
+              <source src={call.fileUrl} type="audio/mp4" />
+              <source src={call.fileUrl} type="audio/webm" />
+              Your browser does not support audio playback.
+            </audio>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Processing State */}
       {isProcessing && (
         <Card className="border border-primary/20 bg-linear-to-br from-primary/5 to-primary/10 backdrop-blur-xl shadow-xl">
@@ -336,13 +357,12 @@ export default function CallDetailPage() {
                   {JSON.parse(analysis.coachingRecommendations).map((rec: any, index: number) => (
                     <div
                       key={index}
-                      className={`p-4 rounded-lg border ${
-                        rec.priority === 'high' 
-                          ? 'border-destructive/30 bg-destructive/5' 
+                      className={`p-4 rounded-lg border ${rec.priority === 'high'
+                          ? 'border-destructive/30 bg-destructive/5'
                           : rec.priority === 'medium'
-                          ? 'border-amber-500/30 bg-amber-500/5'
-                          : 'border-white/10 bg-white/5'
-                      }`}
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-white/10 bg-white/5'
+                        }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
@@ -374,13 +394,13 @@ export default function CallDetailPage() {
             call.cashCollected == null &&
             call.revenueGenerated == null
           ) && (
-            <Alert className="border-primary/30 bg-primary/5">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Add this call to your figures:</strong> Set the deal outcome below (result, cash collected, revenue) so it shows in Performance → Figures. The AI may have filled these; if not, click Edit outcome and enter the amounts.
-              </AlertDescription>
-            </Alert>
-          )}
+              <Alert className="border-primary/30 bg-primary/5">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <strong>Add this call to your figures:</strong> Set the deal outcome below (result, cash collected, revenue) so it shows in Performance → Figures. The AI may have filled these; if not, click Edit outcome and enter the amounts.
+                </AlertDescription>
+              </Alert>
+            )}
           <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
@@ -399,136 +419,136 @@ export default function CallDetailPage() {
                 Used for Figures (cash collected, revenue). Set result and amounts so this call is included in Performance → Figures.
               </CardDescription>
             </CardHeader>
-          <CardContent>
-            {editingOutcome ? (
-              <form onSubmit={handleSaveOutcome} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="outcome-result">Result</Label>
-                    <Select
-                      value={editResult || undefined}
-                      onValueChange={(value) => {
-                        setEditResult(value);
-                        setEditQualified(value === 'unqualified' ? false : true);
-                      }}
-                    >
-                      <SelectTrigger id="outcome-result">
-                        <SelectValue placeholder="Select result" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {VALID_RESULTS.map((r) => (
-                          <SelectItem key={r} value={r}>
-                            {r === 'follow_up' ? 'Follow-up' : r.replace('_', ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+            <CardContent>
+              {editingOutcome ? (
+                <form onSubmit={handleSaveOutcome} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="outcome-result">Result</Label>
+                      <Select
+                        value={editResult || undefined}
+                        onValueChange={(value) => {
+                          setEditResult(value);
+                          setEditQualified(value === 'unqualified' ? false : true);
+                        }}
+                      >
+                        <SelectTrigger id="outcome-result">
+                          <SelectValue placeholder="Select result" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {VALID_RESULTS.map((r) => (
+                            <SelectItem key={r} value={r}>
+                              {r === 'follow_up' ? 'Follow-up' : r.replace('_', ' ')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Qualified if result ≠ Unqualified. Only &quot;Unqualified&quot; marks the call as not qualified.</p>
                   </div>
-                  <p className="text-xs text-muted-foreground">Qualified if result ≠ Unqualified. Only &quot;Unqualified&quot; marks the call as not qualified.</p>
-                </div>
-                {(editResult === 'closed' || editResult === 'deposit') && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {(editResult === 'closed' || editResult === 'deposit') && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="outcome-cash">Cash collected ($)</Label>
+                        <Input
+                          id="outcome-cash"
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          placeholder="0"
+                          value={editCash}
+                          onChange={(e) => setEditCash(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="outcome-revenue">Revenue generated ($)</Label>
+                        <Input
+                          id="outcome-revenue"
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          placeholder="0"
+                          value={editRevenue}
+                          onChange={(e) => setEditRevenue(e.target.value)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="outcome-commission">Commission rate (%)</Label>
+                        <Input
+                          id="outcome-commission"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          placeholder="e.g. 10"
+                          value={editCommissionRatePct}
+                          onChange={(e) => setEditCommissionRatePct(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-2">
-                    <Label htmlFor="outcome-cash">Cash collected ($)</Label>
-                    <Input
-                      id="outcome-cash"
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      placeholder="0"
-                      value={editCash}
-                      onChange={(e) => setEditCash(e.target.value)}
+                    <Label htmlFor="outcome-reason">Why did the prospect buy or not buy? What objections were raised?</Label>
+                    <Textarea
+                      id="outcome-reason"
+                      placeholder="e.g. Prospect agreed to £3,600 program; 3-month payment plan."
+                      rows={2}
+                      value={editReason}
+                      onChange={(e) => setEditReason(e.target.value)}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="outcome-revenue">Revenue generated ($)</Label>
-                    <Input
-                      id="outcome-revenue"
-                      type="number"
-                      min={0}
-                      step={0.01}
-                      placeholder="0"
-                      value={editRevenue}
-                      onChange={(e) => setEditRevenue(e.target.value)}
-                    />
+                  <div className="flex gap-2">
+                    <Button type="submit" disabled={savingOutcome}>
+                      {savingOutcome ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save outcome'}
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setEditingOutcome(false)}>
+                      Cancel
+                    </Button>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="outcome-commission">Commission rate (%)</Label>
-                    <Input
-                      id="outcome-commission"
-                      type="number"
-                      min={0}
-                      max={100}
-                      step={0.5}
-                      placeholder="e.g. 10"
-                      value={editCommissionRatePct}
-                      onChange={(e) => setEditCommissionRatePct(e.target.value)}
-                    />
-                  </div>
-                </div>
-                )}
-                <div className="space-y-2">
-                  <Label htmlFor="outcome-reason">Why did the prospect buy or not buy? What objections were raised?</Label>
-                  <Textarea
-                    id="outcome-reason"
-                    placeholder="e.g. Prospect agreed to £3,600 program; 3-month payment plan."
-                    rows={2}
-                    value={editReason}
-                    onChange={(e) => setEditReason(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <Button type="submit" disabled={savingOutcome}>
-                    {savingOutcome ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save outcome'}
-                  </Button>
-                  <Button type="button" variant="outline" onClick={() => setEditingOutcome(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              </form>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                {call.callDate && (
+                </form>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                  {call.callDate && (
+                    <div>
+                      <span className="text-muted-foreground">Call date:</span>{' '}
+                      {new Date(call.callDate).toLocaleDateString()}
+                    </div>
+                  )}
+                  {call.prospectName && (
+                    <div>
+                      <span className="text-muted-foreground">Prospect:</span> {call.prospectName}
+                    </div>
+                  )}
                   <div>
-                    <span className="text-muted-foreground">Call date:</span>{' '}
-                    {new Date(call.callDate).toLocaleDateString()}
+                    <span className="text-muted-foreground">Result:</span>{' '}
+                    {call.result ? call.result.replace('_', ' ') : '—'}
                   </div>
-                )}
-                {call.prospectName && (
                   <div>
-                    <span className="text-muted-foreground">Prospect:</span> {call.prospectName}
+                    <span className="text-muted-foreground">Qualified:</span>{' '}
+                    {call.qualified === true ? 'Yes' : call.qualified === false ? 'No' : '—'}
                   </div>
-                )}
-                <div>
-                  <span className="text-muted-foreground">Result:</span>{' '}
-                  {call.result ? call.result.replace('_', ' ') : '—'}
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Qualified:</span>{' '}
-                  {call.qualified === true ? 'Yes' : call.qualified === false ? 'No' : '—'}
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Cash collected:</span>{' '}
-                  {call.cashCollected != null ? `$${(call.cashCollected / 100).toLocaleString()}` : '—'}
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Revenue generated:</span>{' '}
-                  {call.revenueGenerated != null ? `$${(call.revenueGenerated / 100).toLocaleString()}` : '—'}
-                </div>
-                {call.commissionRatePct != null && (
                   <div>
-                    <span className="text-muted-foreground">Commission rate:</span> {call.commissionRatePct}%
+                    <span className="text-muted-foreground">Cash collected:</span>{' '}
+                    {call.cashCollected != null ? `$${(call.cashCollected / 100).toLocaleString()}` : '—'}
                   </div>
-                )}
-                {call.reasonForOutcome && (
-                  <div className="sm:col-span-2">
-                    <span className="text-muted-foreground">Reason:</span> {call.reasonForOutcome}
+                  <div>
+                    <span className="text-muted-foreground">Revenue generated:</span>{' '}
+                    {call.revenueGenerated != null ? `$${(call.revenueGenerated / 100).toLocaleString()}` : '—'}
                   </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                  {call.commissionRatePct != null && (
+                    <div>
+                      <span className="text-muted-foreground">Commission rate:</span> {call.commissionRatePct}%
+                    </div>
+                  )}
+                  {call.reasonForOutcome && (
+                    <div className="sm:col-span-2">
+                      <span className="text-muted-foreground">Reason:</span> {call.reasonForOutcome}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </>
       )}
 

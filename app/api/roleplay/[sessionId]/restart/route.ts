@@ -5,6 +5,8 @@ import { db } from '@/db';
 import { roleplaySessions, roleplayMessages, prospectAvatars, offers } from '@/db/schema';
 import { eq, and, asc } from 'drizzle-orm';
 
+export const maxDuration = 60;
+
 /**
  * POST - Restart a roleplay session from a specific message index
  * Creates a new session with context carried forward from the original

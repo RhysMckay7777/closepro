@@ -12,6 +12,8 @@ import { Groq } from 'groq-sdk';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
+export const maxDuration = 60;
+
 /**
  * POST - Extract prospect avatar from a sales call transcript or audio file
  * This analyzes the transcript and creates a prospect avatar for replay roleplays
@@ -35,14 +37,14 @@ export async function POST(request: NextRequest) {
 
     // Check if request is FormData (file upload) or JSON
     const contentType = request.headers.get('content-type') || '';
-    
+
     if (contentType.includes('multipart/form-data')) {
       // Handle file upload
       const formData = await request.formData();
       const audioFile = formData.get('audio') as File | null;
       const transcriptInput = formData.get('transcript') as string | null;
       offerId = formData.get('offerId') as string | null;
-      
+
       if (audioFile) {
         // Transcribe audio file
         const arrayBuffer = await audioFile.arrayBuffer();
@@ -261,7 +263,7 @@ Return ONLY valid JSON, no markdown formatting.`;
         organizationId: offer[0].organizationId,
         offerId: offerId,
         userId: session.user.id,
-        name: extracted.positionDescription 
+        name: extracted.positionDescription
           ? `Prospect: ${extracted.positionDescription.substring(0, 50)}`
           : 'Extracted Prospect',
         sourceType: 'transcript_derived',

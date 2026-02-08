@@ -11,6 +11,8 @@ import { ProspectAvatar } from '@/lib/ai/roleplay/prospect-avatar';
 import { FunnelContext } from '@/lib/ai/roleplay/funnel-context';
 import { initializeBehaviourState } from '@/lib/ai/roleplay/behaviour-rules';
 
+export const maxDuration = 60;
+
 /**
  * POST - Send a message in roleplay and get AI response
  */
@@ -117,13 +119,13 @@ export async function POST(
           ]),
         })
         .returning();
-      
+
       // Update session with new offer ID
       await db
         .update(roleplaySessions)
         .set({ offerId: defaultOffer.id })
         .where(eq(roleplaySessions.id, sessionId));
-      
+
       offerData = [defaultOffer];
     }
 
@@ -134,9 +136,9 @@ export async function POST(
       coreOutcome: offerData[0].coreOutcome,
       mechanismHighLevel: offerData[0].mechanismHighLevel,
       deliveryModel: offerData[0].deliveryModel as any,
-      priceRange: offerData[0].priceRange,
-      primaryProblemsSolved: offerData[0].primaryProblemsSolved 
-        ? JSON.parse(offerData[0].primaryProblemsSolved) 
+      priceRange: offerData[0].priceRange ?? '',
+      primaryProblemsSolved: offerData[0].primaryProblemsSolved
+        ? JSON.parse(offerData[0].primaryProblemsSolved)
         : [],
       emotionalDrivers: offerData[0].emotionalDrivers
         ? JSON.parse(offerData[0].emotionalDrivers)
@@ -165,6 +167,7 @@ export async function POST(
             perceivedNeedForHelp: avatarData[0].perceivedNeedForHelp,
             authorityLevel: avatarData[0].authorityLevel as any,
             funnelContext: avatarData[0].funnelContext,
+            executionResistance: avatarData[0].executionResistance ?? 5,
             difficultyIndex: avatarData[0].difficultyIndex,
             difficultyTier: avatarData[0].difficultyTier as any,
           },
@@ -272,6 +275,7 @@ function createDefaultProspect(selectedDifficulty: string): ProspectAvatar {
       perceivedNeedForHelp: 7,
       authorityLevel: 'peer',
       funnelContext: 5,
+      executionResistance: 5,
       difficultyIndex: index,
       difficultyTier: tier,
     },

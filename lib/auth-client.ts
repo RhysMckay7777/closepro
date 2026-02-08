@@ -16,3 +16,11 @@ export const authClient = createAuthClient({
 });
 
 export const { signIn, signUp, signOut, useSession } = authClient;
+
+/** Convenience wrapper for Google OAuth sign-in */
+export async function signInWithGoogle() {
+  return authClient.signIn.social({
+    provider: 'google',
+    callbackURL: '/dashboard/create-organization',
+  });
+}

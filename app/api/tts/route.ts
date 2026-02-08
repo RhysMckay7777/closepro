@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1';
 
+export const maxDuration = 60;
+
 /**
  * POST - Text to speech via ElevenLabs (when ELEVENLABS_API_KEY is set).
  * Body: { text: string, voiceId?: string }

@@ -270,15 +270,7 @@ function ProspectSelectionContent() {
     return classes[tier] ?? 'bg-muted-foreground';
   };
 
-  const getCallTypeTag = (tier: string) => {
-    const tags: Record<string, string> = {
-      easy: 'Discovery',
-      realistic: 'Objection Handling',
-      hard: 'Full Call',
-      elite: 'Full Call',
-    };
-    return tags[tier] ?? 'Full Call';
-  };
+  // getCallTypeTag removed per Rhys's spec — no type label on cards
 
   const getShortTitle = (p: ProspectAvatar) => {
     if (!p.positionDescription) return getModeLabel(p.difficultyTier);
@@ -559,11 +551,6 @@ function ProspectSelectionContent() {
                     alt={prospect.name}
                     className="size-full object-cover rounded-lg"
                   />
-                  <div className="absolute bottom-2 left-2">
-                    <Badge variant="secondary" className="text-xs font-medium shadow-sm">
-                      {getCallTypeTag(prospect.difficultyTier)}
-                    </Badge>
-                  </div>
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
                   <h3 className="font-bold text-lg mb-0.5">{prospect.name}</h3>

@@ -38,7 +38,6 @@ export default function NewProspectPage() {
     funnelContext: 5,
     executionResistance: 5,
     positionDescription: '',
-    problems: [''],
   });
 
   // Transcript upload
@@ -91,17 +90,17 @@ export default function NewProspectPage() {
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!formData.name) {
       toastError('Please provide a name for this prospect');
       return;
     }
 
-    const problems = formData.problems.filter(p => p.trim());
-    if (problems.length === 0) {
-      toastError('Please provide at least one problem');
-      return;
-    }
+    // Extract problem-like sentences from positionDescription for backward compat
+    const problems = formData.positionDescription
+      .split(/[.;\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 5);
 
     setLoading(true);
     try {
@@ -156,7 +155,7 @@ export default function NewProspectPage() {
     setUploadingTranscript(true);
     try {
       const formData = new FormData();
-      
+
       if (transcriptFile) {
         formData.append('audio', transcriptFile);
       } else if (transcriptText.trim()) {
@@ -176,7 +175,7 @@ export default function NewProspectPage() {
       }
 
       const extractData = await extractResponse.json();
-      
+
       // Auto-populate form with extracted data
       if (extractData.avatar) {
         const p = extractData.avatar.perceivedNeedForHelp;
@@ -189,10 +188,14 @@ export default function NewProspectPage() {
           authorityPerceivedScore: score,
           funnelContext: extractData.avatar.funnelContext || 5,
           executionResistance: extractData.avatar.executionResistance || 5,
-          positionDescription: extractData.avatar.positionDescription || '',
-          problems: extractData.avatar.problems ? JSON.parse(extractData.avatar.problems) : [''],
+          positionDescription: [
+            extractData.avatar.positionDescription || '',
+            ...(extractData.avatar.problems
+              ? (JSON.parse(extractData.avatar.problems) as string[]).filter((s: string) => s.trim())
+              : []),
+          ].filter(Boolean).join('. '),
         });
-        
+
         // Switch to manual tab to show extracted data
         toastSuccess('Prospect extracted! Review and adjust the values below, then click "Create Prospect".');
       } else {
@@ -272,7 +275,7 @@ export default function NewProspectPage() {
               {/* Basic Information */}
               <div className="space-y-4">
                 <h2 className="text-xl font-semibold">Basic Information</h2>
-                
+
                 <div className="space-y-2">
                   <Label htmlFor="name">Prospect Name *</Label>
                   <Input
@@ -285,52 +288,17 @@ export default function NewProspectPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="positionDescription">Position Description</Label>
+                  <Label htmlFor="positionDescription">Position &amp; Problems</Label>
                   <Textarea
                     id="positionDescription"
                     value={formData.positionDescription}
                     onChange={(e) => setFormData({ ...formData, positionDescription: e.target.value })}
-                    placeholder="Describe the prospect's current situation relative to the offer"
-                    rows={3}
+                    placeholder="e.g. Working as an electrician for 10 years, wants to start own business but struggling with lead generation and pricing. Has tried Facebook ads before without success. Worried about financial risk of leaving stable income."
+                    rows={5}
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>Problems (Offer-Relevant)</Label>
-                  {formData.problems.map((problem, index) => (
-                    <div key={index} className="flex gap-2">
-                      <Input
-                        value={problem}
-                        onChange={(e) => {
-                          const updated = [...formData.problems];
-                          updated[index] = e.target.value;
-                          setFormData({ ...formData, problems: updated });
-                        }}
-                        placeholder="e.g., Lack of time to exercise"
-                      />
-                      {formData.problems.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          onClick={() => {
-                            const updated = formData.problems.filter((_, i) => i !== index);
-                            setFormData({ ...formData, problems: updated });
-                          }}
-                        >
-                          ×
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setFormData({ ...formData, problems: [...formData.problems, ''] })}
-                  >
-                    Add Another Problem
-                  </Button>
+                  <p className="text-xs text-muted-foreground">
+                    Describe who this prospect is and the problems they face. Include their role, situation, and challenges all in one description.
+                  </p>
                 </div>
               </div>
 
@@ -426,11 +394,11 @@ export default function NewProspectPage() {
                       Ability to proceed: money, time, effort capacity, decision authority
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {formData.executionResistance >= 8 
+                      {formData.executionResistance >= 8
                         ? 'Fully Able - Has money, time, authority'
                         : formData.executionResistance >= 5
-                        ? 'Partial Ability - Needs reprioritization'
-                        : 'Extreme Resistance - Severe constraints'}
+                          ? 'Partial Ability - Needs reprioritization'
+                          : 'Extreme Resistance - Severe constraints'}
                     </p>
                   </div>
                 </div>

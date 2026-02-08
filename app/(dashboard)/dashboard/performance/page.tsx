@@ -52,6 +52,12 @@ interface PerformanceData {
   byOfferType?: Record<string, { averageScore: number; count: number }>;
   byDifficulty?: Record<string, { averageScore: number; count: number }>;
   byOffer?: Array<{ offerId: string; offerName: string; averageScore: number; count: number }>;
+  objectionInsights?: {
+    topObjections: Array<{ text: string; count: number; pillar: string }>;
+    pillarBreakdown: Array<{ pillar: string; averageHandling: number; count: number }>;
+    weakestArea: { pillar: string; averageHandling: number } | null;
+    guidance: string;
+  } | null;
   aiInsight?: string;
   weeklySummary?: { overview: string; skillTrends: string; actionPlan: string[] };
   monthlySummary?: { overview: string; skillTrends: string; actionPlan: string[] };
@@ -479,17 +485,27 @@ export default function PerformancePage() {
           {performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm">By Prospect Difficulty</CardTitle>
+                <CardTitle className="text-sm">Prospect Difficulty Trends</CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2">
-                  {Object.entries(performance.byDifficulty).map(([k, v]) => (
-                    <div key={k} className="flex justify-between text-sm capitalize">
-                      <span>{k}</span>
-                      <span className="font-medium">{v.averageScore} ({v.count})</span>
-                    </div>
-                  ))}
-                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border/40">
+                      <th className="text-left py-1.5 font-medium text-muted-foreground">Difficulty</th>
+                      <th className="text-right py-1.5 font-medium text-muted-foreground">Calls</th>
+                      <th className="text-right py-1.5 font-medium text-muted-foreground">Avg Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(performance.byDifficulty).map(([k, v]) => (
+                      <tr key={k} className="border-b border-border/20">
+                        <td className="py-1.5 capitalize">{k}</td>
+                        <td className="py-1.5 text-right">{v.count}</td>
+                        <td className={`py-1.5 text-right font-medium ${getScoreColor(v.averageScore)}`}>{v.averageScore}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </CardContent>
             </Card>
           )}
@@ -512,6 +528,59 @@ export default function PerformancePage() {
           )}
         </div>
       ) : null}
+
+      {/* Objection Handling Insights */}
+      {performance.objectionInsights && (
+        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Lightbulb className="h-5 w-5" />
+              Objection Handling Insights
+            </CardTitle>
+            <CardDescription>Common objections and how you handle them</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Top objections */}
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Most Common Objections</h4>
+              <div className="space-y-2">
+                {performance.objectionInsights.topObjections.map((obj, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">&ldquo;{obj.text}&rdquo;</span>
+                      <Badge variant="outline" className="text-xs">{obj.pillar}</Badge>
+                    </div>
+                    <span className="text-sm font-medium">{obj.count}×</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Pillar breakdown */}
+            {performance.objectionInsights.pillarBreakdown.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Handling Score by Pillar</h4>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {performance.objectionInsights.pillarBreakdown.map((p) => (
+                    <div key={p.pillar} className={`text-center p-3 rounded-lg border ${p.pillar === performance.objectionInsights?.weakestArea?.pillar ? 'border-red-500/40 bg-red-500/10' : 'border-white/10 bg-white/5'}`}>
+                      <p className="text-xs text-muted-foreground mb-1">{p.pillar}</p>
+                      <p className={`text-lg font-bold ${getScoreColor(p.averageHandling * 10)}`}>{p.averageHandling}</p>
+                      <p className="text-[10px] text-muted-foreground">{p.count} handled</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Guidance */}
+            {performance.objectionInsights.guidance && (
+              <p className="text-sm text-muted-foreground bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
+                💡 {performance.objectionInsights.guidance}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* AI Insight */}
       {performance.aiInsight && (

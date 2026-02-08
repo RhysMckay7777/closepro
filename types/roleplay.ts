@@ -155,29 +155,11 @@ export const STAGE_LABELS: Record<RoleplayStage, string> = {
     close: 'Close',
 };
 
-// 10-Category Sales Framework names (in order)
-export const SALES_CATEGORIES = [
-    'opening_and_rapport',
-    'discovery_and_qualification',
-    'need_identification',
-    'pitch_and_presentation',
-    'objection_handling',
-    'value_building',
-    'trust_building',
-    'urgency_and_scarcity',
-    'closing_instinct',
-    'overall_call_control',
-] as const;
+// 10-Category Sales Framework — re-exported from canonical source
+import { SALES_CATEGORIES as _CATS, getCategoryLabel } from '@/lib/ai/scoring-framework';
 
-export const CATEGORY_LABELS: Record<string, string> = {
-    opening_and_rapport: 'Opening & Rapport',
-    discovery_and_qualification: 'Discovery & Qualification',
-    need_identification: 'Need Identification',
-    pitch_and_presentation: 'Pitch & Presentation',
-    objection_handling: 'Objection Handling',
-    value_building: 'Value Building',
-    trust_building: 'Trust Building',
-    urgency_and_scarcity: 'Urgency & Scarcity',
-    closing_instinct: 'Closing Instinct',
-    overall_call_control: 'Overall Call Control',
-};
+export const SALES_CATEGORIES = _CATS.map(c => c.id);
+
+export const CATEGORY_LABELS: Record<string, string> = Object.fromEntries(
+    _CATS.map(c => [c.id, c.label])
+);

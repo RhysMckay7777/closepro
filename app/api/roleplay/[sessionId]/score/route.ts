@@ -6,6 +6,8 @@ import { roleplaySessions, roleplayMessages, roleplayAnalysis } from '@/db/schem
 import { eq, and } from 'drizzle-orm';
 import { analyzeCall } from '@/lib/ai/analysis';
 
+export const maxDuration = 60;
+
 /**
  * POST - Score a completed roleplay session
  */
@@ -98,10 +100,10 @@ export async function POST(
     // Detect conversation stages for completion tracking
     const stagesCompleted = {
       opening: messages.length >= 2,
-      discovery: analysisResult.categoryScores?.discovery_and_qualification > 3,
-      offer: analysisResult.categoryScores?.pitch_and_presentation > 3,
+      discovery: (analysisResult.categoryScores as any)?.discovery_diagnosis > 3,
+      offer: (analysisResult.categoryScores as any)?.value_offer_positioning > 3,
       objections: (analysisResult.objections?.length || 0) > 0,
-      close: analysisResult.categoryScores?.closing_instinct > 3,
+      close: (analysisResult.categoryScores as any)?.closing_commitment > 3,
     };
     const isIncomplete = !stagesCompleted.opening || !stagesCompleted.discovery || !stagesCompleted.offer;
 

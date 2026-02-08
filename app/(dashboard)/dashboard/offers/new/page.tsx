@@ -21,36 +21,36 @@ const offerSchema = z.object({
   offerCategory: z.string().min(1, 'Offer category is required'),
   deliveryModel: z.string().min(1, 'Delivery model is required'),
   coreOfferPrice: z.string().min(1, 'Core offer price is required'),
-  
+
   // Section 1 - ICP
   whoItsFor: z.string().min(1, 'Who it\'s for is required'),
   customerStage: z.string().optional(),
-  
+
   // Section 2 - Core Problems
   coreProblems: z.string().min(1, 'Core problems are required'),
-  
+
   // Section 3 - Desired Outcome
   desiredOutcome: z.string().min(1, 'Desired outcome is required'),
   tangibleOutcomes: z.string().optional(),
   emotionalOutcomes: z.string().optional(),
-  
+
   // Section 4 - Deliverables
   deliverables: z.string().optional(),
-  
+
   // Section 5 - Cost Profile
   paymentOptions: z.string().optional(),
   timePerWeek: z.string().optional(),
   estimatedTimeToResults: z.string().optional(),
   effortRequired: z.string().optional(),
-  
+
   // Section 6 - Proof & Risk Reversal
   caseStudyStrength: z.string().optional(),
   guaranteesRefundTerms: z.string().optional(),
-  
+
   // Section 7 - Funnel Context
   primaryFunnelSource: z.string().optional(),
   funnelContextAdditional: z.string().optional(),
-  
+
   // Legacy fields for backward compatibility
   coreOutcome: z.string().optional(),
   mechanismHighLevel: z.string().optional(),
@@ -92,7 +92,7 @@ export default function NewOfferPage() {
 
   const handleSubmit = form.handleSubmit(async (data) => {
     console.log('Form submitted with data:', data);
-    
+
     if (!data.coreProblems || !data.coreProblems.trim()) {
       form.setError('coreProblems', { message: 'Please provide core problems this offer solves' });
       return;
@@ -133,7 +133,7 @@ export default function NewOfferPage() {
 
       const responseText = await response.text();
       console.log('Raw API response:', response.status, responseText);
-      
+
       if (!response.ok) {
         let errorMessage = 'Failed to create offer';
         try {
@@ -158,7 +158,7 @@ export default function NewOfferPage() {
         setLoading(false);
         return;
       }
-      
+
       if (result.offer) {
         toastSuccess('Offer created successfully');
         // Small delay to ensure toast is visible
@@ -177,7 +177,7 @@ export default function NewOfferPage() {
       setLoading(false);
       // Don't redirect on error
     }
-    },
+  },
     (errors) => {
       // Handle validation errors
       console.log('Form validation errors:', errors);
@@ -213,7 +213,7 @@ export default function NewOfferPage() {
           {/* Top Section - Offer Overview */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">Offer Overview</h2>
-            
+
             <div className="space-y-2">
               <Label htmlFor="name">Offer Name *</Label>
               <Input
@@ -286,14 +286,14 @@ export default function NewOfferPage() {
 
           {/* Section 1 - Ideal Customer Profile (ICP) */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Section 1 - Ideal Customer Profile (ICP)</h2>
-            
+            <h2 className="text-xl font-semibold">Who is this offer for?</h2>
+
             <div className="space-y-2">
               <Label htmlFor="whoItsFor">Who Is This Offer For? *</Label>
               <Textarea
                 id="whoItsFor"
                 {...form.register('whoItsFor')}
-                placeholder="Description of the ideal customer's position and life/business context"
+                placeholder="Demographic of customer + what is their position & main problems. E.g. Busy dads in the UK, who need more time for kids"
                 rows={3}
               />
               {form.formState.errors.whoItsFor && (
@@ -321,17 +321,17 @@ export default function NewOfferPage() {
 
           {/* Section 2 - Core Problems */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Section 2 - Core Problems</h2>
+            <h2 className="text-xl font-semibold">What&apos;s stopping them?</h2>
             <p className="text-sm text-muted-foreground">
               Define the felt problems the prospect already experiences. Problems should be written from the prospect&apos;s perspective.
             </p>
-            
+
             <div className="space-y-2">
               <Label htmlFor="coreProblems">Core Problems This Offer Solves *</Label>
               <Textarea
                 id="coreProblems"
                 {...form.register('coreProblems')}
-                placeholder="What problems does this prospect have that the offer is designed to solve? Write from the prospect's perspective."
+                placeholder="Why can't they get to their goal by themselves? E.g. Don't have guidance + information, no accountability"
                 rows={5}
               />
               {form.formState.errors.coreProblems && (
@@ -342,14 +342,14 @@ export default function NewOfferPage() {
 
           {/* Section 3 - Desired Outcome & Transformation */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Section 3 - Desired Outcome & Transformation</h2>
-            
+            <h2 className="text-xl font-semibold">What do they want to achieve?</h2>
+
             <div className="space-y-2">
               <Label htmlFor="desiredOutcome">Core Outcome & Timeline *</Label>
               <Textarea
                 id="desiredOutcome"
                 {...form.register('desiredOutcome')}
-                placeholder="What result does the prospect achieve and in what timeframe?"
+                placeholder="What position do they want to be in? E.g. More money, more time with kids, more flexibility"
                 rows={2}
               />
               {form.formState.errors.desiredOutcome && (
@@ -381,7 +381,7 @@ export default function NewOfferPage() {
           {/* Section 4 - Offer Deliverables */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">Section 4 - Offer Deliverables</h2>
-            
+
             <div className="space-y-2">
               <Label htmlFor="deliverables">Deliverables</Label>
               <Textarea
@@ -396,7 +396,7 @@ export default function NewOfferPage() {
           {/* Section 5 - Cost Profile */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">Section 5 - Cost Profile</h2>
-            
+
             <div className="space-y-2">
               <Label htmlFor="paymentOptions">Payment Options</Label>
               <Textarea
@@ -448,7 +448,7 @@ export default function NewOfferPage() {
           {/* Section 6 - Proof & Risk Reversal */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">Section 6 - Proof & Risk Reversal</h2>
-            
+
             <div className="space-y-2">
               <Label htmlFor="caseStudyStrength">Case Study / Proof Strength</Label>
               <Select
@@ -481,7 +481,7 @@ export default function NewOfferPage() {
           {/* Section 7 - Funnel Context */}
           <div className="space-y-4">
             <h2 className="text-xl font-semibold">Section 7 - Funnel Context</h2>
-            
+
             <div className="space-y-2">
               <Label htmlFor="primaryFunnelSource">Primary Funnel Source</Label>
               <Select
@@ -521,9 +521,9 @@ export default function NewOfferPage() {
                 Cancel
               </Button>
             </Link>
-            <Button 
-              type="submit" 
-              disabled={loading} 
+            <Button
+              type="submit"
+              disabled={loading}
               className="flex-1 w-full sm:w-auto"
               onClick={() => {
                 console.log('Create Offer button clicked');

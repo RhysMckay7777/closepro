@@ -7,6 +7,8 @@ import { eq } from 'drizzle-orm';
 import { userOrganizations } from '@/db/schema';
 import { calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
 
+export const maxDuration = 60;
+
 /**
  * GET - Get prospect avatar details
  */
@@ -121,7 +123,7 @@ export async function PATCH(
 
     // Build update object
     const updateData: any = {};
-    
+
     if (body.name !== undefined) updateData.name = body.name;
     if (body.positionProblemAlignment !== undefined) updateData.positionProblemAlignment = body.positionProblemAlignment;
     if (body.painAmbitionIntensity !== undefined) updateData.painAmbitionIntensity = body.painAmbitionIntensity;
@@ -142,13 +144,13 @@ export async function PATCH(
 
     // Recalculate difficulty if relevant fields changed
     if (body.positionProblemAlignment !== undefined || body.painAmbitionIntensity !== undefined ||
-        body.perceivedNeedForHelp !== undefined || body.authorityLevel !== undefined || 
-        body.funnelContext !== undefined || body.executionResistance !== undefined) {
+      body.perceivedNeedForHelp !== undefined || body.authorityLevel !== undefined ||
+      body.funnelContext !== undefined || body.executionResistance !== undefined) {
       const updatedAvatar = { ...avatar[0], ...updateData };
-      const executionResistance = updatedAvatar.executionResistance !== undefined 
-        ? updatedAvatar.executionResistance 
+      const executionResistance = updatedAvatar.executionResistance !== undefined
+        ? updatedAvatar.executionResistance
         : avatar[0].executionResistance || 5;
-      
+
       const { index: difficultyIndex, tier: difficultyTier } = calculateDifficultyIndex(
         updatedAvatar.positionProblemAlignment,
         updatedAvatar.painAmbitionIntensity,
@@ -157,7 +159,7 @@ export async function PATCH(
         updatedAvatar.funnelContext,
         executionResistance
       );
-      
+
       updateData.difficultyIndex = difficultyIndex;
       updateData.difficultyTier = difficultyTier;
     }

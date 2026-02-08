@@ -9,6 +9,8 @@ import { shouldBypassSubscription } from '@/lib/dev-mode';
 import { analyzeCallAsync } from '@/lib/calls/analyze-call';
 import { extractTextFromTranscriptFile, isAllowedTranscriptFile } from '@/lib/calls/extract-transcript-text';
 
+export const maxDuration = 60;
+
 /**
  * Build minimal transcriptJson from pasted transcript text.
  * Analysis expects { utterances: Array<{ speaker, start, end, text }> }.
@@ -225,15 +227,25 @@ export async function POST(request: NextRequest) {
       await incrementUsage(organizationId, 'calls');
     }
 
-    analyzeCallAsync(callId, trimmedTranscript, transcriptJson).catch(
-      (err) => console.error('Background analysis error (transcript):', err)
-    );
+    // Run analysis INLINE (awaited) so it completes before the HTTP
+    // response is sent. maxDuration = 60 keeps Vercel alive.
+    try {
+      await analyzeCallAsync(callId, trimmedTranscript, transcriptJson);
 
-    return NextResponse.json({
-      callId,
-      status: 'analyzing',
-      message: 'Transcript saved. Analysis in progress...',
-    }, { status: 201 });
+      return NextResponse.json({
+        callId,
+        status: 'completed',
+        message: 'Transcript saved and analysis complete.',
+      }, { status: 201 });
+    } catch (analysisErr: unknown) {
+      console.error('Inline analysis error (transcript):', analysisErr);
+      // analyzeCallAsync already sets DB status to 'failed'
+      return NextResponse.json({
+        callId,
+        status: 'failed',
+        message: 'Transcript saved but analysis failed. You can retry from the call detail page.',
+      }, { status: 201 });
+    }
   } catch (error: unknown) {
     console.error('Error creating call from transcript:', error);
     const code = (error as { code?: string })?.code;

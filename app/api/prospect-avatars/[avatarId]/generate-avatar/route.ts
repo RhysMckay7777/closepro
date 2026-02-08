@@ -6,6 +6,8 @@ import { prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
 
+export const maxDuration = 60;
+
 /**
  * POST - Generate a human-style portrait for this prospect via NanoBanana and save as avatar_url.
  * Requires NANOBANANA_API_KEY in env.

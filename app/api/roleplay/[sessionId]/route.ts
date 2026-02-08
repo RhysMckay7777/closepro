@@ -5,6 +5,8 @@ import { db } from '@/db';
 import { roleplaySessions, roleplayMessages, offers, prospectAvatars, roleplayAnalysis } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
+export const maxDuration = 60;
+
 /**
  * GET - Get roleplay session details and messages
  */
