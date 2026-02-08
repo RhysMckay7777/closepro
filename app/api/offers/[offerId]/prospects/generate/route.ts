@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
@@ -83,9 +83,15 @@ export async function POST(
     }
 
     if (regenerate) {
+      // Only delete AI-generated prospects — preserve user-created and transcript-derived
       await db
         .delete(prospectAvatars)
-        .where(eq(prospectAvatars.offerId, offerId));
+        .where(
+          and(
+            eq(prospectAvatars.offerId, offerId),
+            eq(prospectAvatars.sourceType, 'auto_generated')
+          )
+        );
     }
 
     // Generate 4 prospects: Easy, Realistic, Hard, Elite (with bios)
