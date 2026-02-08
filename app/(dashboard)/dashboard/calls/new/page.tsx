@@ -247,7 +247,7 @@ export default function NewCallPage() {
 
         // STEP A: Upload file directly to Vercel Blob from browser
         // This bypasses the 4.5 MB serverless function body limit
-        const blob = await upload(file!.name, file!, {
+        const blob = await upload(`${Date.now()}-${file!.name}`, file!, {
           access: 'public',
           handleUploadUrl: '/api/calls/upload-blob',
         });

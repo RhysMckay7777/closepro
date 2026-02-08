@@ -21,6 +21,7 @@ export async function POST(request: Request): Promise<NextResponse> {
                 }
 
                 return {
+                    addRandomSuffix: true,
                     allowedContentTypes: [
                         'audio/mpeg',        // .mp3
                         'audio/mp4',         // .m4a

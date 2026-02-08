@@ -166,7 +166,7 @@ export default function NewProspectPage() {
         // Audio file → upload to Vercel Blob first, then send URL
         const { upload } = await import('@vercel/blob/client');
 
-        const blob = await upload(transcriptFile.name, transcriptFile, {
+        const blob = await upload(`${Date.now()}-${transcriptFile.name}`, transcriptFile, {
           access: 'public',
           handleUploadUrl: '/api/calls/upload-blob',
         });
