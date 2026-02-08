@@ -12,7 +12,7 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { toastError } from '@/lib/toast';
 import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
-import { resolveProspectAvatarUrl } from '@/lib/prospect-avatar';
+import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { getVoiceIdFromProspect } from '@/lib/ai/roleplay/voice-mapping';
 
 interface Message {
@@ -512,13 +512,15 @@ function RoleplaySessionContent() {
               >
                 {prospectAvatar ? (
                   <Avatar className="w-full h-full">
-                    <AvatarImage
-                      src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)}
-                      alt={prospectAvatar.name}
-                      className="object-cover"
-                    />
-                    <AvatarFallback className="bg-stone-700 text-stone-200 text-2xl">
-                      {prospectAvatar.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                    {resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl) ? (
+                      <AvatarImage
+                        src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)!}
+                        alt={prospectAvatar.name}
+                        className="object-cover"
+                      />
+                    ) : null}
+                    <AvatarFallback className={`text-4xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
+                      {getProspectInitials(prospectAvatar.name)}
                     </AvatarFallback>
                   </Avatar>
                 ) : (
