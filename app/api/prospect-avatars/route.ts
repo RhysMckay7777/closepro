@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -6,10 +6,9 @@ import { prospectAvatars, offers } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { users, userOrganizations } from '@/db/schema';
 import { calculateDifficultyIndex, mapDifficultySelectionToProfile } from '@/lib/ai/roleplay/prospect-avatar';
-import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * GET - List all prospect avatars for a specific offer
@@ -228,44 +227,23 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
-    // Fire-and-forget: generate realistic human portrait (NanoBanana → Gemini fallback)
-    if (newAvatar) {
-      (async () => {
+    // Use after() to generate avatar image in background on Vercel serverless
+    if (newAvatar && isGeminiImageConfigured()) {
+      after(async () => {
         try {
-          let avatarUrl: string | null = null;
-
-          // Try NanoBanana first
-          if (isNanoBananaConfigured()) {
-            try {
-              const prompt = buildProspectAvatarPrompt(newAvatar.name, newAvatar.positionDescription ?? undefined);
-              const { url } = await generateImage({ prompt, num: 1, image_size: '1:1' });
-              avatarUrl = url;
-            } catch (err) {
-              console.warn('[prospect-avatars] NanoBanana failed, trying Gemini fallback:', (err as Error).message);
-            }
-          }
-
-          // Gemini fallback (uses strong anti-cartoon prompt)
-          if (!avatarUrl && isGeminiImageConfigured()) {
-            try {
-              const prompt = buildGeminiAvatarPrompt(newAvatar.name, newAvatar.positionDescription ?? undefined);
-              const { url } = await generateImageWithGemini({ prompt });
-              avatarUrl = url;
-            } catch (err) {
-              console.error('[prospect-avatars] Gemini fallback also failed:', (err as Error).message);
-            }
-          }
-
-          if (avatarUrl) {
+          const prompt = buildGeminiAvatarPrompt(newAvatar.name, newAvatar.positionDescription ?? undefined);
+          const { url } = await generateImageWithGemini({ prompt });
+          if (url) {
             await db
               .update(prospectAvatars)
-              .set({ avatarUrl, updatedAt: new Date() })
+              .set({ avatarUrl: url, updatedAt: new Date() })
               .where(eq(prospectAvatars.id, newAvatar.id));
+            console.log(`[prospect-avatars] Avatar saved for ${newAvatar.name} via Gemini`);
           }
         } catch (err) {
-          console.error('[prospect-avatars] Background avatar generation failed:', err);
+          console.error('[prospect-avatars] Gemini avatar generation failed:', (err as Error).message);
         }
-      })();
+      });
     }
 
     return NextResponse.json({

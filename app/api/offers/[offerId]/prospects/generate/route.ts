@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName } from '@/lib/ai/roleplay/prospect-avatar';
-import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
+
+export const maxDuration = 120;
 
 /**
  * POST - Auto-generate 4 prospects (Easy/Realistic/Hard/Elite) for an offer.
@@ -138,13 +139,9 @@ export async function POST(
         : 'Successfully generated 4 prospects with bios.',
     };
 
-    // Fire-and-forget: generate human photos in the background
-    const useNanoBanana = isNanoBananaConfigured();
-    const useGemini = isGeminiImageConfigured();
-
-    if (useNanoBanana || useGemini) {
-      // Don't await — let it run in the background while frontend polls
-      (async () => {
+    // Generate human photos in the background via Gemini (Google AI Studio)
+    if (isGeminiImageConfigured()) {
+      after(async () => {
         try {
           const allProspects = await db
             .select()
@@ -152,53 +149,30 @@ export async function POST(
             .where(eq(prospectAvatars.offerId, offerId));
 
           const prospectsToPhoto = allProspects.filter(p => !p.avatarUrl);
-          const provider = useNanoBanana ? 'NanoBanana' : 'Gemini';
-          console.log(`[prospects/generate] ${provider} configured, generating human photos for ${prospectsToPhoto.length} prospects (background)`);
+          console.log(`[prospects/generate] Gemini configured, generating human photos for ${prospectsToPhoto.length} prospects (background via after())`);
 
           for (const prospect of prospectsToPhoto) {
-            let imageUrl: string | null = null;
-            let usedProvider = '';
-
-            if (useNanoBanana) {
-              try {
-                const { url } = await generateImage({
-                  prompt: buildProspectAvatarPrompt(prospect.name, prospect.positionDescription),
-                  num: 1,
-                  image_size: '1:1',
-                });
-                imageUrl = url;
-                usedProvider = 'NanoBanana';
-              } catch (err: any) {
-                console.error('[prospects/generate] NanoBanana failed:', err?.message);
+            try {
+              const { url } = await generateImageWithGemini({
+                prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription),
+              });
+              if (url) {
+                await db
+                  .update(prospectAvatars)
+                  .set({ avatarUrl: url, updatedAt: new Date() })
+                  .where(eq(prospectAvatars.id, prospect.id));
+                console.log(`[prospects/generate] Human photo saved for ${prospect.name} via Gemini`);
               }
-            }
-
-            if (!imageUrl && useGemini) {
-              try {
-                const { url } = await generateImageWithGemini({
-                  prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription),
-                });
-                imageUrl = url;
-                usedProvider = 'Gemini';
-              } catch (err: any) {
-                console.error('[prospects/generate] Gemini failed:', err?.message);
-              }
-            }
-
-            if (imageUrl) {
-              await db
-                .update(prospectAvatars)
-                .set({ avatarUrl: imageUrl, updatedAt: new Date() })
-                .where(eq(prospectAvatars.id, prospect.id));
-              console.log(`[prospects/generate] Human photo saved for ${prospect.name} via ${usedProvider}`);
+            } catch (err: any) {
+              console.error(`[prospects/generate] Gemini failed for ${prospect.name}:`, err?.message);
             }
           }
         } catch (err) {
           console.error('[prospects/generate] Background image generation failed:', err);
         }
-      })();
+      });
     } else {
-      console.log('[prospects/generate] No image API configured (set NANOBANANA_API_KEY or GOOGLE_AI_STUDIO_KEY)');
+      console.log('[prospects/generate] No image API configured (set GOOGLE_AI_STUDIO_KEY)');
     }
 
     return NextResponse.json(responsePayload);

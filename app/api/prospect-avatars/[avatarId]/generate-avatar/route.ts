@@ -4,13 +4,13 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
+import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
- * POST - Generate a human-style portrait for this prospect via NanoBanana and save as avatar_url.
- * Requires NANOBANANA_API_KEY in env.
+ * POST - Generate a human-style portrait for this prospect via Google AI Studio (Gemini) and save as avatar_url.
+ * Requires GOOGLE_AI_STUDIO_KEY or GOOGLE_GENERATIVE_AI_API_KEY in env.
  */
 export async function POST(
   request: NextRequest,
@@ -29,9 +29,9 @@ export async function POST(
       );
     }
 
-    if (!isNanoBananaConfigured()) {
+    if (!isGeminiImageConfigured()) {
       return NextResponse.json(
-        { error: 'NanoBanana is not configured. Set NANOBANANA_API_KEY in your environment.' },
+        { error: 'Google AI Studio is not configured. Set GOOGLE_AI_STUDIO_KEY in your environment.' },
         { status: 503 }
       );
     }
@@ -63,12 +63,8 @@ export async function POST(
       );
     }
 
-    const prompt = buildProspectAvatarPrompt(prospect.name, prospect.positionDescription ?? undefined);
-    const { url } = await generateImage({
-      prompt,
-      num: 1,
-      image_size: '1:1',
-    });
+    const prompt = buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription ?? undefined);
+    const { url } = await generateImageWithGemini({ prompt });
 
     const [updated] = await db
       .update(prospectAvatars)
@@ -81,7 +77,7 @@ export async function POST(
 
     return NextResponse.json({
       avatarUrl: updated?.avatarUrl ?? url,
-      message: 'Human portrait generated',
+      message: 'Human portrait generated via Gemini',
     });
   } catch (error: any) {
     console.error('Error generating prospect avatar:', error);
