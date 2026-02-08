@@ -7,6 +7,7 @@ import { OfferProfile, generateOfferSummary, getDefaultSalesStyle } from './offe
 import { ProspectAvatar, ProspectDifficultyProfile, DifficultyTier } from './prospect-avatar';
 import { FunnelContext } from './funnel-context';
 import { BehaviourState, initializeBehaviourState, adaptBehaviour, shouldRaiseObjection, getObjectionType, getOpeningLine, getBehaviourInstructions, OpeningLineContext } from './behaviour-rules';
+import { ROLEPLAY_BEHAVIORAL_RULES, PROSPECT_DIFFICULTY_MODEL } from '@/lib/training';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -170,6 +171,12 @@ CRITICAL RULES:
 9. Your responses should be conversational, natural, and human-like.
 
 ${getBehaviourInstructions(difficultyTier)}
+
+CONNOR'S FRAMEWORK — DIFFICULTY MODEL:
+${PROSPECT_DIFFICULTY_MODEL}
+
+CONNOR'S FRAMEWORK — BEHAVIORAL RULES:
+${ROLEPLAY_BEHAVIORAL_RULES}
 
 Respond as this prospect would, given your current state, execution resistance level, and the rep's message.`;
 }

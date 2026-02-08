@@ -44,6 +44,11 @@ export async function generateImageWithGemini(
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
+                systemInstruction: {
+                    parts: [{
+                        text: 'You are a professional portrait photographer. You ONLY produce ultra-realistic photographs of real human beings. You NEVER produce cartoons, illustrations, drawings, anime, sketches, CGI, 3D renders, vector art, or any non-photographic style. Every image you create must be indistinguishable from a real DSLR photograph.',
+                    }],
+                },
                 contents: [
                     {
                         parts: [
@@ -92,40 +97,36 @@ export async function generateImageWithGemini(
 
 /**
  * Build a prompt for realistic human headshot photo.
+ * CRITICAL: Must produce a real photograph, never a cartoon/illustration.
  */
 export function buildGeminiAvatarPrompt(
     name?: string,
     context?: string | null
 ): string {
-    const base = [
-        'Professional headshot photograph of a real human person',
-        'ultra-realistic photo style',
-        'natural lighting',
-        'genuine facial features with realistic skin texture',
-        'authentic human expression',
-        'head and shoulders framing',
-        'soft neutral background',
-        'high resolution photograph',
-        'NOT a cartoon or illustration',
-        'real photography only',
-    ].join(', ');
-
-    const parts = [base];
+    const parts = [
+        'Generate a REAL photograph — a professional headshot photo taken with a DSLR camera.',
+        'This must look like a genuine photograph of a real human being.',
+        'Ultra-realistic photo with natural lighting, real skin texture with pores and imperfections, natural hair.',
+        'Head and shoulders framing against a soft blurred bokeh background.',
+        'Shot on Canon EOS R5, 85mm f/1.4 lens, shallow depth of field.',
+        'Do NOT generate any cartoon, anime, illustration, drawing, sketch, CGI, 3D render, vector art, or any non-photographic style whatsoever.',
+        'The output MUST be indistinguishable from a real photograph taken by a professional photographer.',
+    ];
 
     if (name?.trim()) {
         const seed = name.toLowerCase();
         const hash = seed.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
         const ages = ['late 20s', 'early 30s', 'mid 30s', 'early 40s', 'mid 40s'];
         const age = ages[hash % ages.length];
-        parts.push(`${age} professional`);
+        parts.push(`The person is a ${age} professional.`);
     }
 
     if (context?.trim()) {
         const safe = context.trim().slice(0, 100).replace(/[^\w\s,.-]/g, '');
         if (safe) {
-            parts.push(`who works in: ${safe}`);
+            parts.push(`They work in: ${safe}.`);
         }
     }
 
-    return parts.join(', ');
+    return parts.join(' ');
 }

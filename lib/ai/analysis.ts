@@ -5,6 +5,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import Groq from 'groq-sdk';
 import { SALES_CATEGORIES, type SalesCategoryId } from './scoring-framework';
 import { getCondensedExamples } from './knowledge/real-call-examples';
+import {
+  SCORING_CATEGORIES,
+  CATEGORY_LABELS,
+  CATEGORY_DESCRIPTIONS,
+  PROSPECT_DIFFICULTY_MODEL,
+} from '@/lib/training';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -309,31 +315,26 @@ ${transcript.length > 6000 ? transcript.substring(0, 6000) + '\n... (truncated f
 SPEAKER TIMESTAMPS (sample):
 ${JSON.stringify(transcriptJson.utterances.slice(0, 30), null, 2)}${transcriptJson.utterances.length > 30 ? `\n... (${transcriptJson.utterances.length - 30} more utterances)` : ''}
 
+CONNOR'S PROSPECT DIFFICULTY MODEL (reference for evaluation):
+${PROSPECT_DIFFICULTY_MODEL}
+
 EVALUATION FRAMEWORK (Sales Call Scoring – 10 Category Framework):
 
 1. OVERALL SCORE (0-100) and 10 CATEGORY SCORES (each 0-10). Use these exact category IDs:
-   - authority_leadership: Authority & Leadership
-   - structure_framework: Structure & Framework
-   - communication_storytelling: Communication & Storytelling
-   - discovery_diagnosis: Discovery Depth & Diagnosis
-   - gap_urgency: Gap & Urgency
-   - value_offer_positioning: Value & Offer Positioning
-   - trust_safety_ethics: Trust, Safety & Ethics
-   - adaptation_calibration: Adaptation & Calibration
-   - objection_handling: Objection Handling & Preemption
-   - closing_commitment: Closing & Commitment Integrity
+${SCORING_CATEGORIES.map(id => `   - ${id}: ${CATEGORY_LABELS[id]} — ${CATEGORY_DESCRIPTIONS[id]}`).join('\n')}
 
 2. OBJECTIONS (pillar classification only). For each objection raised: classify as value | trust | fit | logistics; note how rep handled it.
 
 3. PROSPECT DIFFICULTY ASSESSMENT (50-point model):
-   Analyze the PROSPECT's difficulty to contextualize the rep's performance:
-   - positionProblemAlignment (0-10): How well prospect's position/problems align with offer
-   - painAmbitionIntensity (0-10): Strength of pain or ambition
-   - perceivedNeedForHelp (0-10): How much they believe they need help
+   Analyze the PROSPECT's difficulty to contextualize the rep's performance.
+   Score each dimension per the model above.
+   - positionProblemAlignment (0-10)
+   - painAmbitionIntensity (0-10)
+   - perceivedNeedForHelp (0-10)
    - authorityLevel: "advisee" | "peer" | "advisor"
-   - funnelContext (0-10): How warm/cold (0-3 cold, 4-6 warm, 7-8 educated, 9-10 referral)
-   - executionResistance (0-10): Ability to proceed (8-10 fully able, 5-7 partial, 1-4 extreme)
-   - totalDifficultyScore (0-50): Sum of all dimensions
+   - funnelContext (0-10)
+   - executionResistance (0-10)
+   - totalDifficultyScore (0-50)
    - difficultyTier: "easy" | "realistic" | "hard" | "elite" | "near_impossible"
    
    IMPORTANT: Execution resistance must be reported separately. It increases difficulty but does not excuse poor sales skill. Flag structural blockers clearly.

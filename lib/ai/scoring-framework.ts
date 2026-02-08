@@ -1,34 +1,37 @@
 /**
  * Sales Call Scoring – 10 Category Framework
  * Shared across call analysis, roleplay scoring, and performance reporting.
- * Reference: Knowledge Doc – Sales Call Scoring Framework
+ *
+ * CANONICAL SOURCE: lib/training/scoring-categories.ts
+ * This file re-exports from the training framework for backward compatibility.
  */
 
-/** The 10 agreed sales categories (each scored 0–10; total out of 100) */
-export const SALES_CATEGORIES = [
-  { id: 'authority_leadership', label: 'Authority & Leadership' },
-  { id: 'structure_framework', label: 'Structure & Framework' },
-  { id: 'communication_storytelling', label: 'Communication & Storytelling' },
-  { id: 'discovery_diagnosis', label: 'Discovery Depth & Diagnosis' },
-  { id: 'gap_urgency', label: 'Gap & Urgency' },
-  { id: 'value_offer_positioning', label: 'Value & Offer Positioning' },
-  { id: 'trust_safety_ethics', label: 'Trust, Safety & Ethics' },
-  { id: 'adaptation_calibration', label: 'Adaptation & Calibration' },
-  { id: 'objection_handling', label: 'Objection Handling & Preemption' },
-  { id: 'closing_commitment', label: 'Closing & Commitment Integrity' },
-] as const;
+import {
+  SCORING_CATEGORIES as TRAINING_CATEGORIES,
+  CATEGORY_LABELS,
+  CATEGORY_DESCRIPTIONS,
+  OBJECTION_PILLARS as TRAINING_PILLARS,
+  OBJECTION_PILLAR_LABELS,
+  getCategoryLabel as trainingGetCategoryLabel,
+  type ScoringCategoryId,
+  type ObjectionPillar,
+} from '@/lib/training';
 
-export type SalesCategoryId = (typeof SALES_CATEGORIES)[number]['id'];
+/** The 10 agreed sales categories (each scored 0–10; total out of 100) */
+export const SALES_CATEGORIES = TRAINING_CATEGORIES.map(id => ({
+  id,
+  label: CATEGORY_LABELS[id],
+}));
+
+export type SalesCategoryId = ScoringCategoryId;
 
 /** Pillars used only for objection classification (not primary scores) */
-export const OBJECTION_PILLARS = [
-  { id: 'value', label: 'Value' },
-  { id: 'trust', label: 'Trust' },
-  { id: 'fit', label: 'Fit' },
-  { id: 'logistics', label: 'Logistics' },
-] as const;
+export const OBJECTION_PILLARS = TRAINING_PILLARS.map(id => ({
+  id,
+  label: OBJECTION_PILLAR_LABELS[id],
+}));
 
-export type ObjectionPillarId = (typeof OBJECTION_PILLARS)[number]['id'];
+export type ObjectionPillarId = ObjectionPillar;
 
 /** Prospect difficulty tiers (aligned with 50-point model) */
 export const DIFFICULTY_TIERS = [
@@ -52,8 +55,7 @@ export const DIFFICULTY_TIER_LABELS: Record<DifficultyTier, string> = {
 
 /** Get category label by id */
 export function getCategoryLabel(id: string): string {
-  const c = SALES_CATEGORIES.find((x) => x.id === id);
-  return c?.label ?? id;
+  return trainingGetCategoryLabel(id);
 }
 
 /** Get pillar label by id */
