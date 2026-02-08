@@ -146,6 +146,12 @@ export default function NewProspectPage() {
     }
   };
 
+  const isAudioFile = (file: File) => {
+    const t = file.type?.toLowerCase() || '';
+    const n = file.name?.toLowerCase() || '';
+    return /^audio\//.test(t) || /\.(mp3|wav|m4a|webm)$/.test(n);
+  };
+
   const handleTranscriptUpload = async () => {
     if (!transcriptText.trim() && !transcriptFile) {
       toastError('Please provide a transcript or upload a file');
@@ -154,20 +160,47 @@ export default function NewProspectPage() {
 
     setUploadingTranscript(true);
     try {
-      const formData = new FormData();
+      let extractResponse: Response;
 
-      if (transcriptFile) {
+      if (transcriptFile && isAudioFile(transcriptFile)) {
+        // Audio file → upload to Vercel Blob first, then send URL
+        const { upload } = await import('@vercel/blob/client');
+
+        const blob = await upload(transcriptFile.name, transcriptFile, {
+          access: 'public',
+          handleUploadUrl: '/api/calls/upload-blob',
+        });
+
+        extractResponse = await fetch('/api/roleplay/extract-prospect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileUrl: blob.url,
+            fileName: transcriptFile.name,
+            offerId,
+          }),
+        });
+      } else if (transcriptFile) {
+        // Non-audio file (transcript doc) → FormData
+        const formData = new FormData();
         formData.append('audio', transcriptFile);
-      } else if (transcriptText.trim()) {
-        formData.append('transcript', transcriptText);
+        formData.append('offerId', offerId);
+
+        extractResponse = await fetch('/api/roleplay/extract-prospect', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // Pasted transcript text → JSON
+        extractResponse = await fetch('/api/roleplay/extract-prospect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            transcript: transcriptText.trim(),
+            offerId,
+          }),
+        });
       }
-
-      formData.append('offerId', offerId);
-
-      const extractResponse = await fetch('/api/roleplay/extract-prospect', {
-        method: 'POST',
-        body: formData,
-      });
 
       if (!extractResponse.ok) {
         const errorData = await extractResponse.json().catch(() => ({}));

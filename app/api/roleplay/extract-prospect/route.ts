@@ -39,14 +39,14 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
 
     if (contentType.includes('multipart/form-data')) {
-      // Handle file upload
+      // Handle file upload (small files via FormData)
       const formData = await request.formData();
       const audioFile = formData.get('audio') as File | null;
       const transcriptInput = formData.get('transcript') as string | null;
       offerId = formData.get('offerId') as string | null;
 
       if (audioFile) {
-        // Transcribe audio file
+        // Transcribe audio file from buffer
         const arrayBuffer = await audioFile.arrayBuffer();
         const buffer = Buffer.from(arrayBuffer);
         const transcriptionResult = await transcribeAudioFile(buffer, audioFile.name);
@@ -62,18 +62,23 @@ export async function POST(request: NextRequest) {
     } else {
       // Handle JSON request
       const body = await request.json();
-      const { callId, transcript, offerId: bodyOfferId } = body;
+      const { callId, transcript, offerId: bodyOfferId, fileUrl, fileName } = body;
 
-      if (!callId && !transcript) {
+      if (fileUrl && fileName) {
+        // File already uploaded to Vercel Blob — transcribe from URL
+        const transcriptionResult = await transcribeAudioFile(null, fileName, fileUrl);
+        transcriptText = transcriptionResult.transcript;
+        offerId = bodyOfferId || null;
+      } else if (!callId && !transcript) {
         return NextResponse.json(
-          { error: 'Either callId or transcript is required' },
+          { error: 'Either callId, transcript, or fileUrl is required' },
           { status: 400 }
         );
+      } else {
+        transcriptText = transcript;
+        sourceCallId = callId || null;
+        offerId = bodyOfferId || null;
       }
-
-      transcriptText = transcript;
-      sourceCallId = callId || null;
-      offerId = bodyOfferId || null;
     }
 
     // NOR ToUCHHH THISS PARTT OOOHH... NOO TRYYY AMMMM AT ALLL
