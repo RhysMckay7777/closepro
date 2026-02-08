@@ -5,6 +5,13 @@ import { db } from '@/db';
 import { salesCalls, callAnalysis, users } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 
+/** Safely parse a value that may be a JSON string or already-parsed object */
+function safeParse<T>(val: unknown, fallback: T): T {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val !== 'string') return val as T;
+  try { return JSON.parse(val) as T; } catch { return fallback; }
+}
+
 export const maxDuration = 60;
 
 /**
@@ -71,12 +78,12 @@ export async function GET(
 
     let analysisData = null;
     if (analysis[0]) {
-      const skillScoresRaw = analysis[0].skillScores ? JSON.parse(analysis[0].skillScores) : null;
+      const skillScoresRaw = safeParse(analysis[0].skillScores, null);
       const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw)
         ? skillScoresRaw
         : {};
       const objectionDetailsRaw = analysis[0].objectionDetails;
-      const objections = objectionDetailsRaw && typeof objectionDetailsRaw === 'string' ? JSON.parse(objectionDetailsRaw) : [];
+      const objections = safeParse(objectionDetailsRaw, []);
       analysisData = {
         overallScore: analysis[0].overallScore,
         categoryScores,
@@ -84,12 +91,8 @@ export async function GET(
         prospectDifficulty: analysis[0].prospectDifficulty ?? undefined,
         prospectDifficultyTier: analysis[0].prospectDifficultyTier ?? undefined,
         skillScores: categoryScores,
-        coachingRecommendations: analysis[0].coachingRecommendations
-          ? JSON.parse(analysis[0].coachingRecommendations)
-          : [],
-        timestampedFeedback: analysis[0].timestampedFeedback
-          ? JSON.parse(analysis[0].timestampedFeedback)
-          : [],
+        coachingRecommendations: safeParse(analysis[0].coachingRecommendations, []),
+        timestampedFeedback: safeParse(analysis[0].timestampedFeedback, []),
       };
     }
 

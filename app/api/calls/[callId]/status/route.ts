@@ -7,6 +7,13 @@ import { eq, and } from 'drizzle-orm';
 import { analyzeCall } from '@/lib/ai/analysis';
 import { callAnalysis } from '@/db/schema';
 
+/** Safely parse a value that may be a JSON string or already-parsed object */
+function safeParse<T>(val: unknown, fallback: T): T {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val !== 'string') return val as T;
+  try { return JSON.parse(val) as T; } catch { return fallback; }
+}
+
 /**
  * Check call status and analysis
  * With Deepgram, transcription is instant, so we only check analysis status
@@ -109,16 +116,16 @@ export async function GET(
       const row = analysisRows[0];
       let analysis: Record<string, unknown> | null = null;
       if (row) {
-        const skillScoresRaw = row.skillScores ? JSON.parse(row.skillScores) : null;
+        const skillScoresRaw = safeParse(row.skillScores, null);
         const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
-        const objections = row.objectionDetails && typeof row.objectionDetails === 'string' ? JSON.parse(row.objectionDetails) : [];
+        const objections = safeParse(row.objectionDetails, []);
         analysis = {
           ...row,
           categoryScores,
           objections,
           skillScores: categoryScores,
-          coachingRecommendations: row.coachingRecommendations ? JSON.parse(row.coachingRecommendations) : [],
-          timestampedFeedback: row.timestampedFeedback ? JSON.parse(row.timestampedFeedback) : [],
+          coachingRecommendations: safeParse(row.coachingRecommendations, []),
+          timestampedFeedback: safeParse(row.timestampedFeedback, []),
         };
       }
       return NextResponse.json({
@@ -144,16 +151,16 @@ export async function GET(
       const row = analysisRows[0];
       let analysis: Record<string, unknown> | null = null;
       if (row) {
-        const skillScoresRaw = row.skillScores ? JSON.parse(row.skillScores) : null;
+        const skillScoresRaw = safeParse(row.skillScores, null);
         const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
-        const objections = row.objectionDetails && typeof row.objectionDetails === 'string' ? JSON.parse(row.objectionDetails) : [];
+        const objections = safeParse(row.objectionDetails, []);
         analysis = {
           ...row,
           categoryScores,
           objections,
           skillScores: categoryScores,
-          coachingRecommendations: row.coachingRecommendations ? JSON.parse(row.coachingRecommendations) : [],
-          timestampedFeedback: row.timestampedFeedback ? JSON.parse(row.timestampedFeedback) : [],
+          coachingRecommendations: safeParse(row.coachingRecommendations, []),
+          timestampedFeedback: safeParse(row.timestampedFeedback, []),
         };
       }
       return NextResponse.json({
@@ -174,16 +181,16 @@ export async function GET(
 
       if (analysis[0]) {
         const row = analysis[0];
-        const skillScoresRaw = row.skillScores ? JSON.parse(row.skillScores) : null;
+        const skillScoresRaw = safeParse(row.skillScores, null);
         const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
-        const objections = row.objectionDetails && typeof row.objectionDetails === 'string' ? JSON.parse(row.objectionDetails) : [];
+        const objections = safeParse(row.objectionDetails, []);
         const analysisForClient = {
           ...row,
           categoryScores,
           objections,
           skillScores: categoryScores,
-          coachingRecommendations: row.coachingRecommendations ? JSON.parse(row.coachingRecommendations) : [],
-          timestampedFeedback: row.timestampedFeedback ? JSON.parse(row.timestampedFeedback) : [],
+          coachingRecommendations: safeParse(row.coachingRecommendations, []),
+          timestampedFeedback: safeParse(row.timestampedFeedback, []),
         };
         return NextResponse.json({
           status: 'completed',

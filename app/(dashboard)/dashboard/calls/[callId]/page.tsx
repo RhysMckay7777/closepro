@@ -354,14 +354,19 @@ export default function CallDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {JSON.parse(analysis.coachingRecommendations).map((rec: any, index: number) => (
+                  {(() => {
+                    const recs = typeof analysis.coachingRecommendations === 'string'
+                      ? JSON.parse(analysis.coachingRecommendations)
+                      : (Array.isArray(analysis.coachingRecommendations) ? analysis.coachingRecommendations : []);
+                    return recs;
+                  })().map((rec: any, index: number) => (
                     <div
                       key={index}
                       className={`p-4 rounded-lg border ${rec.priority === 'high'
-                          ? 'border-destructive/30 bg-destructive/5'
-                          : rec.priority === 'medium'
-                            ? 'border-amber-500/30 bg-amber-500/5'
-                            : 'border-white/10 bg-white/5'
+                        ? 'border-destructive/30 bg-destructive/5'
+                        : rec.priority === 'medium'
+                          ? 'border-amber-500/30 bg-amber-500/5'
+                          : 'border-white/10 bg-white/5'
                         }`}
                     >
                       <div className="flex items-start justify-between gap-3">

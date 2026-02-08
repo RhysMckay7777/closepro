@@ -191,7 +191,7 @@ export default function NewProspectPage() {
           positionDescription: [
             extractData.avatar.positionDescription || '',
             ...(extractData.avatar.problems
-              ? (JSON.parse(extractData.avatar.problems) as string[]).filter((s: string) => s.trim())
+              ? ((typeof extractData.avatar.problems === 'string' ? JSON.parse(extractData.avatar.problems) : extractData.avatar.problems) as string[]).filter((s: string) => s.trim())
               : []),
           ].filter(Boolean).join('. '),
         });
