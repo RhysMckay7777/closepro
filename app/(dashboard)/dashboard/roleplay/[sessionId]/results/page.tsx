@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -74,8 +74,19 @@ export default function RoleplayResultsPage() {
   const [loading, setLoading] = useState(true);
   const [scoringError, setScoringError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const scoringTriggeredRef = useRef(false);
 
-  const fetchResults = useCallback(async () => {
+  // Stop polling
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  }, []);
+
+  // Check if analysis is ready (just fetch session data, no scoring)
+  const checkForAnalysis = useCallback(async (): Promise<boolean> => {
     try {
       const response = await fetch(`/api/roleplay/${sessionId}`);
       const data = await response.json();
@@ -84,38 +95,72 @@ export default function RoleplayResultsPage() {
         prospectAvatar: data.prospectAvatar || null,
       });
 
-      // Analysis is included in session response when scored (from roleplay_analysis)
       if (data.analysis) {
         setAnalysis(data.analysis);
         setLoading(false);
-        return;
+        stopPolling();
+        return true; // Analysis is ready
       }
+      return false; // Still waiting
+    } catch (error) {
+      console.error('Error checking for analysis:', error);
+      return false;
+    }
+  }, [sessionId, stopPolling]);
 
+  // Trigger scoring (fire and forget — don't await)
+  const triggerScoring = useCallback(async () => {
+    if (scoringTriggeredRef.current) return;
+    scoringTriggeredRef.current = true;
 
-      if (data.session.status === 'completed' && !data.session.analysisId) {
-        // Session completed but not scored yet — try to score once
-        const scoreResponse = await fetch(`/api/roleplay/${sessionId}/score`, {
-          method: 'POST',
-        });
+    try {
+      const scoreResponse = await fetch(`/api/roleplay/${sessionId}/score`, { method: 'POST' });
+      if (!scoreResponse.ok) {
         const scoreData = await scoreResponse.json().catch(() => ({}));
-        if (scoreResponse.ok) {
-          const updatedResponse = await fetch(`/api/roleplay/${sessionId}`);
-          const updatedData = await updatedResponse.json();
-          setSession(updatedData.session);
-          if (updatedData.analysis) setAnalysis(updatedData.analysis);
-        } else {
-          setScoringError(scoreData.error || 'Scoring failed');
+        setScoringError(scoreData.error || 'Scoring failed');
+        setLoading(false);
+        stopPolling();
+      }
+      // On success, polling will pick up the analysis
+    } catch (err) {
+      console.error('Error triggering scoring:', err);
+      setScoringError('Scoring request failed. Please retry.');
+      setLoading(false);
+      stopPolling();
+    }
+  }, [sessionId, stopPolling]);
+
+  const fetchResults = useCallback(async () => {
+    // First check: does the analysis already exist?
+    const hasAnalysis = await checkForAnalysis();
+    if (hasAnalysis) return;
+
+    // No analysis yet — trigger scoring in background and start polling
+    triggerScoring(); // Fire and forget
+
+    // Poll every 3 seconds to check if analysis is ready
+    pollingRef.current = setInterval(async () => {
+      const ready = await checkForAnalysis();
+      if (ready) {
+        stopPolling();
+      }
+    }, 3000);
+
+    // Safety: stop polling after 90 seconds
+    setTimeout(() => {
+      if (pollingRef.current) {
+        stopPolling();
+        if (!analysis) {
+          setScoringError('Analysis is taking longer than expected. Please try again.');
+          setLoading(false);
         }
       }
-    } catch (error) {
-      console.error('Error fetching results:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [sessionId]);
+    }, 90000);
+  }, [sessionId, checkForAnalysis, triggerScoring, stopPolling, analysis]);
 
   useEffect(() => {
     fetchResults();
+    return () => stopPolling();
   }, [fetchResults]);
 
   const handleRetryScoring = useCallback(async () => {
