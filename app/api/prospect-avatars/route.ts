@@ -228,22 +228,34 @@ export async function POST(request: NextRequest) {
       .returning();
 
     // Use after() to generate avatar image in background on Vercel serverless
-    if (newAvatar && isGeminiImageConfigured()) {
+    console.log(`[prospect-avatars POST] newAvatar created: id=${newAvatar?.id}, name=${newAvatar?.name}`);
+    console.log(`[prospect-avatars POST] Checking Gemini config...`);
+    const geminiReady = isGeminiImageConfigured();
+    console.log(`[prospect-avatars POST] Gemini configured: ${geminiReady}, newAvatar exists: ${Boolean(newAvatar)}`);
+
+    if (newAvatar && geminiReady) {
+      console.log(`[prospect-avatars POST] Scheduling after() for image generation...`);
       after(async () => {
+        console.log(`[prospect-avatars after()] Background image generation STARTED for: ${newAvatar.name}`);
         try {
           const prompt = buildGeminiAvatarPrompt(newAvatar.name, newAvatar.positionDescription ?? undefined);
+          console.log(`[prospect-avatars after()] Prompt built, calling generateImageWithGemini...`);
           const { url } = await generateImageWithGemini({ prompt });
+          console.log(`[prospect-avatars after()] Image generated, URL length: ${url?.length}, starts with: ${url?.slice(0, 50)}`);
           if (url) {
             await db
               .update(prospectAvatars)
               .set({ avatarUrl: url, updatedAt: new Date() })
               .where(eq(prospectAvatars.id, newAvatar.id));
-            console.log(`[prospect-avatars] Avatar saved for ${newAvatar.name} via Gemini`);
+            console.log(`[prospect-avatars after()] ✅ Avatar saved to DB for ${newAvatar.name}`);
           }
         } catch (err) {
-          console.error('[prospect-avatars] Gemini avatar generation failed:', (err as Error).message);
+          console.error(`[prospect-avatars after()] ❌ Gemini avatar generation FAILED:`, (err as Error).message);
+          console.error(`[prospect-avatars after()] Stack:`, (err as Error).stack?.slice(0, 500));
         }
       });
+    } else {
+      console.log(`[prospect-avatars POST] ⚠️ Skipping image gen: newAvatar=${Boolean(newAvatar)}, geminiReady=${geminiReady}`);
     }
 
     return NextResponse.json({

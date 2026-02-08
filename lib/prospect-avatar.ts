@@ -1,14 +1,39 @@
 /**
  * Resolve prospect avatar URL: use stored human portrait if present, else null.
  * Returns null when no real image is available so the UI can show a proper placeholder.
+ * IMPORTANT: Filters out cartoon/illustration URLs (DiceBear, UI Avatars, etc.)
+ * so old prospects with cartoon avatars stored in DB will fall back to initials.
  */
+
+// URLs matching these patterns are cartoon/illustration generators — reject them
+const CARTOON_URL_PATTERNS = [
+  'api.dicebear.com',
+  'dicebear.com',
+  'avatars.dicebear.com',
+  'ui-avatars.com',
+  'robohash.org',
+  'avatar.iran.liara.run',
+  'pravatar.cc',
+  'boringavatars.com',
+  'multiavatar.com',
+];
+
 export function resolveProspectAvatarUrl(
   prospectId: string,
   name?: string,
   avatarUrl?: string | null
 ): string | null {
-  if (avatarUrl && avatarUrl.trim()) return avatarUrl;
-  return null;
+  if (!avatarUrl || !avatarUrl.trim()) return null;
+
+  // Reject any URL from cartoon/illustration avatar services
+  const lower = avatarUrl.toLowerCase();
+  for (const pattern of CARTOON_URL_PATTERNS) {
+    if (lower.includes(pattern)) {
+      return null; // Force initials placeholder instead of cartoon
+    }
+  }
+
+  return avatarUrl;
 }
 
 /**

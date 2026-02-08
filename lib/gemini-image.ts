@@ -1,18 +1,23 @@
 /**
  * Gemini Image Generation Client
  * 
- * Uses Google's Gemini API for image generation.
- * Fallback when NanoBanana credits are exhausted.
+ * Uses Google AI Studio (Gemini) API for photorealistic image generation.
+ * Images are uploaded to Vercel Blob storage for proper URLs.
  * 
  * Requires GOOGLE_AI_STUDIO_KEY or GOOGLE_GENERATIVE_AI_API_KEY in env.
+ * Requires BLOB_READ_WRITE_TOKEN in env for Vercel Blob uploads.
  */
+
+import { put } from '@vercel/blob';
 
 const GOOGLE_API_KEY = process.env.GOOGLE_AI_STUDIO_KEY?.trim() ||
     process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ||
     undefined;
 
 export function isGeminiImageConfigured(): boolean {
-    return Boolean(GOOGLE_API_KEY);
+    const configured = Boolean(GOOGLE_API_KEY);
+    console.log(`[Gemini Image] isGeminiImageConfigured() = ${configured} (GOOGLE_AI_STUDIO_KEY=${GOOGLE_API_KEY ? 'SET' : 'NOT SET'}, GOOGLE_GENERATIVE_AI_API_KEY=${process.env.GOOGLE_GENERATIVE_AI_API_KEY ? 'SET' : 'NOT SET'})`);
+    return configured;
 }
 
 export interface GeminiImageOptions {
@@ -25,30 +30,35 @@ export interface GeminiImageResult {
 
 /**
  * Generate an image using Gemini's native image generation.
- * Uses gemini-2.0-flash-exp with image output capability.
+ * Uploads result to Vercel Blob for a proper URL (not base64 data URL).
  */
 export async function generateImageWithGemini(
     options: GeminiImageOptions
 ): Promise<GeminiImageResult> {
+    console.log('[Gemini Image] generateImageWithGemini() called');
+    console.log('[Gemini Image] API key present:', Boolean(GOOGLE_API_KEY));
+    console.log('[Gemini Image] Prompt (first 200 chars):', options.prompt.slice(0, 200));
+
     if (!GOOGLE_API_KEY) {
+        console.error('[Gemini Image] ERROR: No Google AI API key configured!');
         throw new Error('Google AI API key is not configured');
     }
 
-    const model = 'gemini-3-pro-image-preview';
+    const model = 'gemini-2.0-flash-exp';
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_API_KEY}`;
+    console.log(`[Gemini Image] Using model: ${model}`);
+    console.log(`[Gemini Image] API URL: https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
 
     try {
+        console.log('[Gemini Image] Sending request to Gemini API...');
+        const startTime = Date.now();
+
         const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                systemInstruction: {
-                    parts: [{
-                        text: 'You are a professional portrait photographer. You ONLY produce ultra-realistic photographs of real human beings. You NEVER produce cartoons, illustrations, drawings, anime, sketches, CGI, 3D renders, vector art, or any non-photographic style. Every image you create must be indistinguishable from a real DSLR photograph.',
-                    }],
-                },
                 contents: [
                     {
                         parts: [
@@ -64,33 +74,61 @@ export async function generateImageWithGemini(
             }),
         });
 
+        const elapsed = Date.now() - startTime;
+        console.log(`[Gemini Image] Response received in ${elapsed}ms, status: ${response.status}`);
+
         if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            console.error('[Gemini Image] API error:', response.status, error);
-            throw new Error(error?.error?.message || `Gemini API error: ${response.status}`);
+            const errorBody = await response.text();
+            console.error(`[Gemini Image] API error ${response.status}:`, errorBody.slice(0, 1000));
+            throw new Error(`Gemini API error ${response.status}: ${errorBody.slice(0, 200)}`);
         }
 
         const data = await response.json();
+        console.log('[Gemini Image] Response parsed. Candidates count:', data.candidates?.length || 0);
 
         // Extract image from response
         const candidates = data.candidates || [];
         for (const candidate of candidates) {
             const parts = candidate.content?.parts || [];
+            console.log('[Gemini Image] Parts in candidate:', parts.length);
             for (const part of parts) {
+                if (part.text) {
+                    console.log('[Gemini Image] Text part:', part.text.slice(0, 200));
+                }
                 if (part.inlineData?.mimeType?.startsWith('image/')) {
-                    // Convert base64 to data URL
                     const mimeType = part.inlineData.mimeType;
                     const base64Data = part.inlineData.data;
-                    const dataUrl = `data:${mimeType};base64,${base64Data}`;
-                    return { url: dataUrl };
+                    console.log(`[Gemini Image] Image found! MIME: ${mimeType}, base64 length: ${base64Data.length}`);
+
+                    // Upload to Vercel Blob for a proper URL
+                    try {
+                        const buffer = Buffer.from(base64Data, 'base64');
+                        const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+                        const filename = `prospect-avatars/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+                        console.log(`[Gemini Image] Uploading to Vercel Blob as: ${filename} (${buffer.length} bytes)`);
+                        const blob = await put(filename, buffer, {
+                            access: 'public',
+                            contentType: mimeType,
+                        });
+                        console.log(`[Gemini Image] Blob upload success! URL: ${blob.url}`);
+                        return { url: blob.url };
+                    } catch (blobErr: any) {
+                        console.error('[Gemini Image] Vercel Blob upload failed:', blobErr?.message);
+                        console.log('[Gemini Image] Falling back to base64 data URL');
+                        // Fall back to data URL if blob upload fails
+                        const dataUrl = `data:${mimeType};base64,${base64Data}`;
+                        return { url: dataUrl };
+                    }
                 }
             }
         }
 
-        console.error('[Gemini Image] No image in response:', JSON.stringify(data).slice(0, 500));
+        console.error('[Gemini Image] No image in response. Full response (first 500 chars):', JSON.stringify(data).slice(0, 500));
         throw new Error('No image generated in Gemini response');
     } catch (error: any) {
         console.error('[Gemini Image] Generation failed:', error?.message);
+        console.error('[Gemini Image] Stack:', error?.stack?.slice(0, 500));
         throw error;
     }
 }

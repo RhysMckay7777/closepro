@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -54,10 +54,58 @@ export default function OfferDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingCountRef = useRef(0);
+
+  // Stop any active polling
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+    pollingCountRef.current = 0;
+  }, []);
+
+  // Poll for avatar updates after generate/regenerate
+  const startAvatarPolling = useCallback(() => {
+    stopPolling();
+    pollingCountRef.current = 0;
+
+    pollingRef.current = setInterval(async () => {
+      pollingCountRef.current++;
+      // Stop after 12 polls (60 seconds at 5s intervals)
+      if (pollingCountRef.current > 12) {
+        stopPolling();
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/offers/${offerId}/prospects`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const freshProspects: Prospect[] = data.prospects || [];
+        setProspects(freshProspects);
+
+        // Stop polling if all prospects have real (non-cartoon) avatar URLs
+        const allHaveAvatars = freshProspects.length > 0 &&
+          freshProspects.every(p => {
+            const url = resolveProspectAvatarUrl(p.id, p.name, p.avatarUrl);
+            return url !== null;
+          });
+
+        if (allHaveAvatars) {
+          stopPolling();
+        }
+      } catch (err) {
+        // Silently continue polling
+      }
+    }, 5000);
+  }, [offerId, stopPolling]);
 
   useEffect(() => {
     fetchOffer();
     fetchProspects();
+    return () => stopPolling();
   }, [offerId]);
 
   const fetchOffer = async () => {
@@ -107,6 +155,8 @@ export default function OfferDetailsPage() {
 
       const data = await response.json();
       setProspects(data.prospects || []);
+      // Start polling for avatar images (generated in background)
+      startAvatarPolling();
     } catch (error: any) {
       console.error('Error generating prospects:', error);
       toastError(error.message || 'Failed to generate prospects');
@@ -134,6 +184,8 @@ export default function OfferDetailsPage() {
 
       const data = await response.json();
       setProspects(data.prospects || []);
+      // Start polling for avatar images (generated in background)
+      startAvatarPolling();
     } catch (error: any) {
       console.error('Error regenerating prospects:', error);
       toastError(error.message || 'Failed to regenerate prospects');

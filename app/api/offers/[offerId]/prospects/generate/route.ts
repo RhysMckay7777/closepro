@@ -140,8 +140,14 @@ export async function POST(
     };
 
     // Generate human photos in the background via Gemini (Google AI Studio)
-    if (isGeminiImageConfigured()) {
+    console.log(`[prospects/generate] Checking Gemini config for background image gen...`);
+    const geminiReady = isGeminiImageConfigured();
+    console.log(`[prospects/generate] Gemini configured: ${geminiReady}`);
+
+    if (geminiReady) {
+      console.log(`[prospects/generate] Scheduling after() for background image generation...`);
       after(async () => {
+        console.log(`[prospects/generate after()] Background image generation STARTED`);
         try {
           const allProspects = await db
             .select()
@@ -149,9 +155,10 @@ export async function POST(
             .where(eq(prospectAvatars.offerId, offerId));
 
           const prospectsToPhoto = allProspects.filter(p => !p.avatarUrl);
-          console.log(`[prospects/generate] Gemini configured, generating human photos for ${prospectsToPhoto.length} prospects (background via after())`);
+          console.log(`[prospects/generate after()] Found ${prospectsToPhoto.length} prospects needing photos (out of ${allProspects.length} total)`);
 
           for (const prospect of prospectsToPhoto) {
+            console.log(`[prospects/generate after()] Generating image for: ${prospect.name}...`);
             try {
               const { url } = await generateImageWithGemini({
                 prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription),
@@ -161,18 +168,19 @@ export async function POST(
                   .update(prospectAvatars)
                   .set({ avatarUrl: url, updatedAt: new Date() })
                   .where(eq(prospectAvatars.id, prospect.id));
-                console.log(`[prospects/generate] Human photo saved for ${prospect.name} via Gemini`);
+                console.log(`[prospects/generate after()] ✅ Human photo saved for ${prospect.name}, URL starts with: ${url.slice(0, 50)}`);
               }
             } catch (err: any) {
-              console.error(`[prospects/generate] Gemini failed for ${prospect.name}:`, err?.message);
+              console.error(`[prospects/generate after()] ❌ Gemini failed for ${prospect.name}:`, err?.message);
             }
           }
+          console.log(`[prospects/generate after()] Background image generation COMPLETED`);
         } catch (err) {
-          console.error('[prospects/generate] Background image generation failed:', err);
+          console.error('[prospects/generate after()] Background image generation FAILED:', err);
         }
       });
     } else {
-      console.log('[prospects/generate] No image API configured (set GOOGLE_AI_STUDIO_KEY)');
+      console.log('[prospects/generate] ⚠️ No image API configured (set GOOGLE_AI_STUDIO_KEY in Vercel env vars)');
     }
 
     return NextResponse.json(responsePayload);
