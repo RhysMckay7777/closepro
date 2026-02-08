@@ -50,8 +50,10 @@ function ProspectSelectionContent() {
   const [prospects, setProspects] = useState<ProspectAvatar[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('Loading prospects...');
   const [selectedProspect, setSelectedProspect] = useState<ProspectAvatar | null>(null);
   const hasTriedGenerateRef = useRef(false);
+  const avatarPollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Define fetchOffer and fetchProspects BEFORE useEffect that uses them
   const fetchOffer = useCallback(async () => {
@@ -82,7 +84,41 @@ function ProspectSelectionContent() {
     }
   }, [offerId]);
 
-  // On every load: fetch offer, then regenerate prospects (including pre-made), then fetch the new list
+  // Start avatar polling: periodically re-fetch prospects to pick up async-generated images
+  const startAvatarPoll = useCallback(() => {
+    if (avatarPollRef.current) return;
+    let attempts = 0;
+    avatarPollRef.current = setInterval(async () => {
+      attempts++;
+      if (attempts > 10) { // Stop after ~30 seconds
+        if (avatarPollRef.current) clearInterval(avatarPollRef.current);
+        avatarPollRef.current = null;
+        return;
+      }
+      try {
+        const res = await fetch(`/api/prospect-avatars?offerId=${offerId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const avatars: ProspectAvatar[] = data.avatars || [];
+          setProspects(avatars);
+          // Stop polling once all prospects have avatar URLs
+          if (avatars.length > 0 && avatars.every(a => a.avatarUrl)) {
+            if (avatarPollRef.current) clearInterval(avatarPollRef.current);
+            avatarPollRef.current = null;
+          }
+        }
+      } catch { /* ignore poll errors */ }
+    }, 3000);
+  }, [offerId]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => {
+      if (avatarPollRef.current) clearInterval(avatarPollRef.current);
+    };
+  }, []);
+
+  // On load: fetch offer + existing prospects first, only generate if zero exist
   useEffect(() => {
     if (!offerId) {
       router.push('/dashboard/roleplay/new');
@@ -90,26 +126,53 @@ function ProspectSelectionContent() {
     }
     let cancelled = false;
     setLoading(true);
+    setLoadingStatus('Loading prospects...');
     (async () => {
       await fetchOffer();
       if (cancelled) return;
+      // First, fetch existing prospects
+      try {
+        const res = await fetch(`/api/prospect-avatars?offerId=${offerId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const existing: ProspectAvatar[] = data.avatars || [];
+          if (existing.length > 0) {
+            // Prospects already exist — show them immediately
+            setProspects(existing);
+            setLoading(false);
+            // Start polling if any are missing avatar images
+            if (existing.some(a => !a.avatarUrl)) {
+              startAvatarPoll();
+            }
+            return;
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching existing prospects:', e);
+      }
+      if (cancelled) return;
+      // No prospects exist — generate for the first time
+      setLoadingStatus('Creating prospect profiles...');
       try {
         const res = await fetch(
-          `/api/offers/${offerId}/prospects/generate?regenerate=true`,
-          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ regenerate: true }) }
+          `/api/offers/${offerId}/prospects/generate`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }
         );
         if (cancelled) return;
         if (res.ok) {
+          setLoadingStatus('Prospects created! Loading...');
           await fetchProspects();
+          // Start polling for avatar images (generated async in background)
+          startAvatarPoll();
         } else {
           const err = await res.json().catch(() => ({}));
-          toastError(err.error || 'Failed to regenerate prospects');
-          await fetchProspects(); // Still show whatever exists
+          toastError(err.error || 'Failed to generate prospects');
+          await fetchProspects();
         }
       } catch (e) {
         if (!cancelled) {
-          console.error('Regenerate on load failed:', e);
-          toastError('Failed to regenerate prospects');
+          console.error('Generate on first load failed:', e);
+          toastError('Failed to generate prospects');
           await fetchProspects();
         }
       } finally {
@@ -119,7 +182,7 @@ function ProspectSelectionContent() {
     return () => {
       cancelled = true;
     };
-  }, [offerId, router, fetchOffer, fetchProspects]);
+  }, [offerId, router, fetchOffer, fetchProspects, startAvatarPoll]);
 
   const handleGenerateProspects = useCallback(async () => {
     if (!offerId || hasTriedGenerateRef.current) return;
@@ -149,6 +212,7 @@ function ProspectSelectionContent() {
   const handleRegenerateProspects = useCallback(async () => {
     if (!offerId) return;
     setGenerating(true);
+    setLoadingStatus('Regenerating prospect profiles...');
     try {
       const response = await fetch(
         `/api/offers/${offerId}/prospects/generate?regenerate=true`,
@@ -159,7 +223,10 @@ function ProspectSelectionContent() {
         }
       );
       if (response.ok) {
+        setLoadingStatus('Prospects regenerated! Loading...');
         await fetchProspects();
+        // Start polling for new avatar images
+        startAvatarPoll();
       } else {
         const error = await response.json();
         throw new Error(error.error || 'Failed to regenerate prospects');
@@ -170,7 +237,7 @@ function ProspectSelectionContent() {
     } finally {
       setGenerating(false);
     }
-  }, [offerId, fetchProspects]);
+  }, [offerId, fetchProspects, startAvatarPoll]);
 
   const handleProspectSelect = async (prospectId: string) => {
     if (!offerId) return;
@@ -291,8 +358,9 @@ function ProspectSelectionContent() {
     return (
       <div className="container mx-auto p-4 sm:p-6">
         <div className="text-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-4" />
-          <p className="text-muted-foreground">Regenerating prospects...</p>
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+          <p className="text-muted-foreground font-medium">{loadingStatus}</p>
+          <p className="text-xs text-muted-foreground mt-2">This may take a few seconds on first load</p>
         </div>
       </div>
     );
