@@ -152,8 +152,32 @@ export default function RoleplayResultsPage() {
 
   if (loading) {
     return (
-      <div className="container mx-auto p-4 sm:p-6">
-        <div className="text-center py-12">Loading results...</div>
+      <div className="container mx-auto p-4 sm:p-6 max-w-lg">
+        <Card className="p-8 sm:p-12 text-center space-y-6">
+          <div className="flex justify-center">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full border-4 border-muted animate-spin border-t-primary" />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-bold">Analyzing your roleplay session…</h2>
+            <p className="text-sm text-muted-foreground">This usually takes 10–20 seconds</p>
+          </div>
+          <div className="flex flex-col items-start gap-3 text-sm text-left mx-auto w-fit">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              <span className="text-foreground">Scoring performance…</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-pulse" style={{ animationDelay: '1s' }} />
+              <span className="text-muted-foreground">Generating feedback…</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-muted-foreground/40 animate-pulse" style={{ animationDelay: '2s' }} />
+              <span className="text-muted-foreground">Building report…</span>
+            </div>
+          </div>
+        </Card>
       </div>
     );
   }

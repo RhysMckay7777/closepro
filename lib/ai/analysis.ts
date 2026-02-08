@@ -439,12 +439,17 @@ function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_r
       'Structure & Framework': 'structure_framework',
       'Communication & Storytelling': 'communication_storytelling',
       'Discovery Depth & Diagnosis': 'discovery_diagnosis',
+      'Discovery & Diagnosis': 'discovery_diagnosis',
       'Gap & Urgency': 'gap_urgency',
       'Value & Offer Positioning': 'value_offer_positioning',
-      'Trust, Safety & Ethics': 'trust_safety_ethics',
-      'Adaptation & Calibration': 'adaptation_calibration',
       'Objection Handling & Preemption': 'objection_handling',
+      'Objection Handling': 'objection_handling',
+      'Emotional Intelligence': 'emotional_intelligence',
+      'Trust, Safety & Ethics': 'emotional_intelligence',
+      'Adaptation & Calibration': 'tonality_delivery',
+      'Tonality & Delivery': 'tonality_delivery',
       'Closing & Commitment Integrity': 'closing_commitment',
+      'Closing & Commitment': 'closing_commitment',
     };
     for (const s of analysis.skillScores.slice(0, 10)) {
       const id = nameToId[s.category];

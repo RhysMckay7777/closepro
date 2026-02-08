@@ -659,7 +659,7 @@ function RoleplaySessionContent() {
                             <div className="flex items-center gap-2 min-w-0 flex-wrap">
                               <span className={cn(
                                 "font-semibold text-sm shrink-0",
-                                msg.role === 'rep' ? "text-primary" : "text-muted-foreground"
+                                msg.role === 'rep' ? "text-orange-300" : "text-blue-300"
                               )}>
                                 {msg.role === 'rep' ? 'You' : 'Prospect'}
                               </span>
@@ -691,7 +691,7 @@ function RoleplaySessionContent() {
                               </Button>
                             )}
                           </div>
-                          <p className="text-sm text-foreground/80 whitespace-pre-wrap">
+                          <p className="text-sm text-white whitespace-pre-wrap">
                             {msg.content}
                           </p>
                         </div>
@@ -725,7 +725,7 @@ function RoleplaySessionContent() {
                           <div className="flex items-center gap-2 justify-between">
                             <span className={cn(
                               "font-semibold text-sm",
-                              msg.role === 'rep' ? "text-primary" : "text-muted-foreground"
+                              msg.role === 'rep' ? "text-orange-300" : "text-blue-300"
                             )}>
                               {msg.role === 'rep' ? 'You' : 'Prospect'}
                             </span>
@@ -743,7 +743,7 @@ function RoleplaySessionContent() {
                               <Pin className="h-4 w-4 fill-current" />
                             </Button>
                           </div>
-                          <p className="text-sm text-foreground/80 whitespace-pre-wrap">{msg.content}</p>
+                          <p className="text-sm text-white whitespace-pre-wrap">{msg.content}</p>
                         </div>
                       ))
                   )}

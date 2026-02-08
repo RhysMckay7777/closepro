@@ -286,15 +286,15 @@ export default function NewOfferPage() {
 
           {/* Section 1 - Ideal Customer Profile (ICP) */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Who is this offer for?</h2>
+            <h2 className="text-xl font-semibold">Section 1 - ICP (Ideal Customer Profile)</h2>
 
             <div className="space-y-2">
-              <Label htmlFor="whoItsFor">Who Is This Offer For? *</Label>
+              <Label htmlFor="whoItsFor">ICP *</Label>
               <Textarea
                 id="whoItsFor"
                 {...form.register('whoItsFor')}
-                placeholder="Demographic of customer + what is their position & main problems. E.g. Busy dads in the UK, who need more time for kids"
-                rows={3}
+                placeholder={"Demographic of customer + what is their position & main problems.\n\nExample: Busy dads in the UK, who need more time for kids."}
+                rows={4}
               />
               {form.formState.errors.whoItsFor && (
                 <p className="text-sm text-destructive">{form.formState.errors.whoItsFor.message}</p>
@@ -319,38 +319,17 @@ export default function NewOfferPage() {
             </div>
           </div>
 
-          {/* Section 2 - Core Problems */}
+          {/* Section 2 - Goals */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">What&apos;s stopping them?</h2>
-            <p className="text-sm text-muted-foreground">
-              Define the felt problems the prospect already experiences. Problems should be written from the prospect&apos;s perspective.
-            </p>
+            <h2 className="text-xl font-semibold">Section 2 - Goals</h2>
 
             <div className="space-y-2">
-              <Label htmlFor="coreProblems">Core Problems This Offer Solves *</Label>
-              <Textarea
-                id="coreProblems"
-                {...form.register('coreProblems')}
-                placeholder="Why can't they get to their goal by themselves? E.g. Don't have guidance + information, no accountability"
-                rows={5}
-              />
-              {form.formState.errors.coreProblems && (
-                <p className="text-sm text-destructive">{form.formState.errors.coreProblems.message}</p>
-              )}
-            </div>
-          </div>
-
-          {/* Section 3 - Desired Outcome & Transformation */}
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">What do they want to achieve?</h2>
-
-            <div className="space-y-2">
-              <Label htmlFor="desiredOutcome">Core Outcome & Timeline *</Label>
+              <Label htmlFor="desiredOutcome">Goals *</Label>
               <Textarea
                 id="desiredOutcome"
                 {...form.register('desiredOutcome')}
-                placeholder="What position do they want to be in? E.g. More money, more time with kids, more flexibility"
-                rows={2}
+                placeholder={"What position do they want to be in?\n\nExample: More money, More time with kids, More flexibility with their day."}
+                rows={4}
               />
               {form.formState.errors.desiredOutcome && (
                 <p className="text-sm text-destructive">{form.formState.errors.desiredOutcome.message}</p>
@@ -362,8 +341,8 @@ export default function NewOfferPage() {
               <Textarea
                 id="tangibleOutcomes"
                 {...form.register('tangibleOutcomes')}
-                placeholder="Measurable or concrete results (e.g., weight loss, revenue increase, specific metrics)"
-                rows={2}
+                placeholder={"Measurable or concrete results\n\nExample: Weight loss, revenue increase, specific metrics"}
+                rows={3}
               />
             </div>
 
@@ -372,9 +351,30 @@ export default function NewOfferPage() {
               <Textarea
                 id="emotionalOutcomes"
                 {...form.register('emotionalOutcomes')}
-                placeholder="Confidence, relief, certainty, identity shift, etc."
+                placeholder={"Confidence, relief, certainty, identity shift, etc."}
                 rows={2}
               />
+            </div>
+          </div>
+
+          {/* Section 3 - Roadblocks */}
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold">Section 3 - Roadblocks</h2>
+            <p className="text-sm text-muted-foreground">
+              Why can&apos;t they get to their goal by themselves?
+            </p>
+
+            <div className="space-y-2">
+              <Label htmlFor="coreProblems">Roadblocks *</Label>
+              <Textarea
+                id="coreProblems"
+                {...form.register('coreProblems')}
+                placeholder={"Why can't they get there by themselves?\n\nExample: Don't have guidance + information, no accountability."}
+                rows={5}
+              />
+              {form.formState.errors.coreProblems && (
+                <p className="text-sm text-destructive">{form.formState.errors.coreProblems.message}</p>
+              )}
             </div>
           </div>
 
