@@ -621,12 +621,12 @@ function ProspectSelectionContent() {
                       src={resolveProspectAvatarUrl(prospect.id, prospect.name, prospect.avatarUrl)!}
                       alt={prospect.name}
                       className="size-full object-cover rounded-lg"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
                     />
-                  ) : (
-                    <div className={`size-28 rounded-full bg-gradient-to-br ${getProspectPlaceholderColor(prospect.name)} flex items-center justify-center shadow-lg`}>
-                      <span className="text-3xl font-bold text-white">{getProspectInitials(prospect.name)}</span>
-                    </div>
-                  )}
+                  ) : null}
+                  <div className={`size-28 rounded-full bg-gradient-to-br ${getProspectPlaceholderColor(prospect.name)} flex items-center justify-center shadow-lg ${resolveProspectAvatarUrl(prospect.id, prospect.name, prospect.avatarUrl) ? 'hidden' : ''}`}>
+                    <span className="text-3xl font-bold text-white">{getProspectInitials(prospect.name)}</span>
+                  </div>
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
                   <h3 className="font-bold text-lg mb-0.5">{prospect.name}</h3>

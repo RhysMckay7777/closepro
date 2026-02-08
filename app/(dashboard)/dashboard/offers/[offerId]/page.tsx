@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Plus, ArrowLeft, Edit, Play, Phone } from 'lucide-react';
 import Link from 'next/link';
-import { resolveProspectAvatarUrl } from '@/lib/prospect-avatar';
+import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { toastError } from '@/lib/toast';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 import { EmptyProspectsIllustration } from '@/components/illustrations';
@@ -363,8 +363,10 @@ export default function OfferDetailsPage() {
                     <div className="relative w-full sm:w-1/3 min-h-[240px] sm:min-h-0 flex items-center justify-center bg-linear-to-br from-emerald-50 to-green-100 dark:from-emerald-950/30 dark:to-green-900/20 p-8">
                       <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.06]" style={{ backgroundImage: 'linear-gradient(currentColor 1px, transparent 1px), linear-gradient(90deg, currentColor 1px, transparent 1px)', backgroundSize: '24px 24px' }} aria-hidden />
                       <Avatar className="size-40 sm:size-48 shrink-0 ring-4 ring-white/80 dark:ring-background/80 shadow-lg">
-                        <AvatarImage src={resolveProspectAvatarUrl(selectedProspect.id, selectedProspect.name, selectedProspect.avatarUrl)} alt={selectedProspect.name} className="object-cover" />
-                        <AvatarFallback className="text-2xl bg-muted">{selectedProspect.name.slice(0, 2).toUpperCase()}</AvatarFallback>
+                        {resolveProspectAvatarUrl(selectedProspect.id, selectedProspect.name, selectedProspect.avatarUrl) ? (
+                          <AvatarImage src={resolveProspectAvatarUrl(selectedProspect.id, selectedProspect.name, selectedProspect.avatarUrl)!} alt={selectedProspect.name} className="object-cover" />
+                        ) : null}
+                        <AvatarFallback className={`text-3xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(selectedProspect.name)}`}>{getProspectInitials(selectedProspect.name)}</AvatarFallback>
                       </Avatar>
                     </div>
                     <div className="flex-1 flex flex-col p-6 sm:p-8 min-w-0">
@@ -433,11 +435,17 @@ export default function OfferDetailsPage() {
                   onClick={() => setSelectedProspect(prospect)}
                 >
                   <div className={`relative aspect-square min-h-[200px] ${getCardAccentClasses(prospect.difficultyTier)} flex items-center justify-center p-4`}>
-                    <img
-                      src={resolveProspectAvatarUrl(prospect.id, prospect.name, prospect.avatarUrl)}
-                      alt={prospect.name}
-                      className="size-full object-cover rounded-lg"
-                    />
+                    {resolveProspectAvatarUrl(prospect.id, prospect.name, prospect.avatarUrl) ? (
+                      <img
+                        src={resolveProspectAvatarUrl(prospect.id, prospect.name, prospect.avatarUrl)!}
+                        alt={prospect.name}
+                        className="size-full object-cover rounded-lg"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden'); }}
+                      />
+                    ) : null}
+                    <div className={`size-28 rounded-full bg-gradient-to-br ${getProspectPlaceholderColor(prospect.name)} flex items-center justify-center shadow-lg ${resolveProspectAvatarUrl(prospect.id, prospect.name, prospect.avatarUrl) ? 'hidden' : ''}`}>
+                      <span className="text-3xl font-bold text-white">{getProspectInitials(prospect.name)}</span>
+                    </div>
                     <div className="absolute bottom-2 left-2">
                       <Badge variant="secondary" className="text-xs font-medium shadow-sm">
                         {getCallTypeTag(prospect.difficultyTier)}
