@@ -130,14 +130,23 @@ export async function POST(
     }
 
     // Generate human photos: try NanoBanana first, then Gemini as fallback
+    // Also generate photos for user-created prospects that don't have one yet
     const useNanoBanana = isNanoBananaConfigured();
     const useGemini = isGeminiImageConfigured();
 
     if (useNanoBanana || useGemini) {
-      const provider = useNanoBanana ? 'NanoBanana' : 'Gemini';
-      console.log(`[prospects/generate] ${provider} configured, generating human photos for`, generatedProspects.length, 'prospects');
+      // Fetch ALL prospects for this offer, then generate photos for any missing an avatar
+      const allProspects = await db
+        .select()
+        .from(prospectAvatars)
+        .where(eq(prospectAvatars.offerId, offerId));
 
-      for (const prospect of generatedProspects) {
+      const prospectsToPhoto = allProspects.filter(p => !p.avatarUrl);
+
+      const provider = useNanoBanana ? 'NanoBanana' : 'Gemini';
+      console.log(`[prospects/generate] ${provider} configured, generating human photos for`, prospectsToPhoto.length, 'prospects');
+
+      for (const prospect of prospectsToPhoto) {
         let imageUrl: string | null = null;
         let usedProvider = '';
 
