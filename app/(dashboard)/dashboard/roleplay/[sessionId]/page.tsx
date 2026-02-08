@@ -313,8 +313,8 @@ function RoleplaySessionContent() {
         setActiveSpeaker(null);
       }, 5000);
 
-      // Speak prospect response if voice mode (ElevenLabs TTS if configured, else browser speechSynthesis)
-      if (session?.inputMode === 'voice' && !isMuted) {
+      // Speak prospect response (ElevenLabs TTS if configured, else browser speechSynthesis)
+      if (!isMuted) {
         if (synthRef.current) synthRef.current.cancel();
         const speakText = data.response;
         const onEnd = () => setActiveSpeaker(null);
