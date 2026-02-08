@@ -46,6 +46,8 @@ interface PerformanceData {
   salesCallsSummary?: { totalCalls: number; averageOverall: number; bestCategory: string | null; improvementOpportunity: string | null; trend: string };
   roleplaysSummary?: { totalRoleplays: number; averageRoleplayScore: number; bestCategory: string | null; improvementOpportunity: string | null; trend: string };
   weeklyData: Array<{ week: string; score: number; count: number }>;
+  callWeeklyData?: Array<{ week: string; score: number; count: number }>;
+  roleplayWeeklyData?: Array<{ week: string; score: number; count: number }>;
   skillCategories: Array<{ category: string; averageScore: number; trend?: number }>;
   strengths: Array<{ category: string; averageScore: number }>;
   weaknesses: Array<{ category: string; averageScore: number }>;
@@ -205,9 +207,12 @@ export default function PerformancePage() {
     );
   }
 
-  // Calculate chart height
-  const maxScore = Math.max(...performance.weeklyData.map(d => d.score), 100);
-  const chartHeight = 200;
+  // Calculate chart heights for separate charts
+  const callData = performance.callWeeklyData ?? performance.weeklyData;
+  const roleplayData = performance.roleplayWeeklyData ?? performance.weeklyData;
+  const callMaxScore = Math.max(...callData.map(d => d.score), 100);
+  const roleplayMaxScore = Math.max(...roleplayData.map(d => d.score), 100);
+  const chartHeight = 180;
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -288,13 +293,13 @@ export default function PerformancePage() {
         </div>
       </div>
 
-      {/* Overall Performance – Sales Calls */}
+      {/* ═══ SALES CALLS SECTION ═══ */}
       <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" /> Overall Performance – Sales Calls</CardTitle>
           <CardDescription>Based on {performance.period}. Data: analysed sales calls only.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="text-center p-4 rounded-lg bg-muted/30">
               <p className="text-sm text-muted-foreground mb-2">Overall Score</p>
@@ -325,16 +330,61 @@ export default function PerformancePage() {
               <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
             </div>
           </div>
+
+          {/* Sales Calls Trend Chart */}
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground mb-3">Sales Calls – Weekly Trend</h4>
+            <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
+              <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
+                <span>{callMaxScore}</span>
+                <span>{Math.round(callMaxScore * 0.75)}</span>
+                <span>{Math.round(callMaxScore * 0.5)}</span>
+                <span>{Math.round(callMaxScore * 0.25)}</span>
+                <span>0</span>
+              </div>
+              <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
+                <div className="absolute inset-0 flex flex-col justify-between">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className="border-t border-border/30" />
+                  ))}
+                </div>
+                <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
+                  {callData.map((data, index) => {
+                    const height = callMaxScore > 0 ? (data.score / callMaxScore) * 100 : 0;
+                    return (
+                      <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
+                        <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
+                          <div
+                            className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
+                              data.score >= 60 ? 'bg-blue-500' :
+                                data.score >= 40 ? 'bg-orange-500' :
+                                  data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
+                              }`}
+                            style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
+                            title={`Week ${data.week}: ${data.score} (${data.count} calls)`}
+                          />
+                        </div>
+                        <div className="text-xs text-muted-foreground text-center">
+                          <div className="font-medium">{data.score || '–'}</div>
+                          <div className="text-[10px]">{data.week}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Overall Performance – Roleplays */}
+      {/* ═══ ROLEPLAYS SECTION ═══ */}
       <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" /> Overall Performance – Roleplays</CardTitle>
           <CardDescription>Based on {performance.period}. Data: roleplay sessions only.</CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="text-center p-4 rounded-lg bg-muted/30">
               <p className="text-sm text-muted-foreground mb-2">Average Roleplay Score</p>
@@ -361,59 +411,48 @@ export default function PerformancePage() {
               <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
             </div>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Performance Trend Chart */}
-      <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-        <CardHeader>
-          <CardTitle>Performance Trend</CardTitle>
-          <CardDescription>Weekly average scores over the last 12 weeks</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
-            {/* Y-axis labels */}
-            <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
-              <span>{maxScore}</span>
-              <span>{Math.round(maxScore * 0.75)}</span>
-              <span>{Math.round(maxScore * 0.5)}</span>
-              <span>{Math.round(maxScore * 0.25)}</span>
-              <span>0</span>
-            </div>
-
-            {/* Chart area */}
-            <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
-              {/* Grid lines */}
-              <div className="absolute inset-0 flex flex-col justify-between">
-                {[0, 1, 2, 3, 4].map((i) => (
-                  <div key={i} className="border-t border-border/30" />
-                ))}
+          {/* Roleplays Trend Chart */}
+          <div>
+            <h4 className="text-sm font-medium text-muted-foreground mb-3">Roleplays – Weekly Trend</h4>
+            <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
+              <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
+                <span>{roleplayMaxScore}</span>
+                <span>{Math.round(roleplayMaxScore * 0.75)}</span>
+                <span>{Math.round(roleplayMaxScore * 0.5)}</span>
+                <span>{Math.round(roleplayMaxScore * 0.25)}</span>
+                <span>0</span>
               </div>
-
-              {/* Bars */}
-              <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
-                {performance.weeklyData.map((data, index) => {
-                  const height = (data.score / maxScore) * 100;
-                  return (
-                    <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
-                      <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
-                        <div
-                          className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
-                            data.score >= 60 ? 'bg-blue-500' :
-                              data.score >= 40 ? 'bg-orange-500' :
-                                'bg-red-500'
-                            }`}
-                          style={{ height: `${height}%` }}
-                          title={`Week ${data.week}: ${data.score} (${data.count} sessions)`}
-                        />
+              <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
+                <div className="absolute inset-0 flex flex-col justify-between">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div key={i} className="border-t border-border/30" />
+                  ))}
+                </div>
+                <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
+                  {roleplayData.map((data, index) => {
+                    const height = roleplayMaxScore > 0 ? (data.score / roleplayMaxScore) * 100 : 0;
+                    return (
+                      <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
+                        <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
+                          <div
+                            className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
+                              data.score >= 60 ? 'bg-blue-500' :
+                                data.score >= 40 ? 'bg-orange-500' :
+                                  data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
+                              }`}
+                            style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
+                            title={`Week ${data.week}: ${data.score} (${data.count} roleplays)`}
+                          />
+                        </div>
+                        <div className="text-xs text-muted-foreground text-center">
+                          <div className="font-medium">{data.score || '–'}</div>
+                          <div className="text-[10px]">{data.week}</div>
+                        </div>
                       </div>
-                      <div className="text-xs text-muted-foreground text-center">
-                        <div className="font-medium">{data.score}</div>
-                        <div className="text-[10px]">{data.week}</div>
-                      </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           </div>

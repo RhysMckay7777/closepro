@@ -268,6 +268,33 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    // Generate separate weekly data for calls and roleplays
+    const callWeeklyData: Array<{ week: string; score: number; count: number }> = [];
+    const roleplayWeeklyData: Array<{ week: string; score: number; count: number }> = [];
+
+    for (let i = 11; i >= 0; i--) {
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - (i * 7));
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+      const weekLabel = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+      const callsInWeek = allAnalyses.filter(a => a.type === 'call' && new Date(a.createdAt) >= weekStart && new Date(a.createdAt) < weekEnd);
+      const roleplaysInWeek = allAnalyses.filter(a => a.type === 'roleplay' && new Date(a.createdAt) >= weekStart && new Date(a.createdAt) < weekEnd);
+
+      callWeeklyData.push({
+        week: weekLabel,
+        score: callsInWeek.length > 0 ? Math.round(callsInWeek.reduce((s, a) => s + (a.overallScore || 0), 0) / callsInWeek.length) : 0,
+        count: callsInWeek.length,
+      });
+      roleplayWeeklyData.push({
+        week: weekLabel,
+        score: roleplaysInWeek.length > 0 ? Math.round(roleplaysInWeek.reduce((s, a) => s + (a.overallScore || 0), 0) / roleplaysInWeek.length) : 0,
+        count: roleplaysInWeek.length,
+      });
+    }
+
     // Calculate skill category averages
     const skillCategoryScores: Record<string, { total: number; count: number }> = {};
 
@@ -580,6 +607,8 @@ export async function GET(request: NextRequest) {
       salesCallsSummary,
       roleplaysSummary,
       weeklyData,
+      callWeeklyData,
+      roleplayWeeklyData,
       skillCategories,
       strengths,
       weaknesses,
