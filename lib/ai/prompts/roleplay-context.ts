@@ -1,4 +1,9 @@
 /**
+ * NOTE: This file is currently not imported by any other module.
+ * It contains well-structured prompt templates that could be wired in
+ * as a composable prompt layer in the future.
+ * Last audit: 2026-02-08
+ *
  * Roleplay Context Prompts
  * 
  * Modular prompt templates for roleplay scenarios.

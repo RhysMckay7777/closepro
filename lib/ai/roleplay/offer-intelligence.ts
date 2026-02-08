@@ -1,7 +1,7 @@
 // Layer 1: Offer Intelligence
 // Defines what is being sold and how it should be positioned
 
-export type OfferCategory = 
+export type OfferCategory =
   | 'b2c_health'
   | 'b2c_wealth'
   | 'b2c_relationships'
@@ -17,18 +17,18 @@ export type RiskReversal = 'refund' | 'guarantee' | 'conditional' | 'none';
 export interface OfferProfile {
   // Classification
   offerCategory: OfferCategory;
-  
+
   // Headline
   whoItsFor: string; // ICP definition
   coreOutcome: string; // Transformation/result
   mechanismHighLevel: string; // How it works
-  
+
   // Delivery
   deliveryModel: DeliveryModel;
   supportChannels?: string[];
   touchpointsFrequency?: string;
   implementationResponsibility?: 'prospect_heavy' | 'provider_heavy' | 'balanced';
-  
+
   // Cost Profile
   priceRange: string; // e.g., "5000-25000"
   paymentOptions?: {
@@ -37,7 +37,7 @@ export interface OfferProfile {
   };
   timeToResult?: string;
   effortRequired?: EffortRequired;
-  
+
   // Problem Set
   primaryProblemsSolved: string[];
   emotionalDrivers?: {
@@ -45,7 +45,7 @@ export interface OfferProfile {
     ambition?: string[];
   };
   logicalDrivers?: string[];
-  
+
   // Proof & Risk
   proofAssetsAvailable?: {
     caseStudies?: number;
@@ -56,12 +56,16 @@ export interface OfferProfile {
   proofRelevanceNotes?: string;
   riskReversal?: RiskReversal;
   commonSkepticismTriggers?: string[];
-  
+
   // Fit Rules
   mustHaveConditions?: string[];
   disqualifiers?: string[];
   softDisqualifiers?: string[];
   bestFitNotes?: string;
+
+  // Guarantee & Timeline (new — for prospect prompt injection)
+  guaranteesRefundTerms?: string;
+  estimatedTimeToResults?: string;
 }
 
 /**
@@ -100,6 +104,8 @@ ${offer.emotionalDrivers?.ambition?.length ? `Ambition Drivers:\n${offer.emotion
 ${offer.logicalDrivers?.length ? `Logical Drivers:\n${offer.logicalDrivers.map(l => `- ${l}`).join('\n')}\n` : ''}
 
 Risk Profile: ${offer.riskReversal || 'Not specified'}
+Guarantee/Refund Terms: ${offer.guaranteesRefundTerms || offer.riskReversal || 'Not specified'}
+Estimated Time to Results: ${offer.estimatedTimeToResults || offer.timeToResult || 'Not specified'}
 Best Fit: ${offer.bestFitNotes || 'Not specified'}`;
 }
 
@@ -110,13 +116,13 @@ export interface CategoryBehaviorRules {
   // Sales approach
   tone: 'emotional' | 'logical' | 'hybrid';
   emphasis: string[];
-  
+
   // Objection handling
   objectionInterpretation: {
     commonPatterns: string[];
     responseStyle: 'validation-first' | 'credibility-first' | 'logic-first' | 'adaptive';
   };
-  
+
   // Scoring adjustments
   scoringExpectations: {
     valueScoreWeight: number; // 0-1, how much value matters
@@ -124,16 +130,16 @@ export interface CategoryBehaviorRules {
     fitScoreWeight: number; // 0-1, how much fit matters
     logisticsScoreWeight: number; // 0-1, how much logistics matters
   };
-  
+
   // Difficulty interpretation
   difficultyInterpretation: {
     baselineExpectation: number; // Expected score for "realistic" difficulty
     adjustmentFactors: string[]; // What to consider when adjusting expectations
   };
-  
+
   // Authority stance
   authorityStance: 'advisee' | 'peer' | 'advisor' | 'adaptive';
-  
+
   // Insights generation
   insightFocus: string[]; // What to emphasize in coaching insights
 }
@@ -169,7 +175,7 @@ export function getCategoryBehaviorRules(category: OfferCategory, customerStage?
         authorityStance: 'advisee',
         insightFocus: ['emotional connection', 'identity shift', 'pain acknowledgment', 'validation'],
       };
-    
+
     case 'b2c_relationships':
       return {
         tone: 'emotional',
@@ -196,7 +202,7 @@ export function getCategoryBehaviorRules(category: OfferCategory, customerStage?
         authorityStance: 'advisor', // Therapist-adjacent authority
         insightFocus: ['validation', 'emotional safety', 'trust building', 'sensitivity', 'therapeutic approach'],
       };
-    
+
     case 'b2c_wealth':
       return {
         tone: 'hybrid',
@@ -223,11 +229,11 @@ export function getCategoryBehaviorRules(category: OfferCategory, customerStage?
         authorityStance: 'peer',
         insightFocus: ['credibility building', 'proof presentation', 'ROI clarity', 'skepticism handling'],
       };
-    
+
     case 'mixed_wealth':
       return {
         tone: 'hybrid',
-        emphasis: customerStage === 'aspiring' 
+        emphasis: customerStage === 'aspiring'
           ? ['emotional freedom', 'identity shift', 'practical path', 'proof']
           : ['ROI', 'scalability', 'systems', 'credibility'],
         objectionInterpretation: {
@@ -254,7 +260,7 @@ export function getCategoryBehaviorRules(category: OfferCategory, customerStage?
           ? ['confidence building', 'proof', 'practical steps', 'identity shift']
           : ['ROI', 'systems', 'scalability', 'credibility'],
       };
-    
+
     case 'b2b_services':
       return {
         tone: 'logical',
@@ -281,7 +287,7 @@ export function getCategoryBehaviorRules(category: OfferCategory, customerStage?
         authorityStance: 'advisor',
         insightFocus: ['technical depth', 'ROI clarity', 'process explanation', 'authority demonstration', 'implementation details'],
       };
-    
+
     default:
       return {
         tone: 'hybrid',

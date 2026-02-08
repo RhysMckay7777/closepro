@@ -365,16 +365,7 @@ Return your analysis as JSON in this exact format:
 {
   "overallScore": 75,
   "categoryScores": {
-    "authority_leadership": 7,
-    "structure_framework": 8,
-    "communication_storytelling": 7,
-    "discovery_diagnosis": 6,
-    "gap_urgency": 7,
-    "value_offer_positioning": 8,
-    "trust_safety_ethics": 7,
-    "adaptation_calibration": 6,
-    "objection_handling": 7,
-    "closing_commitment": 8
+${SCORING_CATEGORIES.map(id => `    "${id}": 7`).join(',\n')}
   },
   "objections": [
     { "objection": "I need to think about it", "pillar": "trust", "handling": "Rep acknowledged and asked what specifically to think about." }
@@ -429,30 +420,49 @@ function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_r
   const clamp10 = (n: number) => Math.max(0, Math.min(10, Math.round(n)));
   const categoryScores: CategoryScores = {};
   const rawCategoryScores = analysis.categoryScores && typeof analysis.categoryScores === 'object' ? analysis.categoryScores : {};
+
+  // Alias map: old IDs and label names → canonical category IDs
+  const idAliasMap: Record<string, SalesCategoryId> = {
+    // Old snake_case ID aliases (safety net for old data + AI returning wrong IDs)
+    'trust_safety_ethics': 'emotional_intelligence',
+    'adaptation_calibration': 'tonality_delivery',
+    // Old label name aliases
+    'Authority & Leadership': 'authority_leadership',
+    'Structure & Framework': 'structure_framework',
+    'Communication & Storytelling': 'communication_storytelling',
+    'Discovery Depth & Diagnosis': 'discovery_diagnosis',
+    'Discovery & Diagnosis': 'discovery_diagnosis',
+    'Gap & Urgency': 'gap_urgency',
+    'Value & Offer Positioning': 'value_offer_positioning',
+    'Objection Handling & Preemption': 'objection_handling',
+    'Objection Handling': 'objection_handling',
+    'Emotional Intelligence': 'emotional_intelligence',
+    'Trust, Safety & Ethics': 'emotional_intelligence',
+    'Adaptation & Calibration': 'tonality_delivery',
+    'Tonality & Delivery': 'tonality_delivery',
+    'Closing & Commitment Integrity': 'closing_commitment',
+    'Closing & Commitment': 'closing_commitment',
+  };
+
+  // First pass: direct canonical ID match
   for (const { id } of SALES_CATEGORIES) {
     const v = rawCategoryScores[id];
     if (typeof v === 'number') categoryScores[id as SalesCategoryId] = clamp10(v);
   }
+  // Second pass: resolve old/aliased keys that didn't match canonical IDs
+  for (const [key, val] of Object.entries(rawCategoryScores)) {
+    if (typeof val === 'number') {
+      const canonicalId = idAliasMap[key];
+      if (canonicalId && !(canonicalId in categoryScores)) {
+        categoryScores[canonicalId] = clamp10(val);
+      }
+    }
+  }
+
+  // Fallback: if still empty, try extracting from legacy skillScores array
   if (Object.keys(categoryScores).length === 0 && Array.isArray(analysis.skillScores) && analysis.skillScores.length > 0) {
-    const nameToId: Record<string, SalesCategoryId> = {
-      'Authority & Leadership': 'authority_leadership',
-      'Structure & Framework': 'structure_framework',
-      'Communication & Storytelling': 'communication_storytelling',
-      'Discovery Depth & Diagnosis': 'discovery_diagnosis',
-      'Discovery & Diagnosis': 'discovery_diagnosis',
-      'Gap & Urgency': 'gap_urgency',
-      'Value & Offer Positioning': 'value_offer_positioning',
-      'Objection Handling & Preemption': 'objection_handling',
-      'Objection Handling': 'objection_handling',
-      'Emotional Intelligence': 'emotional_intelligence',
-      'Trust, Safety & Ethics': 'emotional_intelligence',
-      'Adaptation & Calibration': 'tonality_delivery',
-      'Tonality & Delivery': 'tonality_delivery',
-      'Closing & Commitment Integrity': 'closing_commitment',
-      'Closing & Commitment': 'closing_commitment',
-    };
     for (const s of analysis.skillScores.slice(0, 10)) {
-      const id = nameToId[s.category];
+      const id = idAliasMap[s.category];
       if (id) {
         const score = typeof s.subSkills === 'object' ? (Object.values(s.subSkills) as number[]).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0) / Math.max(1, Object.keys(s.subSkills).length) : 0;
         categoryScores[id] = clamp10(score);

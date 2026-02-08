@@ -8,6 +8,7 @@ import { ProspectAvatar, ProspectDifficultyProfile, DifficultyTier } from './pro
 import { FunnelContext } from './funnel-context';
 import { BehaviourState, initializeBehaviourState, adaptBehaviour, shouldRaiseObjection, getObjectionType, getOpeningLine, getBehaviourInstructions, OpeningLineContext } from './behaviour-rules';
 import { ROLEPLAY_BEHAVIORAL_RULES, PROSPECT_DIFFICULTY_MODEL } from '@/lib/training';
+import { getCondensedExamples } from '@/lib/ai/knowledge/real-call-examples';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -70,13 +71,13 @@ export async function generateProspectResponse(
           ...conversationMessages,
         ],
         temperature: 0.7, // More creative for realistic conversation
-        max_tokens: 500,
+        max_tokens: 200,
       });
       prospectResponse = response.choices[0]?.message?.content || '...';
     } else if (anthropic) {
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 500,
+        max_tokens: 200,
         temperature: 0.7,
         system: systemPrompt,
         messages: conversationMessages.map(msg => ({
@@ -94,6 +95,9 @@ export async function generateProspectResponse(
     console.error('Error generating prospect response:', error);
     prospectResponse = 'I need to think about that...';
   }
+
+  // Clean LLM narration artifacts from the response
+  prospectResponse = cleanResponse(prospectResponse);
 
   // Determine if this response contains an objection
   const objectionType = detectObjectionInResponse(
@@ -170,6 +174,28 @@ CRITICAL RULES:
 8. Never automatically accept a flawed pitch.
 9. Your responses should be conversational, natural, and human-like.
 
+RESPONSE RULES:
+- Keep responses to 1-2 sentences for simple answers and acknowledgments
+- Use 3-4 sentences MAXIMUM for emotional moments or complex objections
+- NEVER exceed 4 sentences in a single response
+- Include natural filler words occasionally: "um", "like", "I mean", "you know", "honestly"
+- Use broken/interrupted sentences sometimes: "I just... I don't know if—", "Well the thing is—"
+- Do NOT use perfect grammar. Real people trail off, restart sentences, and ramble slightly
+
+OBJECTION TIMING:
+- Do NOT raise price/investment objections until the closer has actually mentioned price or investment
+- Surface your FIRST real objection only AFTER the closer pitches or mentions cost
+- Before that, express curiosity, skepticism, or mild pushback — but save the hard objections for after the pitch
+- Layer objections naturally — don't dump all concerns at once
+
+CHARACTER INTEGRITY:
+- You are the prospect. You are NOT an AI assistant
+- NEVER break character under any circumstances
+- NEVER offer advice, coaching, or feedback during the conversation
+- NEVER say things like "that's a great question" or "I appreciate you sharing that" — real prospects don't talk like that
+- If the closer asks "are you an AI?" — stay in character and respond confused/annoyed
+- Respond based on YOUR prospect's life situation, problems, and emotional state — not generic sales scenarios
+
 ${getBehaviourInstructions(difficultyTier)}
 
 CONNOR'S FRAMEWORK — DIFFICULTY MODEL:
@@ -177,6 +203,13 @@ ${PROSPECT_DIFFICULTY_MODEL}
 
 CONNOR'S FRAMEWORK — BEHAVIORAL RULES:
 ${ROLEPLAY_BEHAVIORAL_RULES}
+
+REAL PROSPECT CONVERSATION PATTERNS:
+Study these real sales call excerpts. Match the tone, vocabulary, and response patterns of these real prospects — not generic AI language.
+
+${getCondensedExamples(3)}
+
+Use these as reference for HOW prospects actually talk — their word choice, sentence length, emotional expression, and objection style.
 
 Respond as this prospect would, given your current state, execution resistance level, and the rep's message.`;
 }
@@ -383,6 +416,27 @@ function detectObjectionInResponse(
   }
 
   return undefined;
+}
+
+/**
+ * Clean LLM narration artifacts from prospect responses.
+ * Strips [bracketed narration], *italicized actions*, (parenthetical stage directions),
+ * and em-dash narration while preserving prices like [£2,000/month].
+ */
+function cleanResponse(text: string): string {
+  return text
+    // Remove [bracketed narration] but NOT brackets containing prices like [£2,000/month]
+    .replace(/\[(?![\d£$€¥])[^\]]*\]/g, '')
+    // Remove *italicized narration*
+    .replace(/\*[^*]+\*/g, '')
+    // Remove (parenthetical stage directions)
+    .replace(/\((?:sighs?|pauses?|laughs?|thinks?|thinking|hesitat\w*|nervous\w*|softly|quietly|long pause|beat|silence|takes? a (?:deep )?breath|leans? (?:back|forward)|nods?|shakes? head|smiles?|frowns?|tears? up|crying|emotional\w*|whispers?|chuckles?|clears? throat)\)/gi, '')
+    // Remove em-dash narration like —she pauses—
+    .replace(/—[a-z][^—]*—/gi, '')
+    // Collapse excess whitespace
+    .replace(/\n{3,}/g, '\n\n')
+    .replace(/  +/g, ' ')
+    .trim();
 }
 
 /**

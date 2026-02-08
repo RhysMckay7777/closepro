@@ -36,10 +36,10 @@ export interface ProspectDifficultyProfile {
   perceivedNeedForHelp: number; // 0-10
   authorityLevel: AuthorityLevel;
   funnelContext: number; // 0-10
-  
+
   // Layer B: Execution Resistance (10 points)
   executionResistance: number; // 0-10 (ability to proceed: money, time, effort, authority)
-  
+
   // Calculated
   difficultyIndex: number; // 0-50 (Layer A + Layer B)
   difficultyTier: DifficultyTier;
@@ -48,7 +48,7 @@ export interface ProspectDifficultyProfile {
 export interface ProspectAvatar {
   // Difficulty Profile
   difficulty: ProspectDifficultyProfile;
-  
+
   // Prospect Details
   positionDescription?: string;
   problems?: string[];
@@ -102,13 +102,13 @@ export function calculateDifficultyIndex(
   // Total difficulty index (0-50)
   const index = layerA + layerB;
 
-  // Determine tier based on 50-point scale
+  // Determine tier based on 50-point scale (matches canonical DIFFICULTY_BANDS)
   let tier: DifficultyTier;
-  if (index >= 43) {
+  if (index >= 42) {
     tier = 'easy';
-  } else if (index >= 37) {
+  } else if (index >= 36) {
     tier = 'realistic';
-  } else if (index >= 31) {
+  } else if (index >= 30) {
     tier = 'hard';
   } else if (index >= 25) {
     tier = 'elite';
@@ -130,17 +130,17 @@ export function mapDifficultySelectionToProfile(
 } {
   switch (selectedDifficulty) {
     case 'easy':
-      return { targetIndexRange: [43, 50], targetTier: 'easy' };
+      return { targetIndexRange: [42, 50], targetTier: 'easy' };
     case 'realistic':
     case 'intermediate':
-      return { targetIndexRange: [37, 43], targetTier: 'realistic' };
+      return { targetIndexRange: [36, 41], targetTier: 'realistic' };
     case 'hard':
-      return { targetIndexRange: [31, 37], targetTier: 'hard' };
+      return { targetIndexRange: [30, 35], targetTier: 'hard' };
     case 'elite':
     case 'expert':
-      return { targetIndexRange: [25, 31], targetTier: 'elite' };
+      return { targetIndexRange: [25, 29], targetTier: 'elite' };
     default:
-      return { targetIndexRange: [37, 43], targetTier: 'realistic' };
+      return { targetIndexRange: [36, 41], targetTier: 'realistic' };
   }
 }
 
@@ -169,7 +169,7 @@ export function calculateExecutionResistance(
     const minPrice = parseInt(priceMatch[0]);
     const maxPrice = priceMatch.length > 1 ? parseInt(priceMatch[1]) : minPrice;
     const avgPrice = (minPrice + maxPrice) / 2;
-    
+
     // Higher price = lower ability score
     if (avgPrice >= 20000) {
       baseScore -= 2; // Very high ticket
@@ -274,10 +274,10 @@ export function getDefaultBioForDifficulty(
   const key = tier as DifficultyTier;
   const archetypes = CHARACTER_ARCHETYPES[key] ?? CHARACTER_ARCHETYPES.realistic;
   const archetype = archetypes[randomInt(0, archetypes.length - 1)];
-  
+
   // Extract first name from prospect name if provided
   const firstName = prospectName?.split(' ')[0] || 'They';
-  
+
   // Generate character-driven bio
   return `${archetype.role.charAt(0).toUpperCase() + archetype.role.slice(1)} ${firstName} ${archetype.context}.`;
 }
@@ -346,15 +346,15 @@ export function generateRandomProspectInBand(
   // If still not in range after max attempts, adjust to fit
   if (total < minTotal || total > maxTotal) {
     const targetMid = Math.round((minTotal + maxTotal) / 2);
-    const currentLayerA = positionProblemAlignment + painAmbitionIntensity + 
-      (authorityLevel === 'advisor' ? Math.max(0, perceivedNeedForHelp - 3) : 
-       authorityLevel === 'peer' ? Math.max(0, perceivedNeedForHelp - 1) : perceivedNeedForHelp) + 
+    const currentLayerA = positionProblemAlignment + painAmbitionIntensity +
+      (authorityLevel === 'advisor' ? Math.max(0, perceivedNeedForHelp - 3) :
+        authorityLevel === 'peer' ? Math.max(0, perceivedNeedForHelp - 1) : perceivedNeedForHelp) +
       funnelContext;
-    
+
     // Adjust execution resistance to hit target
     const neededLayerB = targetMid - currentLayerA;
     executionResistance = Math.max(1, Math.min(10, neededLayerB));
-    
+
     // Recalculate total
     let authorityScore = perceivedNeedForHelp;
     if (authorityLevel === 'advisor') {

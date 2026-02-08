@@ -691,3 +691,317 @@
 | 16 | LOW | Prospect builder: merge Position Description + Problems into 1 box per Rhys |
 | 17 | LOW | Prospect text placeholder update ("Working as electrician...") |
 | 18 | LOW | Follow-up log: "Further Follow-up" outcome type may not be distinct from follow_up result |
+
+---
+
+## STEP 8: AI SALES TRAINER — ARCHITECTURE OVERVIEW
+
+### Two Disconnected Roleplay Systems
+
+> [!IMPORTANT]
+> The codebase contains **TWO completely independent roleplay systems** that share no code. System 2 is the one users actually interact with, but it does NOT use the carefully crafted `system_prompt.md` rules from System 1.
+
+| | System 1: Sales Trainer (Standalone Chat) | System 2: In-App Roleplay (ACTIVE) |
+|---|---|---|
+| **Frontend** | `hooks/useSalesTrainer.ts` | `roleplay/[sessionId]/page.tsx` |
+| **API Route** | `api/sales-trainer/route.ts` | `api/roleplay/[sessionId]/message/route.ts` |
+| **AI Model** | Claude Sonnet 4.5 | Groq Llama 3.3 70B (Claude fallback) |
+| **System Prompt** | `knowledge-base/system_prompt.md` (357 lines, all of Connor's rules) | `roleplay-engine.ts` `buildRoleplaySystemPrompt()` (dynamic, ~100 lines) |
+| **Behaviour Engine** | None — relies on LLM following prompt rules | Full engine: `behaviour-rules.ts`, `offer-intelligence.ts`, `funnel-context.ts` |
+| **Knowledge Base** | Loads all 5 `.md` files at import time | Uses `ROLEPLAY_BEHAVIORAL_RULES` + `PROSPECT_DIFFICULTY_MODEL` from `lib/training/` |
+| **Response Cleaning** | None | None |
+| **Stage Detection** | ✅ Has explicit regex-based stage detection | ❌ Missing — relies on LLM interpretation |
+| **Intent Detection** | ✅ Detects roleplay/coaching/query modes | N/A (always in roleplay mode) |
+| **Used by App?** | ❌ No pages reference `useSalesTrainer` | ✅ Active — the real roleplay UI |
+
+### Data Flow (System 2 — Active)
+
+```
+User types message
+  → [sessionId]/page.tsx sends POST to /api/roleplay/[sessionId]/message
+    → route.ts: authenticate, load session, offer, prospect, messages from DB
+    → route.ts: build OfferProfile, get prospect difficulty dimensions
+    → route.ts: initializeBehaviourState() ⚠️ RE-INITIALIZED EVERY TURN
+    → route.ts: call generateProspectResponse(roleplay-engine.ts)
+      → roleplay-engine.ts: analyzeRepAction() on closer's message
+      → roleplay-engine.ts: adaptBehaviour() based on analysis
+      → roleplay-engine.ts: buildRoleplaySystemPrompt() with all context
+      → roleplay-engine.ts: call Groq API (max_tokens: 500, temp: 0.7)
+      → roleplay-engine.ts: detect objections in response
+    → route.ts: save rep message + prospect message to DB
+    → route.ts: update session metadata with behaviour state
+  ← Frontend displays response as "Prospect" with blue label
+  ← Frontend calls /api/tts for ElevenLabs voice (with browser fallback)
+```
+
+---
+
+## STEP 9: AI SALES TRAINER — ROLE LOGIC AUDIT (✅ ALL CORRECT)
+
+### 9.1 System Prompt (`knowledge-base/system_prompt.md`)
+
+| Check | Result | Evidence |
+|---|---|---|
+| Says "You are a sales prospect"? | ✅ CORRECT | Line 50: `"You ARE the prospect. You are not an AI."` |
+| AI ANSWERS questions, not ASKS? | ✅ CORRECT | Rule 3 (line 67): Discovery responses tell AI to respond using persona's background |
+| AI RAISES objections? | ✅ CORRECT | Rule 5 (line 117): `"Surface the FIRST objection only AFTER the price has been mentioned"` |
+| AI does NOT close? | ✅ CORRECT | Rule 8 (line 157): AI either commits or resists based on closer's technique |
+| AI does NOT follow 5-stage framework? | ✅ CORRECT | Line 280: Stage detection is from `"the closer's language"` — AI just reacts |
+| Response length limited? | ✅ CORRECT | Rule 10 (line 178): `"1-2 sentences for simple answers, 3-5 for emotional"` |
+| Never breaks character? | ✅ CORRECT | Rule 1 (line 49) + Critical Rules (line 342-346) |
+
+### 9.2 Roleplay Engine (`lib/ai/roleplay/roleplay-engine.ts`)
+
+| Check | Result | Evidence |
+|---|---|---|
+| `analyzeRepAction` analyzes CLOSER? | ✅ CORRECT | Function takes `repMessage` parameter — analyzes closer's words |
+| Behaviour rules adjust PROSPECT? | ✅ CORRECT | `adaptBehaviour` adjusts prospect resistance/openness |
+| Difficulty model on correct entity? | ✅ CORRECT | Difficulty describes the PROSPECT (how hard to close) |
+| System prompt tells AI to BE the prospect? | ✅ CORRECT | Line 127: `"You are playing the role of a sales prospect"` |
+| Groq API message roles correct? | ✅ CORRECT | `user` = closer, `assistant` = prospect history |
+
+### 9.3 API Route Handler (`api/roleplay/[sessionId]/message/route.ts`)
+
+| Check | Result | Evidence |
+|---|---|---|
+| User messages = closer speaking? | ✅ CORRECT | Body `message` is the closer's text |
+| Messages stored with correct roles? | ✅ CORRECT | Line 86: `role: 'rep'` for user, line 228: `role: 'prospect'` for AI |
+| Offer data injected for prospect context? | ✅ CORRECT | Lines 133-149: Builds `OfferProfile` from DB |
+| Prospect avatar injected? | ✅ CORRECT | Lines 155-193: Loads prospect difficulty/personality |
+
+### 9.4 Frontend (`roleplay/[sessionId]/page.tsx`)
+
+| Check | Result | Evidence |
+|---|---|---|
+| User input sent as closer? | ✅ CORRECT | Line 257: `role: 'rep'` |
+| AI response displayed as prospect? | ✅ CORRECT | Line 290: `role: 'prospect'` |
+| Transcript labels correct? | ✅ CORRECT | Line 664: rep = "You", prospect = "Prospect" |
+| Color coding correct? | ✅ CORRECT | rep = orange, prospect = blue |
+
+### 9.5 Standalone Hook (`hooks/useSalesTrainer.ts`)
+
+| Check | Result | Evidence |
+|---|---|---|
+| User input as `role: "user"` (closer)? | ✅ CORRECT | Line 68: `{ role: "user", content }` |
+| `selectPersona()` = which prospect AI should BE? | ✅ CORRECT | Line 115: `"I want to practice with ${persona}"` |
+| `endRoleplay()` reviews CLOSER performance? | ✅ CORRECT | Line 122: `"Give me feedback on how I did"` |
+
+### 9.6 Persona Data (`knowledge-base/documents/prospect_personas.md`)
+
+| Check | Result | Evidence |
+|---|---|---|
+| Written from PROSPECT's POV? | ✅ CORRECT | Each persona = demographics, background, income, pain as their own details |
+| Objection patterns = what PROSPECT says? | ✅ CORRECT | Jackie: `"I work 60, maybe 70 hours"`, Matt: `"I still want to think about things"` |
+| Difficulty level = how hard PROSPECT is? | ✅ CORRECT | Darren = Easy, Jackie = Hard, etc. |
+
+### 9.7 Training Constants
+
+| File | Role Logic | Status |
+|---|---|---|
+| `lib/training/roleplay-behavioral-rules.ts` | Rules say `"BEHAVIORAL RULES FOR AI PROSPECT"` | ✅ CORRECT |
+| `lib/training/prospect-difficulty-model.ts` | Model describes PROSPECT difficulty dimensions | ✅ CORRECT |
+| `lib/training/scoring-categories.ts` | Categories evaluate CLOSER's skills | ✅ CORRECT |
+
+### 9.8 Coaching Mode
+
+| Check | Result | Evidence |
+|---|---|---|
+| Evaluates CLOSER's performance? | ✅ CORRECT | Line 219: `"For each of the 5 stages the closer got through"` |
+| Framework = what CLOSER should follow? | ✅ CORRECT | Line 221: `"Did they execute the key elements?"` |
+| Compares to real closers? | ✅ CORRECT | Line 237: `"show how Ethan, Connor, Joe, Jared handled similar moments"` |
+
+---
+
+## STEP 10: AI SALES TRAINER — DATA FLOW AUDIT
+
+### 10.1 Discovery Question Trace
+
+**User types:** *"So Darren, what made you leave your IT job?"*
+
+| Step | Component | What happens | Role correct? |
+|---|---|---|---|
+| 1 | Frontend | Sends `{ message: "So Darren, what made you leave your IT job?" }` as POST | ✅ Closer's words |
+| 2 | API Route | Authenticates, loads session, offer, prospect from DB | ✅ N/A |
+| 3 | API Route | Saves message with `role: 'rep'` | ✅ Correct role |
+| 4 | Engine | `analyzeRepAction()` detects it as a discovery question | ✅ Analyzes CLOSER |
+| 5 | Engine | `adaptBehaviour()` increases prospect openness (good question) | ✅ Adjusts PROSPECT |
+| 6 | Engine | `buildRoleplaySystemPrompt()` — "You are playing the role of a sales prospect" | ✅ AI = prospect |
+| 7 | Groq API | Messages: `user` = closer's question, `assistant` = prospect's prior responses | ✅ Correct mapping |
+| 8 | Response | AI responds as Darren: provides background details about leaving IT | ✅ Prospect answers |
+| 9 | API Route | Saves response with `role: 'prospect'` | ✅ Correct role |
+| 10 | Frontend | Displays as "Prospect" in blue with TTS voice | ✅ Correct display |
+
+### 10.2 Objection Scenario
+
+**Closer says:** *"So the investment is $5,000 for the full program."*
+
+| Step | What should happen | What actually happens | Status |
+|---|---|---|---|
+| Price detection | Explicit regex detects price mentioned | ❌ No price regex in System 2 | ⚠️ MISSING |
+| Stage tracking | Move to Stage 5 (Closing) | ❌ No stage tracker in System 2 | ⚠️ MISSING |
+| Objection surfacing | Prospect raises objection (from persona patterns) | ✅ LLM infers from system prompt rules | ✅ WORKS (but fragile) |
+| Objection detection | `detectObjection()` classifies the response | ✅ Exists in roleplay-engine.ts | ✅ |
+
+### 10.3 Coaching Mode Switch
+
+| Step | System 1 (sales-trainer) | System 2 (active roleplay) |
+|---|---|---|
+| Trigger | User types "end roleplay" / "how did I do" | User clicks "End & score" button |
+| Detection | `detectIntent()` switches to coaching mode | Separate API: `POST /api/roleplay/[sessionId]/score` |
+| Prompt | Same Claude model, different context (coaching prompt from `system_prompt.md`) | Separate analysis engine (`lib/ai/analysis.ts`) using Claude |
+| Output | Inline coaching text in chat | Full structured analysis (10 categories, priority fixes, moment-by-moment) |
+| Role logic | ✅ Evaluates closer, not prospect | ✅ Evaluates closer, not prospect |
+
+---
+
+## STEP 11: AI SALES TRAINER — ANTI-PATTERN SEARCH (✅ ALL CLEAN)
+
+All searches performed with case-insensitive matching across `*.ts`, `*.tsx`, `*.md`, `*.json` files.
+
+| Search Pattern | Matches | Status |
+|---|---|---|
+| `"you are the closer"` | 0 | ✅ Clean |
+| `"you are the sales rep"` | 0 | ✅ Clean |
+| `"you are selling"` | 0 | ✅ Clean |
+| `"close the deal"` | 0 | ✅ Clean |
+| `"ask discovery questions"` | 0 | ✅ Clean |
+| `"you will play"` | 0 | ✅ Clean |
+| `role.*closer.*assistant` (regex) | 0 | ✅ Clean |
+| `role.*prospect.*user` (regex) | 0 | ✅ Clean |
+| `"handle objections"` | 3 | ✅ All in correct context (KB comments, framework docs, default offer data) |
+| `cleanResponse` | 0 | ⚠️ Function doesn't exist |
+| `persona_contexts` | 0 | ⚠️ File doesn't exist |
+
+---
+
+## STEP 12: AI SALES TRAINER — SYSTEM CONFIGURATION AUDIT
+
+### 12.1 max_tokens Configuration
+
+| Context | File | Current | Recommended | Status |
+|---|---|---|---|---|
+| Roleplay (Groq) | `roleplay-engine.ts:73` | **500** | **150** | ⚠️ TOO HIGH — causes verbose prospect responses |
+| Roleplay (Claude fallback) | `roleplay-engine.ts:79` | **500** | **150** | ⚠️ TOO HIGH |
+| Roleplay (legacy) | `roleplay.ts:132` | **500** | **150** | ⚠️ TOO HIGH |
+| Sales Trainer | `sales-trainer/route.ts:337` | **1024** | 150 roleplay / 4096 coaching / 2048 query | ⚠️ FLAT — should be mode-dependent |
+| Call Analysis | `analysis.ts:184,213,250` | **8000** | 8000 | ✅ Correct |
+
+### 12.2 Response Cleaning
+
+> [!CAUTION]
+> **No `cleanResponse()` function exists anywhere in the codebase.** AI responses are passed through raw. Any `[action]`, `*narration*`, or `(thinking)` text from the LLM will appear verbatim in the chat transcript.
+
+**Recommended implementation:**
+```typescript
+function cleanResponse(text: string): string {
+  return text
+    .replace(/\[.*?\]/g, '')                          // Remove [brackets]
+    .replace(/\*[^*]+\*/g, '')                         // Remove *asterisks*
+    .replace(/\((?:sighs?|pauses?|laughs?|thinks?|thinking|hesitat(?:es?|ing)|nervous(?:ly)?|softly|quietly|long pause|beat|silence|takes? a (?:deep )?breath|leans? (?:back|forward)|nods?|shakes? head|smiles?|frowns?|tears? up|crying|emotional(?:ly)?|whispers?|chuckles?|clears? throat)\)/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+```
+
+### 12.3 BehaviourState Persistence
+
+| Check | Status | Details |
+|---|---|---|
+| Initialized | ⚠️ BUG | `initializeBehaviourState()` called fresh EVERY message turn |
+| Persisted | ⚠️ BUG | State is saved to `session.metadata` after each turn, but never LOADED back |
+| Impact | 🔴 HIGH | Prospect resets to default resistance/trust/openness every turn — no memory of closer's performance |
+| Fix | — | Load `behaviourState` from `session.metadata` if available; only initialize on first message |
+
+### 12.4 Error Handling
+
+| Check | Status |
+|---|---|
+| Empty message check | ✅ Returns 400 |
+| Session not found | ✅ Returns 404 |
+| Session not in progress | ✅ Returns 400 |
+| AI service error | ✅ Falls back to `"I need to think about that..."` |
+| Frontend error rollback | ⚠️ No rollback — failed messages remain in UI |
+| Groq rate limit handling | ⚠️ Falls back to Claude, no retry |
+
+### 12.5 File Loading & Templates
+
+| Check | Status |
+|---|---|
+| All knowledge-base files exist on disk | ✅ All 5 `.md` files present |
+| Files loaded at module scope (not per-request) | ✅ `sales-trainer/route.ts` reads at import time |
+| No unreplaced `{{placeholder}}` tokens | ✅ System 2 uses JS template literals; System 1 regex-extracts from markdown |
+| No `persona_contexts.json` referenced | ✅ Nothing references this file |
+
+---
+
+## STEP 13: AI SALES TRAINER — OFFER INTEGRATION AUDIT
+
+### Current State
+
+| Check | Status | Details |
+|---|---|---|
+| Offer loaded from DB | ✅ | `message/route.ts` lines 94-130 fetches from `offers` table |
+| `OfferProfile` constructed | ✅ | Builds typed profile from DB fields |
+| Injected into system prompt | ✅ | `generateOfferSummary(offerProfile)` in `offer-intelligence.ts` |
+| Category-specific rules applied | ✅ | `getCategoryBehaviorRules()` adjusts prospect tone by offer category |
+| Fallback if offer missing | ✅ | Default "closing mentorship" offer created (lines 109-130) |
+
+### Offer Fields Available vs Missing
+
+| Field | In DB Schema | In OfferProfile | In System Prompt | Status |
+|---|---|---|---|---|
+| Name | ✅ `name` | ✅ | ✅ | ✅ |
+| Core outcome | ✅ `coreOutcome` | ✅ | ✅ | ✅ |
+| Mechanism | ✅ `mechanismHighLevel` | ✅ | ✅ | ✅ |
+| Price | ✅ `coreOfferPrice` | ✅ `priceRange` | ✅ | ✅ |
+| Delivery model | ✅ `deliveryModel` | ✅ | ✅ | ✅ |
+| Category | ✅ `offerCategory` | ✅ | ✅ | ✅ |
+| Payment plans | ❌ | ❌ | ❌ | ❌ MISSING |
+| Duration | ❌ | ❌ | ❌ | ❌ MISSING |
+| Guarantee details | ✅ `guaranteesRefundTerms` | ❌ not mapped | ❌ | ⚠️ EXISTS BUT UNUSED |
+| Time to results | ✅ `estimatedTimeToResults` | ❌ not mapped | ❌ | ⚠️ EXISTS BUT UNUSED |
+
+### Impact of Missing Fields
+
+Prospects will realistically ask about:
+- **"How long is the program?"** — AI has no duration to reference
+- **"Do you offer payment plans?"** — AI can't respond accurately
+- **"Is there a guarantee?"** — Field exists in DB but isn't injected into system prompt
+
+---
+
+## STEP 14: AI SALES TRAINER — CONSOLIDATED FIX LIST
+
+### 🔴 CRITICAL (Role Logic)
+
+**None.** Role logic is 100% correct throughout the entire codebase. Zero inversions found.
+
+---
+
+### 🟠 HIGH (Functional Bugs Affecting Roleplay Quality)
+
+| # | Issue | File(s) | Impact | Fix |
+|---|---|---|---|---|
+| **H1** | `behaviourState` re-initialized every turn instead of loaded from session metadata | `api/roleplay/[sessionId]/message/route.ts` L203-206 | Prospect resets to default resistance/trust every message; no memory of closer's performance | Load from `session.metadata` if present; only init on first message |
+| **H2** | `max_tokens: 500` causes verbose prospect responses | `lib/ai/roleplay/roleplay-engine.ts` L73, L79 | Prospect gives 3-5 paragraph monologues instead of 1-2 sentence answers | Reduce to `150`; add explicit brevity rule to system prompt |
+| **H3** | No `cleanResponse()` function | Nowhere — doesn't exist | LLM narration text (`[pauses]`, `*sighs*`) shows raw in the chat transcript | Add function before returning `prospectResponse` |
+| **H4** | System 1's excellent rules (Rules 2-11) NOT used by active System 2 | `system_prompt.md` vs `roleplay-engine.ts` | Active roleplay misses: response length limits, objection timing rules, messy speech patterns, realistic interruptions, mistake consequences | Port Rules 2-11 from `system_prompt.md` into `buildRoleplaySystemPrompt()` |
+
+### 🟡 MEDIUM (Degraded Experience)
+
+| # | Issue | File(s) | Impact |
+|---|---|---|---|
+| **M1** | No explicit stage detection in active roleplay | `roleplay-engine.ts` | Objections may surface at wrong times; relies entirely on LLM |
+| **M2** | `sales-trainer/route.ts` uses flat `max_tokens: 1024` for ALL modes | `sales-trainer/route.ts` L337 | Roleplay too verbose, coaching too short |
+| **M3** | No frontend error rollback | `roleplay/[sessionId]/page.tsx` | Failed messages stay in UI without prospect response |
+| **M4** | Sequential DB queries in message handler (~400-800ms) | `message/route.ts` | 4+ queries run sequentially; should be parallelized with `Promise.all()` |
+| **M5** | Guarantee and time-to-results not injected despite existing in DB | `offer-intelligence.ts`, `message/route.ts` | Prospect can't reference guarantee or program timeline |
+
+### 🟢 LOW (Polish)
+
+| # | Issue | File(s) |
+|---|---|---|
+| **L1** | Default offer has hardcoded "closing mentorship" context | `message/route.ts` L109 |
+| **L2** | `useSalesTrainer.ts` hook appears unused by any page | `hooks/useSalesTrainer.ts` |
+| **L3** | No streaming — full response waits for entire generation | `roleplay-engine.ts` |
+| **L4** | `roleplay.ts` (legacy file) duplicates `roleplay-engine.ts` functionality | `lib/ai/roleplay.ts` |

@@ -378,6 +378,8 @@ function RoleplaySessionContent() {
       }
     } catch (error: any) {
       console.error('Error sending message:', error);
+      // Rollback the optimistically added rep message
+      setMessages((prev) => prev.slice(0, -1));
       toastError('Failed to send message: ' + error.message);
       setActiveSpeaker(null);
     } finally {

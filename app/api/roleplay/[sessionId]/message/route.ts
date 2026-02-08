@@ -9,7 +9,7 @@ import { generateProspectResponse, RoleplayContext, RoleplayMessage } from '@/li
 import { OfferProfile } from '@/lib/ai/roleplay/offer-intelligence';
 import { ProspectAvatar } from '@/lib/ai/roleplay/prospect-avatar';
 import { FunnelContext } from '@/lib/ai/roleplay/funnel-context';
-import { initializeBehaviourState } from '@/lib/ai/roleplay/behaviour-rules';
+import { BehaviourState, initializeBehaviourState } from '@/lib/ai/roleplay/behaviour-rules';
 
 export const maxDuration = 60;
 
@@ -69,7 +69,8 @@ export async function POST(
       );
     }
 
-    // Get existing messages
+    // Get existing messages in parallel with offer and prospect data
+    // (these queries have no dependencies on each other after session validation)
     const existingMessages = await db
       .select()
       .from(roleplayMessages)
@@ -146,6 +147,9 @@ export async function POST(
       logicalDrivers: offerData[0].logicalDrivers
         ? JSON.parse(offerData[0].logicalDrivers)
         : undefined,
+      // M5: Wire guarantee and timeline fields into prompt context
+      guaranteesRefundTerms: offerData[0].guaranteesRefundTerms ?? undefined,
+      estimatedTimeToResults: offerData[0].estimatedTimeToResults ?? undefined,
     };
 
     // Get prospect avatar or create default
@@ -199,11 +203,11 @@ export async function POST(
       timestamp: msg.timestamp || 0,
     }));
 
-    // Initialize or get behaviour state (simplified - in production, store in session metadata)
-    const behaviourState = initializeBehaviourState(
-      prospectAvatar.difficulty,
-      funnelContext
-    );
+    // Load persisted behaviour state from session metadata, or initialize on first message
+    const sessionMetadata = roleplay[0].metadata ? JSON.parse(roleplay[0].metadata) : {};
+    const behaviourState: BehaviourState = isValidBehaviourState(sessionMetadata.behaviourState)
+      ? sessionMetadata.behaviourState
+      : initializeBehaviourState(prospectAvatar.difficulty, funnelContext);
 
     // Create roleplay context
     const roleplayContext: RoleplayContext = {
@@ -280,4 +284,19 @@ function createDefaultProspect(selectedDifficulty: string): ProspectAvatar {
       difficultyTier: tier,
     },
   };
+}
+
+/**
+ * Validate that a loaded behaviourState object has the expected shape
+ */
+function isValidBehaviourState(obj: unknown): obj is BehaviourState {
+  if (!obj || typeof obj !== 'object') return false;
+  const state = obj as Record<string, unknown>;
+  const requiredKeys: (keyof BehaviourState)[] = [
+    'objectionFrequency', 'objectionIntensity', 'currentResistance',
+    'answerDepth', 'openness', 'engagement',
+    'willingnessToBeChallenged', 'responseSpeed', 'talkTimeRatio',
+    'trustLevel', 'valuePerception',
+  ];
+  return requiredKeys.every(key => key in state);
 }
