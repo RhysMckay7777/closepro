@@ -12,7 +12,10 @@ import { analyzeCallAsync } from '@/lib/calls/analyze-call';
 export const maxDuration = 120; // Allow up to 2 minutes for transcription (large files / slow Deepgram)
 
 /**
- * Upload a sales call audio file
+ * Upload a sales call audio file.
+ * Supports two paths:
+ *   1. JSON body with { fileUrl } — file already uploaded to Vercel Blob from the browser
+ *   2. FormData with a file — direct upload (small files < 4.5 MB)
  */
 export async function POST(request: NextRequest) {
   try {
@@ -60,7 +63,6 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user can upload calls (usage limits)
-    // Bypassed in dev mode via canPerformAction
     const canUpload = await canPerformAction(organizationId, 'upload_call');
     if (!canUpload.allowed) {
       return NextResponse.json(
@@ -69,7 +71,67 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Parse form data
+    const contentType = request.headers.get('content-type') || '';
+
+    // ─── PATH A: JSON body (file already in Vercel Blob) ───
+    if (contentType.includes('application/json')) {
+      const body = await request.json();
+      const { fileUrl, fileName, fileSize, addToFigures: addToFig, metadata: rawMeta } = body as {
+        fileUrl: string;
+        fileName: string;
+        fileSize?: number;
+        addToFigures?: boolean;
+        metadata?: Record<string, unknown>;
+      };
+
+      if (!fileUrl || !fileName) {
+        return NextResponse.json({ error: 'fileUrl and fileName are required' }, { status: 400 });
+      }
+
+      const callMetadata = rawMeta || {};
+      const addToFigures = addToFig !== false;
+      const analysisIntent = addToFigures ? 'update_figures' : 'analysis_only';
+
+      const [call] = await db
+        .insert(salesCalls)
+        .values({
+          organizationId,
+          userId: session.user.id,
+          fileName,
+          fileUrl,
+          fileSize: fileSize ?? 0,
+          transcript: null,
+          transcriptJson: null,
+          duration: null,
+          status: 'transcribing',
+          metadata: JSON.stringify(callMetadata),
+          analysisIntent,
+        })
+        .returning();
+
+      if (!shouldBypassSubscription()) {
+        await incrementUsage(organizationId, 'calls');
+      }
+
+      try {
+        await transcribeAndAnalyzeAsync(call.id, null, fileName, analysisIntent, fileUrl);
+
+        return NextResponse.json({
+          callId: call.id,
+          status: 'completed',
+          message: 'Transcription and analysis complete.',
+        }, { status: 201 });
+      } catch (analysisErr: unknown) {
+        console.error('Inline transcribe/analyze error (blob):', analysisErr);
+        return NextResponse.json({
+          callId: call.id,
+          status: 'failed',
+          message: 'Upload succeeded but analysis failed. You can retry from the call detail page.',
+        }, { status: 201 });
+      }
+    }
+
+    // ─── PATH B: FormData (direct file upload, < 4.5 MB) ───
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const metadata = formData.get('metadata') as string | null;
@@ -81,7 +143,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate file type (MIME and/or extension — M4A is often reported as audio/mp4)
+    // Validate file type
     const allowedTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/m4a', 'audio/mp4', 'audio/x-m4a', 'audio/webm'];
     const ext = file.name.slice(file.name.lastIndexOf('.')).toLowerCase();
     const allowedExts = ['.mp3', '.wav', '.m4a', '.webm'];
@@ -95,7 +157,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file size (max 100MB)
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    const maxSize = 100 * 1024 * 1024;
     if (file.size > maxSize) {
       return NextResponse.json(
         { error: 'File too large. Maximum size is 100MB' },
@@ -103,7 +165,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Store metadata; addToFigures (default true) controls whether this call counts in figures
     let callMetadata: Record<string, unknown> = {};
     try {
       if (metadata) callMetadata = JSON.parse(metadata);
@@ -113,7 +174,6 @@ export async function POST(request: NextRequest) {
     const addToFigures = callMetadata.addToFigures !== false;
     const analysisIntent = addToFigures ? 'update_figures' : 'analysis_only';
 
-    // Create call record immediately with status 'transcribing' so UI never freezes
     const arrayBuffer = await file.arrayBuffer();
     const audioBuffer = Buffer.from(arrayBuffer);
 
@@ -138,9 +198,6 @@ export async function POST(request: NextRequest) {
       await incrementUsage(organizationId, 'calls');
     }
 
-    // Run transcription + analysis INLINE (awaited) so it completes
-    // before the HTTP response is sent. maxDuration = 120 keeps the
-    // Vercel function alive for the full cycle.
     try {
       await transcribeAndAnalyzeAsync(call.id, audioBuffer, file.name, analysisIntent);
 
@@ -151,8 +208,6 @@ export async function POST(request: NextRequest) {
       }, { status: 201 });
     } catch (analysisErr: unknown) {
       console.error('Inline transcribe/analyze error:', analysisErr);
-      // The helper already sets DB status to 'failed', so just return
-      // a response the frontend can handle.
       return NextResponse.json({
         callId: call.id,
         status: 'failed',
@@ -173,24 +228,25 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Background: transcribe audio, update call row, then run analysis.
+ * Transcribe audio (from buffer or URL), update call row, then run analysis.
  */
 async function transcribeAndAnalyzeAsync(
   callId: string,
-  audioBuffer: Buffer,
+  audioBuffer: Buffer | null,
   fileName: string,
-  analysisIntent: string
+  analysisIntent: string,
+  fileUrl?: string
 ): Promise<void> {
   let transcriptionResult;
   try {
-    transcriptionResult = await transcribeAudioFile(audioBuffer, fileName);
+    transcriptionResult = await transcribeAudioFile(audioBuffer, fileName, fileUrl);
   } catch (err: unknown) {
     console.error('Background transcription error:', err);
     await db
       .update(salesCalls)
       .set({ status: 'failed' })
       .where(eq(salesCalls.id, callId));
-    return;
+    throw err; // Re-throw so caller can handle
   }
 
   await db

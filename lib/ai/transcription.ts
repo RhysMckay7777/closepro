@@ -29,15 +29,18 @@ export interface TranscriptionResult {
 }
 
 /**
- * Transcribe audio using Deepgram (fast) or AssemblyAI (fallback)
+ * Transcribe audio using Deepgram (fast) or AssemblyAI (fallback).
+ * If fileUrl is provided, uses URL-based transcription (no buffer needed).
  */
 export async function transcribeAudioFile(
-  audioBuffer: Buffer,
-  fileName: string
+  audioBuffer: Buffer | null,
+  fileName: string,
+  fileUrl?: string
 ): Promise<TranscriptionResult> {
   if (USE_DEEPGRAM && deepgram) {
-    return transcribeWithDeepgram(audioBuffer, fileName);
+    return transcribeWithDeepgram(audioBuffer, fileName, fileUrl);
   } else if (ASSEMBLYAI_API_KEY) {
+    if (!audioBuffer) throw new Error('AssemblyAI fallback requires an audio buffer');
     return transcribeWithAssemblyAI(audioBuffer, fileName);
   } else {
     throw new Error('No transcription service configured. Set DEEPGRAM_API_KEY or ASSEMBLYAI_API_KEY');
@@ -48,24 +51,41 @@ export async function transcribeAudioFile(
  * Transcribe with Deepgram (5x faster)
  */
 async function transcribeWithDeepgram(
-  audioBuffer: Buffer,
-  fileName: string
+  audioBuffer: Buffer | null,
+  fileName: string,
+  fileUrl?: string
 ): Promise<TranscriptionResult> {
   if (!deepgram) {
     throw new Error('Deepgram client not initialized');
   }
 
-  const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
-    audioBuffer,
-    {
-      model: 'nova-2',
-      smart_format: true,
-      diarize: true, // Speaker diarization
-      punctuate: true,
-      paragraphs: false,
-      utterances: true, // Get utterances with timestamps
-    }
-  );
+  const options = {
+    model: 'nova-2' as const,
+    smart_format: true,
+    diarize: true, // Speaker diarization
+    punctuate: true,
+    paragraphs: false,
+    utterances: true, // Get utterances with timestamps
+  };
+
+  let result;
+  let error;
+
+  if (fileUrl) {
+    // URL-based transcription — faster, no buffer needed
+    ({ result, error } = await deepgram.listen.prerecorded.transcribeUrl(
+      { url: fileUrl },
+      options
+    ));
+  } else if (audioBuffer) {
+    // Buffer-based transcription — for direct small uploads
+    ({ result, error } = await deepgram.listen.prerecorded.transcribeFile(
+      audioBuffer,
+      options
+    ));
+  } else {
+    throw new Error('Either audioBuffer or fileUrl is required for transcription');
+  }
 
   if (error) {
     throw new Error(`Deepgram transcription error: ${error.message}`);
@@ -77,7 +97,7 @@ async function transcribeWithDeepgram(
 
   // Extract transcript text
   const transcript = result.results.channels[0]?.alternatives[0]?.transcript || '';
-  
+
   // Extract utterances with speaker labels
   const utterances: TranscriptionResult['transcriptJson']['utterances'] = [];
   const speakers = new Set<string>();
@@ -86,7 +106,7 @@ async function transcribeWithDeepgram(
     for (const utterance of result.results.utterances) {
       const speaker = `Speaker ${utterance.speaker || 'A'}`;
       speakers.add(speaker);
-      
+
       utterances.push({
         speaker,
         start: utterance.start * 1000, // Convert to milliseconds
@@ -131,10 +151,10 @@ async function transcribeWithAssemblyAI(
 ): Promise<TranscriptionResult> {
   // Upload to AssemblyAI
   const audioUrl = await uploadAudioToAssemblyAI(audioBuffer, fileName);
-  
+
   // Start transcription
   const transcriptId = await startTranscription(audioUrl);
-  
+
   // Poll for completion (max 10 minutes)
   const maxAttempts = 120; // 120 attempts * 5 seconds = 10 minutes
   let attempts = 0;

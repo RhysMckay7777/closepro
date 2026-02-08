@@ -242,18 +242,31 @@ export default function NewCallPage() {
     if (isAudio) {
       setUploading(true);
       try {
-        const formData = new FormData();
-        formData.append('file', file!);
-        formData.append('metadata', JSON.stringify({ addToFigures }));
+        // Dynamic import — only loaded when needed (client-side)
+        const { upload } = await import('@vercel/blob/client');
+
+        // STEP A: Upload file directly to Vercel Blob from browser
+        // This bypasses the 4.5 MB serverless function body limit
+        const blob = await upload(file!.name, file!, {
+          access: 'public',
+          handleUploadUrl: '/api/calls/upload-blob',
+        });
+
+        // STEP B: Send blob URL + metadata to the API for transcription & analysis
         const response = await fetch('/api/calls/upload', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileUrl: blob.url,
+            fileName: file!.name,
+            fileSize: file!.size,
+            addToFigures,
+          }),
         });
+        const data = await response.json();
         if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
           throw new Error(data.error || 'Upload failed');
         }
-        const data = await response.json();
         toastSuccess('Call uploaded. Analysis in progress...');
         if (data.callId) {
           router.push(`/dashboard/calls/${data.callId}?openOutcome=1`);
