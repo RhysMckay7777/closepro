@@ -6,6 +6,7 @@ import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImage, buildProspectAvatarPrompt, isNanoBananaConfigured } from '@/lib/nanobanana';
+import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
 /**
  * POST - Auto-generate 4 prospects (Easy/Realistic/Hard/Elite) for an offer.
@@ -122,33 +123,58 @@ export async function POST(
       generatedProspects.push(newProspect);
     }
 
-    // Default: generate human photos via NanoBanana when configured
-    if (isNanoBananaConfigured()) {
-      console.log('[prospects/generate] NanoBanana configured, generating human photos for', generatedProspects.length, 'prospects');
+    // Generate human photos: try NanoBanana first, then Gemini as fallback
+    const useNanoBanana = isNanoBananaConfigured();
+    const useGemini = isGeminiImageConfigured();
+
+    if (useNanoBanana || useGemini) {
+      const provider = useNanoBanana ? 'NanoBanana' : 'Gemini';
+      console.log(`[prospects/generate] ${provider} configured, generating human photos for`, generatedProspects.length, 'prospects');
+
       for (const prospect of generatedProspects) {
-        try {
-          const { url } = await generateImage({
-            prompt: buildProspectAvatarPrompt(prospect.name),
-            num: 1,
-            image_size: '1:1',
-          });
+        let imageUrl: string | null = null;
+        let usedProvider = '';
+
+        // Try NanoBanana first
+        if (useNanoBanana) {
+          try {
+            const { url } = await generateImage({
+              prompt: buildProspectAvatarPrompt(prospect.name, prospect.positionDescription),
+              num: 1,
+              image_size: '1:1',
+            });
+            imageUrl = url;
+            usedProvider = 'NanoBanana';
+          } catch (err: any) {
+            console.error('[prospects/generate] NanoBanana failed:', err?.message);
+          }
+        }
+
+        // Fallback to Gemini if NanoBanana failed or not configured
+        if (!imageUrl && useGemini) {
+          try {
+            const { url } = await generateImageWithGemini({
+              prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription),
+            });
+            imageUrl = url;
+            usedProvider = 'Gemini';
+          } catch (err: any) {
+            console.error('[prospects/generate] Gemini failed:', err?.message);
+          }
+        }
+
+        // Save if we got an image
+        if (imageUrl) {
           await db
             .update(prospectAvatars)
-            .set({ avatarUrl: url, updatedAt: new Date() })
+            .set({ avatarUrl: imageUrl, updatedAt: new Date() })
             .where(eq(prospectAvatars.id, prospect.id));
-          (prospect as { avatarUrl?: string }).avatarUrl = url;
-          console.log('[prospects/generate] Human photo saved for', prospect.name);
-        } catch (err: any) {
-          const msg = err?.message ?? '';
-          console.error('[prospects/generate] NanoBanana failed:', msg);
-          if (msg.includes('Invalid API key') || msg.includes('401')) {
-            console.error('[prospects/generate] Skipping remaining prospects — fix NANOBANANA_API_KEY at https://nanobananaapi.ai/');
-            break;
-          }
+          (prospect as { avatarUrl?: string }).avatarUrl = imageUrl;
+          console.log(`[prospects/generate] Human photo saved for ${prospect.name} via ${usedProvider}`);
         }
       }
     } else {
-      console.log('[prospects/generate] NANOBANANA_API_KEY not set, skipping human photos');
+      console.log('[prospects/generate] No image API configured (set NANOBANANA_API_KEY or GOOGLE_AI_STUDIO_KEY)');
     }
 
     return NextResponse.json({
