@@ -579,7 +579,14 @@ export default function PerformancePage() {
                           </div>
                         )}
                         {(!skill.strengths || skill.strengths.length === 0) && (!skill.weaknesses || skill.weaknesses.length === 0) && (!skill.actionPoints || skill.actionPoints.length === 0) && (
-                          <p className="text-sm text-muted-foreground italic">Not enough data yet for a detailed breakdown.</p>
+                          skill.averageScore > 0 ? (
+                            <div>
+                              <p className="text-sm text-muted-foreground">Averaging {skill.averageScore}/100 across your sessions.</p>
+                              <p className="text-sm text-muted-foreground mt-1">{'\u2192'} Review {skill.category} techniques in your lowest-scoring calls.</p>
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground italic">Not enough data yet for a detailed breakdown.</p>
+                          )
                         )}
                       </div>
                     )}

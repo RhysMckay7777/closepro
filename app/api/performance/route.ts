@@ -4,7 +4,50 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls, callAnalysis, roleplaySessions, roleplayAnalysis, offers } from '@/db/schema';
 import { eq, and, gte, lt, lte, desc, sql } from 'drizzle-orm';
-import { SALES_CATEGORIES, getCategoryLabel } from '@/lib/ai/scoring-framework';
+import { SCORING_CATEGORIES, CATEGORY_LABELS, type ScoringCategoryId } from '@/lib/training/scoring-categories';
+
+// ── Category ID mapping (old → new canonical) ────────────────
+const VALID_IDS = new Set<string>(SCORING_CATEGORIES);
+const DISPLAY_NAMES: Record<string, string> = { ...CATEGORY_LABELS };
+
+/** Map legacy / alternate category IDs to the 10 canonical IDs. */
+const OLD_TO_NEW: Record<string, ScoringCategoryId> = {
+  // Exact matches (already canonical)
+  authority: 'authority',
+  structure: 'structure',
+  communication: 'communication',
+  discovery: 'discovery',
+  gap: 'gap',
+  value: 'value',
+  trust: 'trust',
+  adaptation: 'adaptation',
+  objection_handling: 'objection_handling',
+  closing: 'closing',
+  // Old / AI-generated aliases
+  trust_safety_ethics: 'trust',
+  communication_storytelling: 'communication',
+  emotional_intelligence: 'adaptation',
+  tonality_delivery: 'communication',
+  rapport_building: 'trust',
+  needs_analysis: 'discovery',
+  pain_point_discovery: 'discovery',
+  objection_prevention: 'objection_handling',
+  close_techniques: 'closing',
+  value_proposition: 'value',
+  pricing_negotiation: 'value',
+  active_listening: 'discovery',
+  follow_up: 'closing',
+  presentation: 'communication',
+  qualifying: 'gap',
+};
+
+function resolveCategory(raw: string): ScoringCategoryId | null {
+  // Normalize: lowercase, replace any non-alphanumeric sequences with '_', trim underscores
+  const lower = raw.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+  if (VALID_IDS.has(lower)) return lower as ScoringCategoryId;
+  if (OLD_TO_NEW[lower]) return OLD_TO_NEW[lower];
+  return null;
+}
 
 export const maxDuration = 60;
 
@@ -85,37 +128,49 @@ function safeParse(raw: string | null | undefined): any {
   try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return null; }
 }
 
-/** Parse skill scores from a single analysis record. Returns { categoryId: score0to10 } map. */
+/** Parse skill scores from a single analysis record.
+ *  Returns { displayName: score0to100 } map filtered to only the 10 valid categories. */
 function parseSkillScoresFlat(rawSkillScores: any): Record<string, number> {
   const out: Record<string, number> = {};
   if (!rawSkillScores) return out;
 
   if (typeof rawSkillScores === 'object' && !Array.isArray(rawSkillScores)) {
-    // Object format: { authority: 7, ... } or { authority: { score: 7, ... }, ... }
     for (const [key, val] of Object.entries(rawSkillScores)) {
+      const resolved = resolveCategory(key);
+      if (!resolved) continue; // skip unknown / legacy IDs that don't map to the 10
+      const displayName = DISPLAY_NAMES[resolved] ?? resolved;
+      let score = 0;
       if (typeof val === 'number') {
-        const label = getCategoryLabel(key);
-        out[label] = val * 10; // 0-10 → display scale 0-100
+        score = val * 10; // 0-10 → display scale 0-100
       } else if (val && typeof val === 'object' && 'score' in (val as any)) {
-        const label = getCategoryLabel(key);
-        out[label] = ((val as any).score ?? 0) * 10;
+        score = ((val as any).score ?? 0) * 10;
+      } else {
+        continue;
+      }
+      // If two old IDs map to the same canonical category, average them
+      if (out[displayName] != null) {
+        out[displayName] = Math.round((out[displayName] + score) / 2);
+      } else {
+        out[displayName] = score;
       }
     }
   } else if (Array.isArray(rawSkillScores)) {
-    // Array format: [{ category: "Authority", subSkills: { authority: 7 } }, ...]
     for (const skill of rawSkillScores) {
       if (skill?.category) {
+        const resolved = resolveCategory(skill.category);
+        if (!resolved) continue;
+        const displayName = DISPLAY_NAMES[resolved] ?? resolved;
         const subSkills = skill.subSkills || {};
         const vals = Object.values(subSkills) as number[];
         const avg = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
-        out[skill.category] = avg;
+        out[displayName] = avg * 10;
       }
     }
   }
   return out;
 }
 
-/** Parse category feedback JSON into per-category text fields. */
+/** Parse category feedback JSON into per-category text fields (keyed by display name). */
 function parseCategoryFeedbackText(raw: any): Record<string, { whatWasDoneWell: string; whatWasMissing: string; howItAffectedOutcome: string }> {
   const out: Record<string, { whatWasDoneWell: string; whatWasMissing: string; howItAffectedOutcome: string }> = {};
   if (!raw || typeof raw !== 'object') return out;
@@ -123,8 +178,9 @@ function parseCategoryFeedbackText(raw: any): Record<string, { whatWasDoneWell: 
   for (const [key, val] of Object.entries(raw)) {
     if (val && typeof val === 'object') {
       const v = val as any;
-      const label = getCategoryLabel(key);
-      out[label] = {
+      const resolved = resolveCategory(key);
+      const displayName = resolved ? (DISPLAY_NAMES[resolved] ?? resolved) : key;
+      out[displayName] = {
         whatWasDoneWell: typeof v.whatWasDoneWell === 'string' ? v.whatWasDoneWell : '',
         whatWasMissing: typeof v.whatWasMissing === 'string' ? v.whatWasMissing : '',
         howItAffectedOutcome: typeof v.howItAffectedOutcome === 'string' ? v.howItAffectedOutcome : '',
@@ -220,19 +276,47 @@ function computeSkillBreakdown(
     categoryTrendData[cat] = weeklyScores;
   }
 
-  // Build sorted skill categories
+  // Build sorted skill categories with fallback text when categoryFeedback is null
   const skillCategories = Object.entries(categoryScores).map(([category, data]) => {
     const texts = categoryTexts[category] || { strengths: [], weaknesses: [], actionPoints: [] };
-    // Deduplicate and take most recent 3
     const dedup = (arr: string[]) => [...new Set(arr)].slice(-3);
+
+    const avgScore = Math.round(data.total / (data.count || 1));
+    const sessionCount = data.count;
+    let strengths = dedup(texts.strengths);
+    let weaknesses = dedup(texts.weaknesses);
+    let actionPoints = dedup(texts.actionPoints);
+
+    // Issue 2 fix: Generate fallback text when no categoryFeedback exists
+    if (strengths.length === 0 && weaknesses.length === 0 && actionPoints.length === 0 && sessionCount > 0) {
+      const trendArr = categoryTrendData[category] ?? [];
+      const nonZero = trendArr.filter(v => v > 0);
+      const trendDir = nonZero.length >= 2
+        ? (nonZero[nonZero.length - 1] > nonZero[0] ? 'improving' : 'declining')
+        : 'stable';
+
+      if (avgScore >= 70) {
+        strengths = [`Averaging ${avgScore}/100 across ${sessionCount} session(s) — above target`];
+      }
+      if (avgScore < 50) {
+        weaknesses = [`Averaging ${avgScore}/100 across ${sessionCount} session(s) — needs focused practice`];
+      } else if (avgScore < 70) {
+        weaknesses = [`Averaging ${avgScore}/100 — room for improvement`];
+      }
+      actionPoints = [`Review ${category} techniques in your lowest-scoring sessions`];
+      if (trendDir === 'declining') {
+        actionPoints.push(`Trend is declining — revisit recent ${category} feedback`);
+      }
+    }
+
     return {
       category,
-      averageScore: Math.round(data.total / (data.count || 1)),
+      averageScore: avgScore,
       trend: categoryTrends[category] ?? 0,
       trendData: categoryTrendData[category] ?? [],
-      strengths: dedup(texts.strengths),
-      weaknesses: dedup(texts.weaknesses),
-      actionPoints: dedup(texts.actionPoints),
+      strengths,
+      weaknesses,
+      actionPoints,
     };
   }).sort((a, b) => b.averageScore - a.averageScore);
 
@@ -277,6 +361,7 @@ export async function GET(request: NextRequest) {
         ? rangeParam
         : undefined;
     const { start: startDate, end: endDate, label: periodLabel } = getRangeDates(rangeParam);
+    const sourceParam = searchParams.get('source'); // 'calls' | 'roleplays' | null (all)
 
     const userId = session.user.id;
 
@@ -363,8 +448,10 @@ export async function GET(request: NextRequest) {
       analysisId: a.id,
     }));
 
-    // ── Combine and sort ──
-    const allAnalyses = [...callAnalyses, ...roleplayAnalyses]
+    // ── Combine and sort (respect source filter) ──
+    const filteredCalls = sourceParam === 'roleplays' ? [] : callAnalyses;
+    const filteredRoleplays = sourceParam === 'calls' ? [] : roleplayAnalyses;
+    const allAnalyses = [...filteredCalls, ...filteredRoleplays]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     // ── Calculate overall averages ──
