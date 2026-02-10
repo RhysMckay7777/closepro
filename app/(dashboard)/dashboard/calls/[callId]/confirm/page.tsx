@@ -27,6 +27,7 @@ export default function ConfirmCallDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
+  const [isEditMode, setIsEditMode] = useState(false);
 
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -58,24 +59,28 @@ export default function ConfirmCallDetailsPage() {
       }
       const data = await response.json();
 
-      // If call is not pending confirmation, redirect to detail page
-      if (data.status !== 'pending_confirmation') {
-        router.replace(`/dashboard/calls/${callId}`);
-        return;
-      }
+      // Allow loading for any status — edit mode for already-confirmed calls
+      const isAlreadyConfirmed = data.status !== 'pending_confirmation';
+      setIsEditMode(isAlreadyConfirmed);
 
       setCall(data.call);
 
-      // Pre-fill form from AI-detected metadata
+      // Pre-fill form from existing call data
       if (data.call) {
+        const c = data.call;
         setForm((prev) => ({
           ...prev,
-          prospectName: data.call.prospectName || '',
-          date: data.call.callDate
-            ? new Date(data.call.callDate).toISOString().split('T')[0]
+          prospectName: c.prospectName || '',
+          date: c.callDate
+            ? new Date(c.callDate).toISOString().split('T')[0]
             : new Date().toISOString().split('T')[0],
-          offerId: data.call.offerId || '',
-          result: data.call.result || '',
+          offerId: c.offerId || '',
+          result: c.result || '',
+          callType: c.callType || 'closing_call',
+          reasonForOutcome: c.reasonForOutcome || '',
+          cashCollected: c.cashCollected ? (c.cashCollected / 100).toString() : '',
+          revenueGenerated: c.revenueGenerated ? (c.revenueGenerated / 100).toString() : '',
+          commissionRatePct: c.commissionRatePct?.toString() || '',
         }));
       }
     } catch (err) {
@@ -176,7 +181,7 @@ export default function ConfirmCallDetailsPage() {
         return;
       }
 
-      toastSuccess('Call logged and analysis complete');
+      toastSuccess(isEditMode ? 'Details updated successfully' : 'Call logged and analysis complete');
       router.push(`/dashboard/calls/${callId}`);
     } catch (err) {
       console.error('Error confirming call:', err);
@@ -214,17 +219,19 @@ export default function ConfirmCallDetailsPage() {
     <div className="max-w-3xl mx-auto space-y-6 sm:space-y-8">
       {/* Header */}
       <div>
-        <Link href="/dashboard/calls">
+        <Link href={isEditMode ? `/dashboard/calls/${callId}` : '/dashboard/calls'}>
           <Button variant="ghost" size="sm" className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Calls
+            {isEditMode ? 'Back to Call' : 'Back to Calls'}
           </Button>
         </Link>
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-semibold tracking-tight">
-          Confirm Call Details
+          {isEditMode ? 'Edit Call Details' : 'Confirm Call Details'}
         </h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-2">
-          Review and confirm the details before AI analysis runs.
+          {isEditMode
+            ? 'Update the call details below.'
+            : 'Review and confirm the details before AI analysis runs.'}
         </p>
       </div>
 
@@ -493,10 +500,10 @@ export default function ConfirmCallDetailsPage() {
                 {submitting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Analysing...
+                    {isEditMode ? 'Updating...' : 'Analysing...'}
                   </>
                 ) : (
-                  'Log Call & Analyse'
+                  isEditMode ? 'Update Details' : 'Log Call & Analyse'
                 )}
               </Button>
             </div>

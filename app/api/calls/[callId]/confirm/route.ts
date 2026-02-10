@@ -41,9 +41,12 @@ export async function POST(
 
     const call = rows[0];
 
-    if (call.status !== 'pending_confirmation') {
+    const isFirstConfirmation = call.status === 'pending_confirmation';
+    const isEditUpdate = ['completed', 'failed', 'manual'].includes(call.status ?? '');
+
+    if (!isFirstConfirmation && !isEditUpdate) {
       return NextResponse.json(
-        { error: 'Call is not awaiting confirmation' },
+        { error: 'Call is not in a confirmable state' },
         { status: 400 }
       );
     }
@@ -78,15 +81,18 @@ export async function POST(
 
     // Build update payload
     const updatePayload: Record<string, unknown> = {
-      status: 'analyzing',
       offerId: offerId.trim(),
       prospectName: prospectName.trim().slice(0, 500),
       result,
       qualified: result !== 'unqualified',
       callType: callType || 'closing_call',
-      // Prevent AI from overwriting user-confirmed figures
-      analysisIntent: 'analysis_only',
     };
+
+    // Only set status to 'analyzing' for first confirmation
+    if (isFirstConfirmation) {
+      updatePayload.status = 'analyzing';
+      updatePayload.analysisIntent = 'analysis_only';
+    }
 
     if (callDateRaw) {
       const d = new Date(callDateRaw);
@@ -111,8 +117,8 @@ export async function POST(
       .set(updatePayload as any)
       .where(eq(salesCalls.id, callId));
 
-    // Create payment plan instalments if applicable
-    if (result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
+    // Create payment plan instalments if applicable (first confirmation only — avoid duplicates)
+    if (isFirstConfirmation && result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
       const numInstalments = Number(numberOfInstalments);
       const monthlyAmountCents = Math.round(Number(monthlyAmount) * 100);
 
@@ -153,7 +159,16 @@ export async function POST(
       }
     }
 
-    // Build transcript data for analysis
+    // For edit updates, just return — no re-scoring needed
+    if (isEditUpdate) {
+      return NextResponse.json({
+        callId,
+        status: call.status,
+        message: 'Call details updated.',
+      });
+    }
+
+    // Build transcript data for analysis (first confirmation only)
     const transcript = call.transcript;
     if (!transcript) {
       return NextResponse.json(
