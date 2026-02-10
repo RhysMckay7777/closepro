@@ -68,6 +68,14 @@ export default function CallDetailPage() {
           setEditCommissionRatePct(c?.commissionRatePct != null ? String(c.commissionRatePct) : '');
           setEditReason(c?.reasonForOutcome ?? '');
           setEditingOutcome(true);
+          // Fetch offers for the dropdown
+          try {
+            const offersRes = await fetch('/api/offers');
+            if (offersRes.ok) {
+              const offersData = await offersRes.json();
+              setOffers(offersData.offers || []);
+            }
+          } catch { /* ignore */ }
         } else {
           setEditingOutcome(false);
         }
@@ -113,7 +121,7 @@ export default function CallDetailPage() {
     }
   };
 
-  const openOutcomeEdit = () => {
+  const openOutcomeEdit = async () => {
     const d = call?.callDate ? new Date(call.callDate) : new Date();
     setEditCallDate(isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
     setEditOfferId(call?.offerId ?? '');
@@ -126,6 +134,18 @@ export default function CallDetailPage() {
     setEditCommissionRatePct(call?.commissionRatePct != null ? String(call.commissionRatePct) : '');
     setEditReason(call?.reasonForOutcome ?? '');
     setEditingOutcome(true);
+    // Fetch offers for the dropdown
+    if (offers.length === 0) {
+      try {
+        const res = await fetch('/api/offers');
+        if (res.ok) {
+          const data = await res.json();
+          setOffers(data.offers || []);
+        }
+      } catch {
+        // ignore
+      }
+    }
   };
 
   const handleSaveOutcome = async (e: React.FormEvent) => {
@@ -340,9 +360,10 @@ export default function CallDetailPage() {
                       easy: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
                       realistic: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
                       hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+                      expert: 'bg-red-500/20 text-red-400 border-red-500/30',
                       elite: 'bg-red-500/20 text-red-400 border-red-500/30',
                     }[analysis.prospectDifficultyTier] || 'bg-gray-500/20 text-gray-400'}>
-                      {analysis.prospectDifficultyTier.charAt(0).toUpperCase() + analysis.prospectDifficultyTier.slice(1)}
+                      {(analysis.prospectDifficultyTier === 'elite' ? 'Expert' : analysis.prospectDifficultyTier.charAt(0).toUpperCase() + analysis.prospectDifficultyTier.slice(1))}
                     </Badge>
                   )}
                 </div>
@@ -586,6 +607,60 @@ export default function CallDetailPage() {
                 <form onSubmit={handleSaveOutcome} className="space-y-4">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
+                      <Label htmlFor="outcome-call-date">Call Date</Label>
+                      <Input
+                        id="outcome-call-date"
+                        type="date"
+                        value={editCallDate}
+                        onChange={(e) => setEditCallDate(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="outcome-call-type">Call Type</Label>
+                      <Select
+                        value={editCallType || undefined}
+                        onValueChange={(value) => setEditCallType(value)}
+                      >
+                        <SelectTrigger id="outcome-call-type">
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="closing_call">Closing Call</SelectItem>
+                          <SelectItem value="follow_up">Follow-up</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="outcome-offer">Offer</Label>
+                      <Select
+                        value={editOfferId || undefined}
+                        onValueChange={(value) => setEditOfferId(value)}
+                      >
+                        <SelectTrigger id="outcome-offer">
+                          <SelectValue placeholder="Select offer" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {offers.map((o) => (
+                            <SelectItem key={o.id} value={o.id}>
+                              {o.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="outcome-prospect">Prospect Name</Label>
+                      <Input
+                        id="outcome-prospect"
+                        type="text"
+                        placeholder="Prospect's name"
+                        value={editProspectName}
+                        onChange={(e) => setEditProspectName(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
                       <Label htmlFor="outcome-result">Result</Label>
                       <Select
                         value={editResult || undefined}
@@ -669,17 +744,22 @@ export default function CallDetailPage() {
                 </form>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                  {call.callDate && (
-                    <div>
-                      <span className="text-muted-foreground">Call date:</span>{' '}
-                      {new Date(call.callDate).toLocaleDateString()}
-                    </div>
-                  )}
-                  {call.prospectName && (
-                    <div>
-                      <span className="text-muted-foreground">Prospect:</span> {call.prospectName}
-                    </div>
-                  )}
+                  <div>
+                    <span className="text-muted-foreground">Call date:</span>{' '}
+                    {call.callDate ? new Date(call.callDate).toLocaleDateString() : '—'}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Call type:</span>{' '}
+                    {call.callType === 'follow_up' ? 'Follow-up' : call.callType ? call.callType.replace('_', ' ') : '—'}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Offer:</span>{' '}
+                    {call.offerName || '—'}
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Prospect:</span>{' '}
+                    {call.prospectName || '—'}
+                  </div>
                   <div>
                     <span className="text-muted-foreground">Result:</span>{' '}
                     {call.result ? call.result.replace('_', ' ') : '—'}

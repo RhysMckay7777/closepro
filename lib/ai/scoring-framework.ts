@@ -38,7 +38,7 @@ export const DIFFICULTY_TIERS = [
   'easy',           // 42–50
   'realistic',      // 36–41
   'hard',           // 30–35
-  'elite',          // 0–29
+  'expert',         // 0–29
 ] as const;
 
 export type DifficultyTier = (typeof DIFFICULTY_TIERS)[number];
@@ -48,7 +48,7 @@ export const DIFFICULTY_TIER_LABELS: Record<DifficultyTier, string> = {
   easy: 'Easy',
   realistic: 'Realistic',
   hard: 'Hard',
-  elite: 'Elite',
+  expert: 'Expert',
 };
 
 /** Get category label by id */

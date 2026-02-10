@@ -300,6 +300,7 @@ function ProspectSelectionContent() {
         return 'secondary';
       case 'hard':
         return 'outline';
+      case 'expert':
       case 'elite':
         return 'destructive';
       default:
@@ -312,7 +313,8 @@ function ProspectSelectionContent() {
       easy: 'Easy',
       realistic: 'Realistic',
       hard: 'Hard',
-      elite: 'Elite',
+      expert: 'Expert',
+      elite: 'Expert',
     };
     return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
   };
@@ -322,6 +324,7 @@ function ProspectSelectionContent() {
       easy: 'bg-emerald-500/20',
       realistic: 'bg-sky-500/20',
       hard: 'bg-orange-500/20',
+      expert: 'bg-red-500/20',
       elite: 'bg-red-500/20',
     };
     return classes[tier] ?? 'bg-muted';
@@ -332,6 +335,7 @@ function ProspectSelectionContent() {
       easy: 'bg-emerald-500',
       realistic: 'bg-sky-500',
       hard: 'bg-orange-500',
+      expert: 'bg-red-500',
       elite: 'bg-red-500',
     };
     return classes[tier] ?? 'bg-muted-foreground';
@@ -493,7 +497,7 @@ function ProspectSelectionContent() {
       <div className="mb-6">
         <p className="text-sm text-muted-foreground mb-2">Quick start by difficulty:</p>
         <div className="flex flex-wrap gap-2">
-          {['easy', 'realistic', 'hard', 'elite'].map((difficulty) => (
+          {['easy', 'realistic', 'hard', 'expert'].map((difficulty) => (
             <Button
               key={difficulty}
               variant="outline"

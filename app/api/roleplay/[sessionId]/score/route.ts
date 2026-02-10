@@ -6,7 +6,7 @@ import { roleplaySessions, roleplayMessages, roleplayAnalysis } from '@/db/schem
 import { eq, and } from 'drizzle-orm';
 import { analyzeCall } from '@/lib/ai/analysis';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 /**
  * POST - Score a completed roleplay session
@@ -17,6 +17,9 @@ export async function POST(
 ) {
   try {
     const { sessionId } = await params;
+    console.log('[SCORING] Starting for session:', sessionId);
+    console.log('[SCORING] GROQ_API_KEY present:', !!process.env.GROQ_API_KEY);
+
     const session = await auth.api.getSession({
       headers: await headers(),
     });
@@ -139,7 +142,7 @@ export async function POST(
         isIncomplete,
         stagesCompleted: JSON.stringify(stagesCompleted),
         // Enhanced feedback (from analysis result if available)
-        categoryFeedback: analysisResult.categoryFeedback ? JSON.stringify(analysisResult.categoryFeedback) : null,
+        categoryFeedback: analysisResult.categoryFeedbackDetailed ? JSON.stringify(analysisResult.categoryFeedbackDetailed) : null,
         priorityFixes: analysisResult.priorityFixes ? JSON.stringify(analysisResult.priorityFixes) : null,
         objectionAnalysis: analysisResult.objectionAnalysis ? JSON.stringify(analysisResult.objectionAnalysis) : null,
       })
@@ -166,9 +169,32 @@ export async function POST(
         : 'Roleplay scored successfully',
     });
   } catch (error: any) {
-    console.error('Error scoring roleplay:', error);
+    console.error('[SCORING] Error scoring roleplay:', error);
+    const msg = error?.message ?? '';
+
+    if (msg.includes('timeout') || error?.code === 'ETIMEDOUT' || error?.code === 'UND_ERR_CONNECT_TIMEOUT') {
+      return NextResponse.json(
+        { error: 'Scoring timed out. The session may be too long. Please try again.' },
+        { status: 504 }
+      );
+    }
+
+    if (error?.status === 429) {
+      return NextResponse.json(
+        { error: 'Rate limited. Please wait 30 seconds and try again.' },
+        { status: 429 }
+      );
+    }
+
+    if (error?.status === 401) {
+      return NextResponse.json(
+        { error: 'API authentication failed. Check GROQ_API_KEY in environment variables.' },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.json(
-      { error: error.message || 'Failed to score roleplay' },
+      { error: msg || 'Failed to score roleplay' },
       { status: 500 }
     );
   }

@@ -73,7 +73,7 @@ export function generateRandomProspectName(usedNames?: Set<string>, gender: Pros
 }
 
 export type AuthorityLevel = 'advisee' | 'peer' | 'advisor';
-export type DifficultyTier = 'easy' | 'realistic' | 'hard' | 'elite';
+export type DifficultyTier = 'easy' | 'realistic' | 'hard' | 'expert';
 
 export interface ProspectDifficultyProfile {
   // Layer A: Persuasion Difficulty (40 points)
@@ -157,7 +157,7 @@ export function calculateDifficultyIndex(
   } else if (index >= 30) {
     tier = 'hard';
   } else {
-    tier = 'elite';
+    tier = 'expert';
   }
 
   return { index, tier };
@@ -167,7 +167,7 @@ export function calculateDifficultyIndex(
  * Map user-selected difficulty to prospect profile ranges (50-point scale)
  */
 export function mapDifficultySelectionToProfile(
-  selectedDifficulty: 'easy' | 'realistic' | 'hard' | 'elite' | 'intermediate' | 'expert'
+  selectedDifficulty: 'easy' | 'realistic' | 'hard' | 'expert' | 'intermediate' | 'elite'
 ): {
   targetIndexRange: [number, number];
   targetTier: DifficultyTier;
@@ -180,9 +180,9 @@ export function mapDifficultySelectionToProfile(
       return { targetIndexRange: [36, 41], targetTier: 'realistic' };
     case 'hard':
       return { targetIndexRange: [30, 35], targetTier: 'hard' };
-    case 'elite':
     case 'expert':
-      return { targetIndexRange: [25, 29], targetTier: 'elite' };
+    case 'elite':
+      return { targetIndexRange: [25, 29], targetTier: 'expert' };
     default:
       return { targetIndexRange: [36, 41], targetTier: 'realistic' };
   }
@@ -295,7 +295,7 @@ const CHARACTER_ARCHETYPES = {
     { role: 'experienced professional', context: 'set in their ways, resistant to change unless benefits are clear' },
     { role: 'time-poor decision maker', context: 'wants results but struggles to find time to commit or evaluate' },
   ],
-  elite: [
+  expert: [
     { role: 'expert consultant', context: 'deeply knowledgeable, questions methodology and wants data-driven proof' },
     { role: 'seasoned executive', context: 'has seen many pitches, high standards and requires exceptional value' },
     { role: 'sophisticated buyer', context: 'evaluates multiple alternatives, needs compelling differentiation' },
@@ -310,7 +310,7 @@ const CHARACTER_ARCHETYPES = {
  * Creates realistic, person-focused descriptions like "Busy dad George trying to figure out his business".
  */
 export function getDefaultBioForDifficulty(
-  tier: DifficultyTier | 'realistic' | 'hard' | 'elite' | 'easy' | 'near_impossible',
+  tier: DifficultyTier | 'realistic' | 'hard' | 'expert' | 'elite' | 'easy' | 'near_impossible',
   prospectName?: string,
   offerContext?: {
     offerCategory?: string;
@@ -319,8 +319,8 @@ export function getDefaultBioForDifficulty(
     offerName?: string;
   }
 ): string {
-  // Map near_impossible → elite for backward compat
-  const key = (tier === 'near_impossible' ? 'elite' : tier) as DifficultyTier;
+  // Map near_impossible/elite → expert for backward compat
+  const key = (tier === 'near_impossible' || tier === 'elite' ? 'expert' : tier) as DifficultyTier;
   const archetypes = CHARACTER_ARCHETYPES[key] ?? CHARACTER_ARCHETYPES.realistic;
   const archetype = archetypes[randomInt(0, archetypes.length - 1)];
 
@@ -344,7 +344,7 @@ export function getDefaultBioForDifficulty(
  * Ensures total difficulty score falls within selected range
  */
 export function generateRandomProspectInBand(
-  selectedDifficulty: 'easy' | 'realistic' | 'hard' | 'elite' | 'intermediate' | 'expert'
+  selectedDifficulty: 'easy' | 'realistic' | 'hard' | 'expert' | 'intermediate' | 'elite'
 ): {
   positionProblemAlignment: number;
   painAmbitionIntensity: number;
@@ -490,7 +490,7 @@ export function generateBehaviourProfile(
         responseSpeed: 'slow',
       };
 
-    case 'elite':
+    case 'expert':
       return {
         objectionFrequency: 'medium',
         objectionIntensity: 'high',
@@ -500,7 +500,7 @@ export function generateBehaviourProfile(
         responseSpeed: 'normal',
       };
 
-    // near_impossible removed — elite is now the hardest tier
+    // near_impossible removed — expert is now the hardest tier
 
     default:
       return {

@@ -69,6 +69,7 @@ export default function RoleplayPage() {
         return 'text-blue-500';
       case 'hard':
         return 'text-orange-500';
+      case 'expert':
       case 'elite':
         return 'text-red-500';
       default:
@@ -132,6 +133,7 @@ export default function RoleplayPage() {
         return 'secondary';
       case 'hard':
         return 'outline';
+      case 'expert':
       case 'elite':
         return 'destructive';
       default:

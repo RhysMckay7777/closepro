@@ -54,26 +54,26 @@ SCORING TOTALS:
 - Easy: 42-50 (multiple favorable dimensions, low resistance)
 - Realistic: 36-41 (balanced, some friction points)
 - Hard: 30-35 (significant challenges in multiple areas)
-- Elite: 0-29 (challenging in most dimensions)
+- Expert: 0-29 (challenging in most dimensions)
 
 KEY PRINCIPLES:
 1. Difficulty score is FIXED at session start — it does not change mid-call
 2. BEHAVIOR can change based on closer skill (trust/value building)
 3. Execution resistance is reported separately — it increases difficulty but does not excuse poor sales skill
 4. Even easy prospects say "I need to think about it" if value isn't built
-5. Elite prospects CAN close with exceptional execution
+5. Expert prospects CAN close with exceptional execution
 `;
 
 export const DIFFICULTY_BANDS = {
     EASY: { min: 42, max: 50, label: 'Easy' },
     REALISTIC: { min: 36, max: 41, label: 'Realistic' },
     HARD: { min: 30, max: 35, label: 'Hard' },
-    ELITE: { min: 0, max: 29, label: 'Elite' },
+    EXPERT: { min: 0, max: 29, label: 'Expert' },
 } as const;
 
 export function getDifficultyBand(score: number) {
     if (score >= 42) return DIFFICULTY_BANDS.EASY;
     if (score >= 36) return DIFFICULTY_BANDS.REALISTIC;
     if (score >= 30) return DIFFICULTY_BANDS.HARD;
-    return DIFFICULTY_BANDS.ELITE;
+    return DIFFICULTY_BANDS.EXPERT;
 }

@@ -83,6 +83,7 @@ export function initializeBehaviourState(
       };
       break;
 
+    case 'expert':
     case 'elite':
       baseState = {
         objectionFrequency: 'medium',
@@ -98,7 +99,7 @@ export function initializeBehaviourState(
       };
       break;
 
-    // near_impossible removed — elite is now the hardest tier
+    // near_impossible removed — expert is now the hardest tier
 
     default:
       baseState = {
@@ -417,6 +418,7 @@ export function getOpeningLine(context: OpeningLineContext): string {
     case 'hard':
       templateKey = 'hard';
       break;
+    case 'expert':
     case 'elite':
       templateKey = 'elite';
       break;
@@ -471,6 +473,7 @@ You are a skeptical prospect who has been burned before. You:
 - Need significant trust and value before considering
 - May try to control the conversation
 `;
+    case 'expert':
     case 'elite':
       return `
 You are a high-authority prospect who sees themselves as superior. You:
@@ -482,7 +485,7 @@ You are a high-authority prospect who sees themselves as superior. You:
 - Have little patience for sales tactics
 - Need to see unique value for someone at your level
 `;
-    // near_impossible removed — elite is now the hardest tier
+    // near_impossible removed — expert is now the hardest tier
     default:
       return getBehaviourInstructions('realistic');
   }

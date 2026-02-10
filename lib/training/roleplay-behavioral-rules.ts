@@ -33,7 +33,7 @@ BEHAVIORAL RULES FOR AI PROSPECT DURING ROLEPLAY:
    - Multiple strong objections
    - Won't tolerate generic pitches
 
-   Elite/Near-Impossible prospects (0-29):
+   Expert prospects (0-29):
    - Immediate frame battles
    - Interrupt frequently
    - Question closer's credibility early

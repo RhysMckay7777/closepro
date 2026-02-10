@@ -42,9 +42,17 @@ export async function POST(request: NextRequest) {
       monthlyAmount,
     } = body;
 
-    if (!offerId || !result || !reasonForOutcome) {
+    if (!offerId || !result) {
       return NextResponse.json(
-        { error: 'Missing required fields: offerId, result, reasonForOutcome' },
+        { error: 'Missing required fields: offerId, result' },
+        { status: 400 }
+      );
+    }
+
+    // reasonForOutcome only required for results that have a reason textarea
+    if (['lost', 'follow_up', 'unqualified'].includes(result) && !reasonForOutcome) {
+      return NextResponse.json(
+        { error: 'Reason is required for this result type' },
         { status: 400 }
       );
     }

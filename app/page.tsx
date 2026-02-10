@@ -296,7 +296,7 @@ export default function Home() {
             <div className="mx-auto max-w-4xl space-y-3">
               {[
                 { id: '001', q: 'How does ClosePro analyze my calls?', a: 'We transcribe your sales calls (upload audio or paste a transcript), then our AI analyzes them for clarity, objection handling, next steps, and coaching tips. You get actionable feedback and talking points so you can improve every conversation.' },
-                { id: '002', q: 'What is AI roleplay and how does it work?', a: 'You pick an offer and we generate AI prospects (easy, realistic, hard, elite). You practice your pitch and objection handling in real time. ClosePro scores your performance and lets you replay and improve before your next real call.' },
+                { id: '002', q: 'What is AI roleplay and how does it work?', a: 'You pick an offer and we generate AI prospects (easy, realistic, hard, expert). You practice your pitch and objection handling in real time. ClosePro scores your performance and lets you replay and improve before your next real call.' },
                 { id: '003', q: 'Is my call data secure and private?', a: 'Yes. Call audio and transcripts are processed securely and stored in your workspace. We don’t train general-purpose models on your data. You can delete recordings and transcripts at any time.' },
               ].map((faq) => (
                 <div key={faq.id} className="rounded-2xl border border-dashed border-black/5 p-2 transition-all hover:border-neutral-300 dark:border-white/10 dark:bg-white/3">

@@ -79,12 +79,60 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
+// Gender-grouped voice arrays for gender-aware auto-selection
+const FEMALE_VOICES = [
+  CURATED_VOICES.professionalFemale,  // Rachel
+  CURATED_VOICES.warmFemale,          // Bella
+];
+
+const MALE_VOICES = [
+  CURATED_VOICES.professionalMale,    // Adam
+  CURATED_VOICES.authoritativeMale,   // Antoni
+  CURATED_VOICES.friendlyMale,        // Josh
+  CURATED_VOICES.warmCasual,          // Arnold
+];
+
+// Common name lists for gender inference when no explicit gender is provided
+const COMMON_FEMALE_NAMES = new Set([
+  'maria', 'sarah', 'emma', 'rachel', 'sophie', 'jessica', 'laura', 'hannah',
+  'charlotte', 'olivia', 'nicole', 'katie', 'amy', 'lisa', 'jennifer', 'emily',
+  'amanda', 'megan', 'ashley', 'brooke', 'hayley', 'lauren', 'bella',
+]);
+
+const COMMON_MALE_NAMES = new Set([
+  'james', 'david', 'michael', 'robert', 'daniel', 'thomas', 'william',
+  'richard', 'joseph', 'marcus', 'ryan', 'nathan', 'ben', 'luke', 'adam',
+  'jack', 'chris', 'connor', 'john', 'brian', 'kevin', 'jason', 'josh',
+  'arnold', 'anthony', 'andrew', 'steven', 'matthew', 'mark', 'george',
+]);
+
+/**
+ * Infer gender from a prospect name's first name.
+ * Returns 'male', 'female', or 'unknown'.
+ */
+function inferGenderFromName(name: string): 'male' | 'female' | 'unknown' {
+  const firstName = name.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+  if (COMMON_FEMALE_NAMES.has(firstName)) return 'female';
+  if (COMMON_MALE_NAMES.has(firstName)) return 'male';
+  return 'unknown';
+}
+
 /**
  * Auto-selects a voice ID based on prospect name
- * Uses consistent hashing so the same prospect always gets the same voice
+ * Uses consistent hashing so the same prospect always gets the same voice.
+ * Filters by inferred gender so male names get male voices and vice versa.
  */
 function autoSelectVoice(prospectName: string): string {
-  const voiceArray = Object.values(CURATED_VOICES);
+  const gender = inferGenderFromName(prospectName);
+  let voiceArray: string[];
+  if (gender === 'female') {
+    voiceArray = FEMALE_VOICES;
+  } else if (gender === 'male') {
+    voiceArray = MALE_VOICES;
+  } else {
+    // Unknown gender: default to male voices (most of the curated set)
+    voiceArray = MALE_VOICES;
+  }
   const hash = hashString(prospectName.trim().toLowerCase());
   const index = hash % voiceArray.length;
   return voiceArray[index];
@@ -250,7 +298,7 @@ export function getProspectVoiceConfig(prospectAvatar: {
   }
 
   // Adjust based on difficulty tier
-  if (prospectAvatar.difficultyTier === 'hard' || prospectAvatar.difficultyTier === 'elite') {
+  if (prospectAvatar.difficultyTier === 'hard' || prospectAvatar.difficultyTier === 'expert' || prospectAvatar.difficultyTier === 'elite') {
     config.speed = Math.min((config.speed || 1.0) + 0.05, 1.25); // Slightly faster
     config.stability = Math.min((config.stability || 0.5) + 0.1, 0.85); // More controlled
   } else if (prospectAvatar.difficultyTier === 'easy') {

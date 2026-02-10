@@ -305,7 +305,7 @@ export const callAnalysis = pgTable('call_analysis', {
 
   // Prospect difficulty (from AI analysis, for call list and reporting)
   prospectDifficulty: integer('prospect_difficulty'), // 0-50
-  prospectDifficultyTier: text('prospect_difficulty_tier'), // easy | realistic | hard | elite
+  prospectDifficultyTier: text('prospect_difficulty_tier'), // easy | realistic | hard | expert
 
   // AI coaching recommendations
   coachingRecommendations: text('coaching_recommendations'), // JSON array of recommendations
@@ -410,7 +410,7 @@ export const prospectAvatars = pgTable('prospect_avatars', {
   executionResistance: integer('execution_resistance').notNull().default(5), // 0-10 (ability to proceed: money, time, effort, authority)
   // Calculated totals
   difficultyIndex: integer('difficulty_index').notNull(), // 0-50 (calculated: Layer A + Layer B)
-  difficultyTier: text('difficulty_tier').notNull(), // 'easy', 'realistic', 'hard', 'elite'
+  difficultyTier: text('difficulty_tier').notNull(), // 'easy', 'realistic', 'hard', 'expert'
 
   // Prospect Profile Details
   avatarUrl: text('avatar_url'), // Optional: NanoBanana or other human-style portrait URL
@@ -500,7 +500,7 @@ export const roleplayAnalysis = pgTable('roleplay_analysis', {
 
   // Prospect difficulty assessment (replicates call_analysis fields)
   prospectDifficulty: integer('prospect_difficulty'), // 0-50 total difficulty index
-  prospectDifficultyTier: text('prospect_difficulty_tier'), // 'easy' | 'realistic' | 'hard' | 'elite'
+  prospectDifficultyTier: text('prospect_difficulty_tier'), // 'easy' | 'realistic' | 'hard' | 'expert'
 
   // Coaching and timestamped feedback
   coachingRecommendations: text('coaching_recommendations'),

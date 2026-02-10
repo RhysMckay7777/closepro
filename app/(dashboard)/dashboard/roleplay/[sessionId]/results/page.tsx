@@ -265,24 +265,37 @@ export default function RoleplayResultsPage() {
 
 
   const recommendations = safeParse(analysis.coachingRecommendations, []);
-  // skillScores can be array (e.g. [{ category, subSkills }]) or object; normalize to list of { categoryName, skills: [name, score][] }
-  const rawSkillScores = safeParse(analysis.skillScores, []);
-  const skillScoresList: { categoryName: string; skills: [string, number][] }[] = Array.isArray(rawSkillScores)
-    ? rawSkillScores.map((item: { category?: string; subSkills?: Record<string, number> }) => ({
-      categoryName: item.category ?? 'Category',
-      skills: Object.entries(item.subSkills ?? {}),
-    }))
-    : typeof rawSkillScores === 'object' && rawSkillScores !== null
-      ? Object.entries(rawSkillScores).map(([categoryName, val]) => {
-        const skills =
-          typeof val === 'object' && val !== null && !Array.isArray(val)
-            ? (Object.entries(val as Record<string, number>).filter(
-              (entry) => typeof entry[1] === 'number'
-            ) as [string, number][])
-            : [];
-        return { categoryName, skills };
-      })
-      : [];
+
+  // Extract flat category scores from skillScores (can be array or object)
+  const rawSkillScores = safeParse(analysis.skillScores, {});
+  const flatCategoryScores: Record<string, number> = {};
+  if (Array.isArray(rawSkillScores)) {
+    // Array format: [{ category: "Authority", subSkills: { authority: 7 } }]
+    for (const item of rawSkillScores) {
+      if (item.subSkills && typeof item.subSkills === 'object') {
+        for (const [key, val] of Object.entries(item.subSkills)) {
+          if (typeof val === 'number') flatCategoryScores[key] = val;
+        }
+      }
+    }
+  } else if (typeof rawSkillScores === 'object' && rawSkillScores !== null) {
+    // Object format: { authority: 7, discovery: 5 } or { authority: { score: 7 } }
+    for (const [key, val] of Object.entries(rawSkillScores)) {
+      if (typeof val === 'number') {
+        flatCategoryScores[key] = val;
+      } else if (typeof val === 'object' && val !== null && typeof (val as any).score === 'number') {
+        flatCategoryScores[key] = (val as any).score;
+      }
+    }
+  }
+
+  // If categoryFeedback is empty but we have scores, build minimal entries so the accordion still renders
+  const effectiveCategoryFeedback: CategoryFeedback =
+    Object.keys(categoryFeedback).length > 0
+      ? categoryFeedback
+      : Object.fromEntries(
+          Object.keys(flatCategoryScores).map(key => [key, { good: '', missing: '', next: '' }])
+        );
 
 
 
@@ -492,9 +505,9 @@ export default function RoleplayResultsPage() {
         </Card>
       )}
 
-      {/* Category Feedback - Section 6.6/6.7 */}
-      {Object.keys(categoryFeedback).length > 0 && (
-        <CategoryFeedbackSection categoryFeedback={categoryFeedback} />
+      {/* Category Feedback Accordion - Section 6.6/6.7 */}
+      {Object.keys(effectiveCategoryFeedback).length > 0 && (
+        <CategoryFeedbackSection categoryFeedback={effectiveCategoryFeedback} categoryScores={flatCategoryScores} />
       )}
 
       {/* Objection Analysis - Section 6.9 */}
@@ -504,27 +517,6 @@ export default function RoleplayResultsPage() {
 
 
 
-      {/* Skill Scores Breakdown */}
-      {skillScoresList.length > 0 && (
-        <Card className="p-4 sm:p-6">
-          <h2 className="text-xl font-semibold mb-4">10-Category Skill Breakdown</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {skillScoresList.slice(0, 10).map(({ categoryName, skills }, idx) => (
-              <div key={idx} className="border rounded-lg p-3">
-                <h3 className="font-semibold mb-2 capitalize">{categoryName.replace(/_/g, ' ')}</h3>
-                <div className="space-y-1">
-                  {skills.slice(0, 5).map(([skill, score]) => (
-                    <div key={skill} className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">{skill}</span>
-                      <span className="font-medium">{typeof score === 'number' ? `${score}/100` : '—'}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
 
       {/* Coaching Recommendations */}
       {recommendations.length > 0 && (

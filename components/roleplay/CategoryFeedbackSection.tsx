@@ -1,82 +1,124 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, XCircle, Lightbulb } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { CATEGORY_LABELS, type CategoryFeedback, type CategoryFeedbackItem } from '@/types/roleplay';
 
 interface CategoryFeedbackSectionProps {
     categoryFeedback: CategoryFeedback;
+    /** Optional flat category scores (Record<categoryId, number 0-10>) from skillScores */
+    categoryScores?: Record<string, number>;
 }
 
 /**
- * CategoryFeedbackSection - Shows per-category feedback
- * Per Section 6.6/6.7: Shows what was done well, what was missing, what to improve
+ * CategoryFeedbackSection - Accordion per-category feedback with scores
+ * Shows 10 category rows, each expandable with 4 sub-sections.
  */
-export function CategoryFeedbackSection({ categoryFeedback }: CategoryFeedbackSectionProps) {
+export function CategoryFeedbackSection({ categoryFeedback, categoryScores }: CategoryFeedbackSectionProps) {
+    const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
     const categories = Object.entries(categoryFeedback);
 
     if (categories.length === 0) {
         return null;
     }
 
+    const getScoreColor = (score: number) => {
+        if (score >= 8) return 'text-green-500';
+        if (score >= 6) return 'text-blue-500';
+        if (score >= 4) return 'text-orange-500';
+        return 'text-red-500';
+    };
+
     return (
         <Card className="p-4 sm:p-6">
-            <h2 className="text-xl font-semibold mb-4">10-Category Breakdown</h2>
+            <h2 className="text-xl font-semibold mb-4">10-Category Skill Breakdown</h2>
             <p className="text-sm text-muted-foreground mb-4">
-                Detailed feedback for each sales category
+                Click any category to see detailed feedback
             </p>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-2">
                 {categories.map(([category, feedback]) => {
-                    // Handle both object format and string format
-                    const feedbackObj: CategoryFeedbackItem =
-                        typeof feedback === 'string'
-                            ? { good: '', missing: feedback, next: '' }
-                            : feedback as CategoryFeedbackItem;
+                    const isExpanded = expandedCategory === category;
+
+                    // Normalize feedback — handle both old (good/missing/next) and new (detailed) formats
+                    const fb: any = typeof feedback === 'string'
+                        ? { good: '', missing: feedback, next: '' }
+                        : feedback;
+
+                    // Map fields from either format
+                    const reason = fb.whyThisScore || '';
+                    const strengths = fb.whatWasDoneWell || fb.good || '';
+                    const weaknesses = fb.whatWasMissing || fb.missing || '';
+                    const impact = fb.howItAffectedOutcome || fb.next || '';
+
+                    // Get score: from the feedback object itself, or from flat categoryScores
+                    const score: number | null = typeof fb.score === 'number'
+                        ? fb.score
+                        : (categoryScores?.[category] ?? null);
 
                     const categoryLabel = CATEGORY_LABELS[category] ||
                         category.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
 
                     return (
-                        <div key={category} className="border rounded-lg p-4">
-                            <h3 className="font-semibold mb-3 capitalize">{categoryLabel}</h3>
+                        <div key={category} className="border rounded-lg">
+                            {/* Collapsed row — always visible */}
+                            <button
+                                onClick={() => setExpandedCategory(isExpanded ? null : category)}
+                                className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/50 transition-colors rounded-lg"
+                            >
+                                <span className="font-medium">{categoryLabel}</span>
+                                <div className="flex items-center gap-3">
+                                    {score !== null && (
+                                        <>
+                                            <span className={`text-xl font-bold ${getScoreColor(score)}`}>{score}</span>
+                                            <span className="text-muted-foreground">/10</span>
+                                        </>
+                                    )}
+                                    <ChevronDown className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                </div>
+                            </button>
 
-                            <div className="space-y-3">
-                                {/* What you did well */}
-                                {feedbackObj.good && (
-                                    <div className="flex gap-2">
-                                        <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
-                                        <div>
-                                            <p className="text-xs font-medium text-green-600 mb-0.5">What you did well</p>
-                                            <p className="text-sm">{feedbackObj.good}</p>
+                            {/* Expanded content */}
+                            {isExpanded && (
+                                <div className="px-4 pb-4 space-y-3 border-t">
+                                    {reason && (
+                                        <div className="pt-3">
+                                            <h4 className="text-sm font-semibold text-muted-foreground">
+                                                Why this score was given
+                                            </h4>
+                                            <p className="text-sm mt-1">{reason}</p>
                                         </div>
-                                    </div>
-                                )}
-
-                                {/* What was missing */}
-                                {feedbackObj.missing && (
-                                    <div className="flex gap-2">
-                                        <XCircle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                    )}
+                                    {strengths && (
                                         <div>
-                                            <p className="text-xs font-medium text-red-600 mb-0.5">What was missing</p>
-                                            <p className="text-sm">{feedbackObj.missing}</p>
+                                            <h4 className="text-sm font-semibold text-green-500">
+                                                What was done well
+                                            </h4>
+                                            <p className="text-sm mt-1">{strengths}</p>
                                         </div>
-                                    </div>
-                                )}
-
-                                {/* What to improve next time */}
-                                {feedbackObj.next && (
-                                    <div className="flex gap-2">
-                                        <Lightbulb className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />
+                                    )}
+                                    {weaknesses && (
                                         <div>
-                                            <p className="text-xs font-medium text-blue-600 mb-0.5">What to improve next time</p>
-                                            <p className="text-sm font-medium">{feedbackObj.next}</p>
+                                            <h4 className="text-sm font-semibold text-red-500">
+                                                What was missing or misaligned
+                                            </h4>
+                                            <p className="text-sm mt-1">{weaknesses}</p>
                                         </div>
-                                    </div>
-                                )}
-                            </div>
+                                    )}
+                                    {impact && (
+                                        <div>
+                                            <h4 className="text-sm font-semibold text-amber-500">
+                                                How this affected the outcome
+                                            </h4>
+                                            <p className="text-sm mt-1">{impact}</p>
+                                        </div>
+                                    )}
+                                    {!reason && !strengths && !weaknesses && !impact && (
+                                        <p className="text-sm text-muted-foreground pt-3">No detailed feedback available for this category.</p>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     );
                 })}

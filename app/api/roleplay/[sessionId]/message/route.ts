@@ -267,7 +267,7 @@ function createDefaultProspect(selectedDifficulty: string): ProspectAvatar {
     easy: { index: 35, tier: 'easy' },
     intermediate: { index: 32, tier: 'realistic' },
     hard: { index: 27, tier: 'hard' },
-    expert: { index: 22, tier: 'elite' },
+    expert: { index: 22, tier: 'expert' },
   };
 
   const { index, tier } = difficultyMap[selectedDifficulty] || difficultyMap.intermediate;

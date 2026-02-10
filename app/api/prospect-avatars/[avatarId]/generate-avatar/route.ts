@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { prospectAvatars, userOrganizations } from '@/db/schema';
+import { prospectAvatars, userOrganizations, offers } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
 export const maxDuration = 120;
@@ -63,7 +64,20 @@ export async function POST(
       );
     }
 
-    const prompt = buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription ?? undefined);
+    // Infer gender from the offer's whoItsFor field
+    let prospectGender: 'male' | 'female' | 'any' = 'any';
+    if (prospect.offerId) {
+      const [offer] = await db
+        .select({ whoItsFor: offers.whoItsFor })
+        .from(offers)
+        .where(eq(offers.id, prospect.offerId))
+        .limit(1);
+      if (offer?.whoItsFor) {
+        prospectGender = inferGenderFromOffer(offer.whoItsFor);
+      }
+    }
+
+    const prompt = buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription ?? undefined, prospectGender);
     const { url } = await generateImageWithGemini({ prompt });
 
     const [updated] = await db

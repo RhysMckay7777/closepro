@@ -82,7 +82,8 @@ const DIFFICULTY_LABELS: Record<string, string> = {
   easy: 'Easy',
   realistic: 'Realistic',
   hard: 'Hard',
-  elite: 'Elite',
+  expert: 'Expert',
+  elite: 'Expert',
 };
 
 export default function PerformancePage() {

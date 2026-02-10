@@ -7,10 +7,10 @@ import { eq } from 'drizzle-orm';
 import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName, inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
- * POST - Auto-generate 4 prospects (Easy/Realistic/Hard/Elite) for an offer.
+ * POST - Auto-generate 4 prospects (Easy/Realistic/Hard/Expert) for an offer.
  * Body: { regenerate?: boolean } — if true, delete existing prospects and generate new ones (with bios).
  */
 export async function POST(
@@ -90,19 +90,19 @@ export async function POST(
         .where(eq(prospectAvatars.offerId, offerId));
     }
 
-    // Generate 4 prospects: Easy, Realistic, Hard, Elite (with bios)
-    const difficulties: Array<'easy' | 'realistic' | 'hard' | 'elite'> = ['easy', 'realistic', 'hard', 'elite'];
+    // Generate 4 prospects: Easy, Realistic, Hard, Expert (with bios)
+    const difficulties: Array<'easy' | 'realistic' | 'hard' | 'expert'> = ['easy', 'realistic', 'hard', 'expert'];
     const generatedProspects = [];
     const usedNames = new Set<string>();
     const prospectGender = inferGenderFromOffer(offer[0].whoItsFor);
 
-    const VALID_TIERS = new Set(['easy', 'realistic', 'hard', 'elite']);
+    const VALID_TIERS = new Set(['easy', 'realistic', 'hard', 'expert']);
 
     for (const difficulty of difficulties) {
       const prospectProfile = generateRandomProspectInBand(difficulty);
       // Validate difficulty tier — map any invalid values to the expected tier
       if (!VALID_TIERS.has(prospectProfile.difficultyTier)) {
-        prospectProfile.difficultyTier = prospectProfile.difficultyTier === 'near_impossible' ? 'elite' : difficulty;
+        prospectProfile.difficultyTier = (prospectProfile.difficultyTier === 'near_impossible' || prospectProfile.difficultyTier === 'elite') ? 'expert' : difficulty;
       }
       const name = generateRandomProspectName(usedNames, prospectGender);
       const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier, name, {

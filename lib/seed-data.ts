@@ -166,12 +166,12 @@ export async function createSeedData(organizationId: string, userId: string) {
 
     createdOffers.push(offer);
 
-    // Create 4 default prospects for each offer (Easy, Realistic, Hard, Elite)
+    // Create 4 default prospects for each offer (Easy, Realistic, Hard, Expert)
     const prospectConfigs = [
       { name: 'Easy Prospect', tier: 'easy' as const, scores: { position: 8, pain: 9, need: 9, funnel: 9, ability: 9 } },
       { name: 'Realistic Prospect', tier: 'realistic' as const, scores: { position: 6, pain: 7, need: 7, funnel: 7, ability: 7 } },
       { name: 'Hard Prospect', tier: 'hard' as const, scores: { position: 4, pain: 5, need: 5, funnel: 5, ability: 5 } },
-      { name: 'Elite Prospect', tier: 'elite' as const, scores: { position: 2, pain: 3, need: 3, funnel: 3, ability: 3 } },
+      { name: 'Expert Prospect', tier: 'expert' as const, scores: { position: 2, pain: 3, need: 3, funnel: 3, ability: 3 } },
     ];
 
     for (const prospectConfig of prospectConfigs) {

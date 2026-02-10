@@ -48,7 +48,7 @@ export const PROSPECT_DIFFICULTY_CONTEXT = `
 - **Easy** (42-50): Warm, motivated, minimal objections
 - **Realistic** (36-41): Normal skepticism, reasonable objections
 - **Hard** (30-35): Skeptical, multiple objections, needs proof
-- **Elite** (0-29): High authority, sophisticated objections, little patience
+- **Expert** (0-29): High authority, sophisticated objections, little patience
 `;
 
 /**

@@ -15,7 +15,7 @@ export interface RealCallExample {
     prospectProfile: {
         name: string;
         description: string;
-        difficultyBand: 'Easy' | 'Realistic' | 'Hard' | 'Elite';
+        difficultyBand: 'Easy' | 'Realistic' | 'Hard' | 'Expert';
         authorityType: 'Advisee' | 'Peer' | 'Advisor';
         funnelContext: string;
         painLevel: 'Low' | 'Medium' | 'High';

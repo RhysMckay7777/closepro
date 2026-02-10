@@ -139,6 +139,35 @@ export default function OfferDetailsPage() {
     }
   };
 
+  // Generate avatar images sequentially via individual API calls
+  const triggerAvatarGeneration = async (prospectsList: Prospect[]) => {
+    for (let i = 0; i < prospectsList.length; i++) {
+      const prospect = prospectsList[i];
+      if (prospect.avatarUrl) continue; // Skip if already has image
+      try {
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay between calls
+        }
+        console.log(`[Avatar Gen] Generating image ${i + 1}/${prospectsList.length} for ${prospect.name}`);
+        const res = await fetch(`/api/prospect-avatars/${prospect.id}/generate-avatar`, {
+          method: 'POST',
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.avatarUrl) {
+            setProspects(prev => prev.map(p =>
+              p.id === prospect.id ? { ...p, avatarUrl: data.avatarUrl } : p
+            ));
+          }
+        } else {
+          console.error(`[Avatar Gen] Failed for ${prospect.name}:`, res.status);
+        }
+      } catch (err) {
+        console.error(`[Avatar Gen] Error for ${prospect.name}:`, err);
+      }
+    }
+  };
+
   const generateProspects = async () => {
     setGenerating(true);
     try {
@@ -156,8 +185,9 @@ export default function OfferDetailsPage() {
       const data = await response.json();
       const newProspects: Prospect[] = data.prospects || [];
       setProspects(newProspects);
-      // Start polling for avatar images (generated in background by the API's after() callback)
+      // Start polling for avatar images AND trigger frontend-based generation as fallback
       startAvatarPolling();
+      triggerAvatarGeneration(newProspects);
     } catch (error: any) {
       console.error('Error generating prospects:', error);
       toastError(error.message || 'Failed to generate prospects');
@@ -189,8 +219,9 @@ export default function OfferDetailsPage() {
       const data = await response.json();
       const newProspects: Prospect[] = data.prospects || [];
       setProspects(newProspects);
-      // Start polling for avatar images (generated in background by the API's after() callback)
+      // Start polling for avatar images AND trigger frontend-based generation as fallback
       startAvatarPolling();
+      triggerAvatarGeneration(newProspects);
     } catch (error: any) {
       console.error('Error regenerating prospects:', error);
       toastError(error.message || 'Failed to regenerate prospects');
@@ -204,7 +235,8 @@ export default function OfferDetailsPage() {
       easy: 'bg-green-500/20 text-green-600 border-green-500/50',
       realistic: 'bg-blue-500/20 text-blue-600 border-blue-500/50',
       hard: 'bg-orange-500/20 text-orange-600 border-orange-500/50',
-      elite: 'bg-red-500/20 text-red-600 border-red-500/50',
+      expert: 'bg-red-500/20 text-red-600 border-red-500/50',
+      elite: 'bg-red-500/20 text-red-600 border-red-500/50', // backward compat
     };
     return colors[tier] || 'bg-gray-500/20 text-gray-600 border-gray-500/50';
   };
@@ -223,7 +255,8 @@ export default function OfferDetailsPage() {
       easy: 'Easy',
       realistic: 'Realistic',
       hard: 'Hard',
-      elite: 'Elite',
+      expert: 'Expert',
+      elite: 'Expert', // backward compat
     };
     return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
   };
@@ -233,7 +266,8 @@ export default function OfferDetailsPage() {
       easy: 'bg-emerald-500/20',
       realistic: 'bg-sky-500/20',
       hard: 'bg-orange-500/20',
-      elite: 'bg-red-500/20',
+      expert: 'bg-red-500/20',
+      elite: 'bg-red-500/20', // backward compat
     };
     return classes[tier] ?? 'bg-muted';
   };
@@ -243,7 +277,8 @@ export default function OfferDetailsPage() {
       easy: 'bg-emerald-500',
       realistic: 'bg-sky-500',
       hard: 'bg-orange-500',
-      elite: 'bg-red-500',
+      expert: 'bg-red-500',
+      elite: 'bg-red-500', // backward compat
     };
     return classes[tier] ?? 'bg-muted-foreground';
   };

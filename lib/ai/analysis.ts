@@ -87,7 +87,7 @@ export interface ProspectDifficultyAssessment {
   funnelContext?: number; // 0-10
   executionResistance?: number; // 0-10 (ability to proceed)
   totalDifficultyScore?: number; // 0-50
-  difficultyTier?: 'easy' | 'realistic' | 'hard' | 'elite';
+  difficultyTier?: 'easy' | 'realistic' | 'hard' | 'expert';
 }
 
 /** AI-suggested outcome for sales figures (when addToFigures is true) */
@@ -395,8 +395,8 @@ ${SCORING_CATEGORIES.map(id => `   - ${id}: ${CATEGORY_LABELS[id]} — ${CATEGOR
    - funnelContext (0-10)
    - executionResistance (0-10)
    - totalDifficultyScore (0-50)
-   - difficultyTier: "easy" | "realistic" | "hard" | "elite"
-   Never return "near_impossible" — use "elite" for the hardest prospects.
+   - difficultyTier: "easy" | "realistic" | "hard" | "expert"
+   Never return "near_impossible" or "elite" — use "expert" for the hardest prospects.
    IMPORTANT: Execution resistance must be reported separately. It increases difficulty but does not excuse poor sales skill.
 
 5. MOMENT-BY-MOMENT COACHING:
@@ -484,7 +484,7 @@ ${SCORING_CATEGORIES.map(id => `    "${id}": { "score": 7, "whyThisScore": "..."
     "funnelContext": 5,
     "executionResistance": 4,
     "totalDifficultyScore": 27,
-    "difficultyTier": "elite"
+    "difficultyTier": "expert"
   },
   "outcome": {
     "result": "closed",
@@ -654,7 +654,7 @@ function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_r
       funnelContext: Math.max(0, Math.min(10, Math.round(pd.funnelContext || 5))),
       executionResistance: Math.max(0, Math.min(10, Math.round(pd.executionResistance || 5))),
       totalDifficultyScore: Math.max(0, Math.min(50, Math.round(pd.totalDifficultyScore || 25))),
-      difficultyTier: tier === 'near_impossible' ? 'elite' : tier,
+      difficultyTier: (tier === 'near_impossible' || tier === 'elite') ? 'expert' : tier,
     };
   }
 

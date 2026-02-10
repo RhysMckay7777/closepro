@@ -56,7 +56,7 @@ function NewProspectAvatarContent() {
     if (score >= 43) return 'Easy';
     if (score >= 37) return 'Realistic';
     if (score >= 31) return 'Hard';
-    return 'Elite';
+    return 'Expert';
   };
 
   const difficultyScore = calculateDifficultyScore();

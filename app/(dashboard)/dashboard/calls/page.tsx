@@ -124,6 +124,7 @@ export default function CallsPage() {
         return 'secondary';
       case 'hard':
         return 'outline';
+      case 'expert':
       case 'elite':
         return 'destructive';
       default:
@@ -285,7 +286,7 @@ export default function CallsPage() {
               <SelectItem value="easy">Easy</SelectItem>
               <SelectItem value="realistic">Realistic</SelectItem>
               <SelectItem value="hard">Hard</SelectItem>
-              <SelectItem value="elite">Elite</SelectItem>
+              <SelectItem value="expert">Expert</SelectItem>
             </SelectContent>
           </Select>
         </div>
