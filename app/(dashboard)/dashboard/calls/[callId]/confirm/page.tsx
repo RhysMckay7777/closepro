@@ -143,6 +143,17 @@ export default function ConfirmCallDetailsPage() {
         if (form.commissionRatePct) {
           payload.commissionRatePct = parseFloat(form.commissionRatePct);
         }
+        if (form.result === 'closed') {
+          payload.paymentType = form.paymentType;
+          if (form.paymentType === 'payment_plan') {
+            if (form.numberOfInstalments) {
+              payload.numberOfInstalments = parseInt(form.numberOfInstalments);
+            }
+            if (form.monthlyAmount) {
+              payload.monthlyAmount = parseFloat(form.monthlyAmount);
+            }
+          }
+        }
       }
 
       const response = await fetch(`/api/calls/${callId}/confirm`, {

@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, users, offers } from '@/db/schema';
-import { eq, or, and, isNull, sql } from 'drizzle-orm';
+import { salesCalls, users, offers, paymentPlanInstalments } from '@/db/schema';
+import { eq, or, and, isNull, inArray, sql } from 'drizzle-orm';
 
 export const maxDuration = 60;
 
@@ -127,6 +127,7 @@ export async function GET(request: NextRequest) {
                 eq(salesCalls.status, 'completed'),
                 or(
                   eq(salesCalls.analysisIntent, 'update_figures'),
+                  eq(salesCalls.analysisIntent, 'analysis_only'),
                   isNull(salesCalls.analysisIntent)
                 )
               )
@@ -152,7 +153,7 @@ export async function GET(request: NextRequest) {
           SELECT call_date, created_at, original_call_id, result, qualified, cash_collected, revenue_generated
           FROM sales_calls
           WHERE user_id = ${userId}
-          AND (status = 'manual' OR (status = 'completed' AND (analysis_intent = 'update_figures' OR analysis_intent IS NULL)))
+          AND (status = 'manual' OR (status = 'completed' AND (analysis_intent = 'update_figures' OR analysis_intent = 'analysis_only' OR analysis_intent IS NULL)))
         `);
         const rawRows = Array.isArray(raw) ? raw : (raw as { rows?: typeof raw })?.rows ?? [];
         rows = rawRows.map((r: Record<string, unknown>) => ({
@@ -216,7 +217,18 @@ export async function GET(request: NextRequest) {
     const salesRows = monthRows.filter(
       (r) => (r.result === 'closed' || r.result === 'deposit') && r.id
     );
-    const salesList = salesRows.map((r) => {
+    const salesList: Array<{
+      callId: string;
+      date: string;
+      offerName: string;
+      prospectName: string;
+      cashCollected: number;
+      revenueGenerated: number;
+      commissionPct: number;
+      commissionAmount: number;
+      isInstalment?: boolean;
+      instalmentLabel?: string;
+    }> = salesRows.map((r) => {
       const rev = r.revenueGenerated ?? 0;
       const pct = r.commissionRatePct ?? userCommissionPct ?? 0;
       return {
@@ -230,7 +242,61 @@ export async function GET(request: NextRequest) {
         commissionAmount: Math.round(rev * (pct / 100)),
       };
     });
-    const totalCommission = salesList.reduce((s, row) => s + row.commissionAmount, 0);
+
+    // Fetch payment plan instalments whose dueDate falls in this month.
+    // Instalment entries REPLACE the parent salesCalls row in the commission table
+    // to avoid double-counting commission (parent has full deal, instalments have monthly).
+    const callIdsWithInstalments = new Set<string>();
+    try {
+      const instalmentRows = await db
+        .select({
+          salesCallId: paymentPlanInstalments.salesCallId,
+          dueDate: paymentPlanInstalments.dueDate,
+          amountCents: paymentPlanInstalments.amountCents,
+          commissionRatePct: paymentPlanInstalments.commissionRatePct,
+          commissionAmountCents: paymentPlanInstalments.commissionAmountCents,
+          prospectName: salesCalls.prospectName,
+          offerId: salesCalls.offerId,
+          offerName: offers.name,
+        })
+        .from(paymentPlanInstalments)
+        .innerJoin(salesCalls, eq(paymentPlanInstalments.salesCallId, salesCalls.id))
+        .leftJoin(offers, eq(salesCalls.offerId, offers.id))
+        .where(eq(salesCalls.userId, userId));
+
+      for (const inst of instalmentRows) {
+        // Track all call IDs that have instalments (for exclusion from base salesList)
+        callIdsWithInstalments.add(inst.salesCallId);
+
+        const d = new Date(inst.dueDate);
+        if (d >= start && d <= end) {
+          const pct = inst.commissionRatePct ?? userCommissionPct ?? 0;
+          const commAmt = inst.commissionAmountCents ?? Math.round(inst.amountCents * (pct / 100));
+          salesList.push({
+            callId: inst.salesCallId,
+            date: d.toISOString().slice(0, 10),
+            offerName: inst.offerName ?? '—',
+            prospectName: inst.prospectName || 'Unknown',
+            cashCollected: inst.amountCents,
+            revenueGenerated: inst.amountCents,
+            commissionPct: pct,
+            commissionAmount: commAmt,
+            isInstalment: true,
+            instalmentLabel: 'Payment Plan Instalment',
+          });
+        }
+      }
+    } catch (instErr) {
+      // paymentPlanInstalments table may not exist yet — gracefully skip
+      console.error('Figures API: instalment query failed (may need migration):', instErr);
+    }
+
+    // Remove parent salesCalls rows that have payment plan instalments (avoid double-counting)
+    const filteredSalesList = callIdsWithInstalments.size > 0
+      ? salesList.filter((r) => !callIdsWithInstalments.has(r.callId) || r.isInstalment)
+      : salesList;
+
+    const totalCommission = filteredSalesList.reduce((s, row) => s + row.commissionAmount, 0);
 
     return NextResponse.json({
       month: monthParam,
@@ -245,7 +311,7 @@ export async function GET(request: NextRequest) {
       revenueGenerated,
       cashCollectedPct,
       commissionRatePct: userCommissionPct,
-      salesList,
+      salesList: filteredSalesList,
       totalCommission,
     });
   } catch (error) {

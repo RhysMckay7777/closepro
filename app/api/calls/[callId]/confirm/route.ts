@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, callAnalysis } from '@/db/schema';
+import { salesCalls, callAnalysis, paymentPlanInstalments, users } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { analyzeCallAsync } from '@/lib/calls/analyze-call';
 
@@ -110,6 +110,48 @@ export async function POST(
       .update(salesCalls)
       .set(updatePayload as any)
       .where(eq(salesCalls.id, callId));
+
+    // Create payment plan instalments if applicable
+    if (result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
+      const numInstalments = Number(numberOfInstalments);
+      const monthlyAmountCents = Math.round(Number(monthlyAmount) * 100);
+
+      if (numInstalments > 0 && monthlyAmountCents > 0) {
+        // Get effective commission rate: per-call override → user default
+        let effectiveCommissionPct: number | null = null;
+        if (typeof commissionRatePct === 'number' && commissionRatePct >= 0) {
+          effectiveCommissionPct = Math.round(commissionRatePct);
+        } else {
+          try {
+            const u = await db.select({ commissionRatePct: users.commissionRatePct })
+              .from(users).where(eq(users.id, session.user.id)).limit(1);
+            effectiveCommissionPct = u[0]?.commissionRatePct ?? null;
+          } catch { /* column may not exist */ }
+        }
+
+        const instalmentValues = [];
+        const callDate = callDateRaw ? new Date(callDateRaw) : new Date();
+
+        for (let i = 0; i < numInstalments; i++) {
+          const dueDate = new Date(callDate);
+          dueDate.setMonth(dueDate.getMonth() + i);
+
+          const commissionAmount = effectiveCommissionPct
+            ? Math.round(monthlyAmountCents * (effectiveCommissionPct / 100))
+            : null;
+
+          instalmentValues.push({
+            salesCallId: callId,
+            dueDate,
+            amountCents: monthlyAmountCents,
+            commissionRatePct: effectiveCommissionPct,
+            commissionAmountCents: commissionAmount,
+          });
+        }
+
+        await db.insert(paymentPlanInstalments).values(instalmentValues);
+      }
+    }
 
     // Build transcript data for analysis
     const transcript = call.transcript;
