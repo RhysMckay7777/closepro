@@ -222,6 +222,14 @@ export async function GET(
       }
     }
 
+    // If pending confirmation, return call data for the confirm page
+    if (call[0].status === 'pending_confirmation') {
+      return NextResponse.json({
+        status: 'pending_confirmation',
+        call: call[0],
+      });
+    }
+
     // If failed
     if (call[0].status === 'failed') {
       return NextResponse.json({

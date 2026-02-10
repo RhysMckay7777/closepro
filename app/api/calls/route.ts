@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls, callAnalysis, users, organizations, userOrganizations, offers } from '@/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, and, notInArray } from 'drizzle-orm';
 
 /**
  * Get all calls for the current user.
@@ -104,7 +104,12 @@ export async function GET(request: NextRequest) {
       .innerJoin(users, eq(salesCalls.userId, users.id))
       .leftJoin(offers, eq(salesCalls.offerId, offers.id))
       .leftJoin(callAnalysis, eq(salesCalls.id, callAnalysis.callId))
-      .where(eq(salesCalls.organizationId, organizationId))
+      .where(
+        and(
+          eq(salesCalls.organizationId, organizationId),
+          notInArray(salesCalls.status, ['pending_confirmation', 'transcribing', 'analyzing'])
+        )
+      )
       .orderBy(desc(salesCalls.createdAt))
       .limit(50);
 

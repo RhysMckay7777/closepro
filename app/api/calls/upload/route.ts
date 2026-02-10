@@ -7,7 +7,7 @@ import { eq, and } from 'drizzle-orm';
 import { canPerformAction, incrementUsage } from '@/lib/subscription';
 import { transcribeAudioFile } from '@/lib/ai/transcription';
 import { shouldBypassSubscription } from '@/lib/dev-mode';
-import { analyzeCallAsync } from '@/lib/calls/analyze-call';
+// analyzeCallAsync is no longer called here — analysis happens after user confirms details
 
 export const maxDuration = 120; // Allow up to 2 minutes for transcription (large files / slow Deepgram)
 
@@ -114,19 +114,19 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        await transcribeAndAnalyzeAsync(call.id, null, fileName, analysisIntent, fileUrl);
+        await transcribeOnly(call.id, null, fileName, fileUrl);
 
         return NextResponse.json({
           callId: call.id,
-          status: 'completed',
-          message: 'Transcription and analysis complete.',
+          status: 'pending_confirmation',
+          message: 'Transcription complete. Please confirm call details.',
         }, { status: 201 });
-      } catch (analysisErr: unknown) {
-        console.error('Inline transcribe/analyze error (blob):', analysisErr);
+      } catch (transcribeErr: unknown) {
+        console.error('Inline transcription error (blob):', transcribeErr);
         return NextResponse.json({
           callId: call.id,
           status: 'failed',
-          message: 'Upload succeeded but analysis failed. You can retry from the call detail page.',
+          message: 'Upload succeeded but transcription failed. You can retry from the call detail page.',
         }, { status: 201 });
       }
     }
@@ -199,19 +199,19 @@ export async function POST(request: NextRequest) {
     }
 
     try {
-      await transcribeAndAnalyzeAsync(call.id, audioBuffer, file.name, analysisIntent);
+      await transcribeOnly(call.id, audioBuffer, file.name);
 
       return NextResponse.json({
         callId: call.id,
-        status: 'completed',
-        message: 'Upload received. Transcription and analysis complete.',
+        status: 'pending_confirmation',
+        message: 'Transcription complete. Please confirm call details.',
       }, { status: 201 });
-    } catch (analysisErr: unknown) {
-      console.error('Inline transcribe/analyze error:', analysisErr);
+    } catch (transcribeErr: unknown) {
+      console.error('Inline transcription error:', transcribeErr);
       return NextResponse.json({
         callId: call.id,
         status: 'failed',
-        message: 'Upload succeeded but analysis failed. You can retry from the call detail page.',
+        message: 'Upload succeeded but transcription failed. You can retry from the call detail page.',
       }, { status: 201 });
     }
   } catch (error: unknown) {
@@ -228,25 +228,25 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * Transcribe audio (from buffer or URL), update call row, then run analysis.
+ * Transcribe audio (from buffer or URL) and update call row.
+ * Analysis is NOT triggered here — it happens after user confirms call details.
  */
-async function transcribeAndAnalyzeAsync(
+async function transcribeOnly(
   callId: string,
   audioBuffer: Buffer | null,
   fileName: string,
-  analysisIntent: string,
   fileUrl?: string
 ): Promise<void> {
   let transcriptionResult;
   try {
     transcriptionResult = await transcribeAudioFile(audioBuffer, fileName, fileUrl);
   } catch (err: unknown) {
-    console.error('Background transcription error:', err);
+    console.error('Transcription error:', err);
     await db
       .update(salesCalls)
       .set({ status: 'failed' })
       .where(eq(salesCalls.id, callId));
-    throw err; // Re-throw so caller can handle
+    throw err;
   }
 
   await db
@@ -255,13 +255,7 @@ async function transcribeAndAnalyzeAsync(
       transcript: transcriptionResult.transcript,
       transcriptJson: JSON.stringify(transcriptionResult.transcriptJson),
       duration: transcriptionResult.duration,
-      status: 'analyzing',
+      status: 'pending_confirmation',
     })
     .where(eq(salesCalls.id, callId));
-
-  await analyzeCallAsync(
-    callId,
-    transcriptionResult.transcript,
-    transcriptionResult.transcriptJson
-  );
 }

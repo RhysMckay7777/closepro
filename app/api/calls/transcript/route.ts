@@ -6,7 +6,7 @@ import { salesCalls, users, userOrganizations } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { canPerformAction, incrementUsage } from '@/lib/subscription';
 import { shouldBypassSubscription } from '@/lib/dev-mode';
-import { analyzeCallAsync } from '@/lib/calls/analyze-call';
+// analyzeCallAsync is no longer called here — analysis happens after user confirms details
 import { extractTextFromTranscriptFile, isAllowedTranscriptFile } from '@/lib/calls/extract-transcript-text';
 
 export const maxDuration = 60;
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
           duration: null,
           transcript: trimmedTranscript,
           transcriptJson: transcriptJsonStr,
-          status: 'analyzing',
+          status: 'pending_confirmation',
           metadata: metadataStr,
           ...(prospectName && { prospectName: prospectName.slice(0, 500) }),
         })
@@ -208,7 +208,7 @@ export async function POST(request: NextRequest) {
       if (isMissingColumn) {
         const result = await db.execute<{ id: string }>(sql`
           INSERT INTO sales_calls (organization_id, user_id, file_name, file_url, file_size, duration, transcript, transcript_json, status, metadata)
-          VALUES (${organizationId}, ${session.user.id}, ${fileName}, '', null, null, ${trimmedTranscript}, ${transcriptJsonStr}, 'analyzing', ${metadataStr})
+          VALUES (${organizationId}, ${session.user.id}, ${fileName}, '', null, null, ${trimmedTranscript}, ${transcriptJsonStr}, 'pending_confirmation', ${metadataStr})
           RETURNING id
         `);
         const rows = Array.isArray(result) ? result : (result as { rows?: { id: string }[] })?.rows ?? [];
@@ -227,25 +227,12 @@ export async function POST(request: NextRequest) {
       await incrementUsage(organizationId, 'calls');
     }
 
-    // Run analysis INLINE (awaited) so it completes before the HTTP
-    // response is sent. maxDuration = 60 keeps Vercel alive.
-    try {
-      await analyzeCallAsync(callId, trimmedTranscript, transcriptJson);
-
-      return NextResponse.json({
-        callId,
-        status: 'completed',
-        message: 'Transcript saved and analysis complete.',
-      }, { status: 201 });
-    } catch (analysisErr: unknown) {
-      console.error('Inline analysis error (transcript):', analysisErr);
-      // analyzeCallAsync already sets DB status to 'failed'
-      return NextResponse.json({
-        callId,
-        status: 'failed',
-        message: 'Transcript saved but analysis failed. You can retry from the call detail page.',
-      }, { status: 201 });
-    }
+    // No analysis here — user must confirm details first on the confirm page.
+    return NextResponse.json({
+      callId,
+      status: 'pending_confirmation',
+      message: 'Transcript saved. Please confirm call details.',
+    }, { status: 201 });
   } catch (error: unknown) {
     console.error('Error creating call from transcript:', error);
     const code = (error as { code?: string })?.code;

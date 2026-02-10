@@ -1,45 +1,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { toastError, toastSuccess } from '@/lib/toast';
-import { SALES_CATEGORIES, getCategoryLabel } from '@/lib/ai/scoring-framework';
+import { getCategoryLabel } from '@/lib/ai/scoring-framework';
 
 export default function CallDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const callId = params?.callId as string;
-  const openOutcome = searchParams?.get('openOutcome') === '1';
   const [call, setCall] = useState<any>(null);
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [offers, setOffers] = useState<Array<{ id: string; name: string }>>([]);
-  const [editingOutcome, setEditingOutcome] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [savingOutcome, setSavingOutcome] = useState(false);
-  const [editCallDate, setEditCallDate] = useState('');
-  const [editOfferId, setEditOfferId] = useState('');
-  const [editProspectName, setEditProspectName] = useState('');
-  const [editCallType, setEditCallType] = useState<string>('closing_call');
-  const [editResult, setEditResult] = useState<string>('');
-  const [editQualified, setEditQualified] = useState(false);
-  const [editCash, setEditCash] = useState('');
-  const [editRevenue, setEditRevenue] = useState('');
-  const [editCommissionRatePct, setEditCommissionRatePct] = useState('');
-  const [editReason, setEditReason] = useState('');
 
   useEffect(() => {
     if (!callId) return;
@@ -52,33 +31,15 @@ export default function CallDetailPage() {
         }
 
         const data = await response.json();
+
+        // If call is pending confirmation, redirect to confirm page
+        if (data.status === 'pending_confirmation') {
+          router.replace(`/dashboard/calls/${callId}/confirm`);
+          return;
+        }
+
         setCall(data.call);
         setAnalysis(data.analysis);
-        if (openOutcome && data.call) {
-          const c = data.call;
-          const d = c?.callDate ? new Date(c.callDate) : new Date();
-          setEditCallDate(isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
-          setEditOfferId(c?.offerId ?? '');
-          setEditProspectName(c?.prospectName ?? '');
-          setEditCallType(c?.callType === 'follow_up' ? 'follow_up' : 'closing_call');
-          setEditResult(c?.result ?? '');
-          setEditQualified(c?.result === 'unqualified' ? false : (c?.qualified !== false));
-          setEditCash(c?.cashCollected != null ? String((c.cashCollected / 100).toFixed(2)) : '');
-          setEditRevenue(c?.revenueGenerated != null ? String((c.revenueGenerated / 100).toFixed(2)) : '');
-          setEditCommissionRatePct(c?.commissionRatePct != null ? String(c.commissionRatePct) : '');
-          setEditReason(c?.reasonForOutcome ?? '');
-          setEditingOutcome(true);
-          // Fetch offers for the dropdown
-          try {
-            const offersRes = await fetch('/api/offers');
-            if (offersRes.ok) {
-              const offersData = await offersRes.json();
-              setOffers(offersData.offers || []);
-            }
-          } catch { /* ignore */ }
-        } else {
-          setEditingOutcome(false);
-        }
 
         // If still processing, poll for updates
         if (data.status !== 'completed' && data.status !== 'failed') {
@@ -106,89 +67,6 @@ export default function CallDetailPage() {
 
     fetchCall();
   }, [callId]);
-
-  const refetchCall = async () => {
-    if (!callId) return;
-    try {
-      const res = await fetch(`/api/calls/${callId}/status`);
-      if (res.ok) {
-        const data = await res.json();
-        setCall(data.call);
-        setAnalysis(data.analysis);
-      }
-    } catch {
-      // ignore
-    }
-  };
-
-  const openOutcomeEdit = async () => {
-    const d = call?.callDate ? new Date(call.callDate) : new Date();
-    setEditCallDate(isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10));
-    setEditOfferId(call?.offerId ?? '');
-    setEditProspectName(call?.prospectName ?? '');
-    setEditCallType(call?.callType === 'follow_up' ? 'follow_up' : 'closing_call');
-    setEditResult(call?.result ?? '');
-    setEditQualified(call?.qualified === true);
-    setEditCash(call?.cashCollected != null ? String((call.cashCollected / 100).toFixed(2)) : '');
-    setEditRevenue(call?.revenueGenerated != null ? String((call.revenueGenerated / 100).toFixed(2)) : '');
-    setEditCommissionRatePct(call?.commissionRatePct != null ? String(call.commissionRatePct) : '');
-    setEditReason(call?.reasonForOutcome ?? '');
-    setEditingOutcome(true);
-    // Fetch offers for the dropdown
-    if (offers.length === 0) {
-      try {
-        const res = await fetch('/api/offers');
-        if (res.ok) {
-          const data = await res.json();
-          setOffers(data.offers || []);
-        }
-      } catch {
-        // ignore
-      }
-    }
-  };
-
-  const handleSaveOutcome = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cashDollars = parseFloat(editCash) || 0;
-    const revenueDollars = parseFloat(editRevenue) || 0;
-    setSavingOutcome(true);
-    try {
-      const body: Record<string, unknown> = {
-        ...(editResult && VALID_RESULTS.includes(editResult as (typeof VALID_RESULTS)[number]) && { result: editResult }),
-        qualified: editQualified,
-        cashCollected: Math.round(cashDollars * 100),
-        revenueGenerated: Math.round(revenueDollars * 100),
-        ...(editReason.trim() && { reasonForOutcome: editReason.trim() }),
-      };
-      if (editCallDate) body.callDate = editCallDate;
-      if (editOfferId) body.offerId = editOfferId;
-      if (editProspectName !== undefined) body.prospectName = editProspectName.trim() || null;
-      if (editCallType) body.callType = editCallType;
-      if (editCommissionRatePct !== '') {
-        const pct = parseFloat(editCommissionRatePct);
-        if (!isNaN(pct) && pct >= 0 && pct <= 100) body.commissionRatePct = pct;
-      }
-      const res = await fetch(`/api/calls/${callId}/outcome`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to update outcome');
-      }
-      toastSuccess('Outcome saved. Figures will update.');
-      await refetchCall();
-      setEditingOutcome(false);
-    } catch (err) {
-      toastError(err instanceof Error ? err.message : 'Failed to save outcome');
-    } finally {
-      setSavingOutcome(false);
-    }
-  };
-
-  const VALID_RESULTS = ['no_show', 'closed', 'lost', 'deposit', 'follow_up', 'unqualified'] as const;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -391,25 +269,13 @@ export default function CallDetailPage() {
               <CardDescription>10 categories from the Sales Call Scoring Framework. Click to expand.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Overall score — always calculated from the 10 category scores */}
-              {(() => {
-                const CATEGORY_ORDER = ['authority', 'structure', 'communication', 'discovery', 'gap', 'value', 'trust', 'adaptation', 'objection_handling', 'closing'];
-                const rawScores = analysis.categoryScores && typeof analysis.categoryScores === 'object'
-                  ? analysis.categoryScores
-                  : (analysis.skillScores && typeof analysis.skillScores === 'object' && !Array.isArray(analysis.skillScores) ? analysis.skillScores : {});
-                const calculatedOverall = CATEGORY_ORDER.reduce((sum, catId) => {
-                  const s = typeof rawScores[catId] === 'number' ? rawScores[catId] : (typeof rawScores[catId] === 'object' && rawScores[catId]?.score != null ? rawScores[catId].score : 0);
-                  return sum + s;
-                }, 0);
-                return (
-                  <div className="text-center py-4">
-                    <div className="text-6xl font-bold bg-linear-to-br from-primary to-primary/70 bg-clip-text text-transparent">
-                      {calculatedOverall}
-                    </div>
-                    <p className="text-muted-foreground mt-1">out of 100</p>
-                  </div>
-                );
-              })()}
+              {/* Overall score — single source of truth from DB */}
+              <div className="text-center py-4">
+                <div className="text-6xl font-bold bg-linear-to-br from-primary to-primary/70 bg-clip-text text-transparent">
+                  {analysis.overallScore ?? 0}
+                </div>
+                <p className="text-muted-foreground mt-1">out of 100</p>
+              </div>
 
               {/* 10 categories */}
               <div className="space-y-1">
@@ -591,158 +457,18 @@ export default function CallDetailPage() {
                   <DollarSign className="h-5 w-5 text-green-500" />
                   <CardTitle className="font-serif">Sales figures outcome</CardTitle>
                 </div>
-                {!editingOutcome && (
-                  <Button type="button" variant="outline" size="sm" onClick={openOutcomeEdit}>
+                <Link href={`/dashboard/calls/${callId}/confirm`}>
+                  <Button type="button" variant="outline" size="sm">
                     <Pencil className="h-4 w-4 mr-2" />
-                    Edit outcome
+                    Edit details
                   </Button>
-                )}
+                </Link>
               </div>
               <CardDescription>
                 Used for Figures (cash collected, revenue). Set result and amounts so this call is included in Performance → Figures.
               </CardDescription>
             </CardHeader>
             <CardContent>
-              {editingOutcome ? (
-                <form onSubmit={handleSaveOutcome} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="outcome-call-date">Call Date</Label>
-                      <Input
-                        id="outcome-call-date"
-                        type="date"
-                        value={editCallDate}
-                        onChange={(e) => setEditCallDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="outcome-call-type">Call Type</Label>
-                      <Select
-                        value={editCallType || undefined}
-                        onValueChange={(value) => setEditCallType(value)}
-                      >
-                        <SelectTrigger id="outcome-call-type">
-                          <SelectValue placeholder="Select type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="closing_call">Closing Call</SelectItem>
-                          <SelectItem value="follow_up">Follow-up</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="outcome-offer">Offer</Label>
-                      <Select
-                        value={editOfferId || undefined}
-                        onValueChange={(value) => setEditOfferId(value)}
-                      >
-                        <SelectTrigger id="outcome-offer">
-                          <SelectValue placeholder="Select offer" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {offers.map((o) => (
-                            <SelectItem key={o.id} value={o.id}>
-                              {o.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="outcome-prospect">Prospect Name</Label>
-                      <Input
-                        id="outcome-prospect"
-                        type="text"
-                        placeholder="Prospect's name"
-                        value={editProspectName}
-                        onChange={(e) => setEditProspectName(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="outcome-result">Result</Label>
-                      <Select
-                        value={editResult || undefined}
-                        onValueChange={(value) => {
-                          setEditResult(value);
-                          setEditQualified(value === 'unqualified' ? false : true);
-                        }}
-                      >
-                        <SelectTrigger id="outcome-result">
-                          <SelectValue placeholder="Select result" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {VALID_RESULTS.map((r) => (
-                            <SelectItem key={r} value={r}>
-                              {r === 'follow_up' ? 'Follow-up' : r.replace('_', ' ')}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  {(editResult === 'closed' || editResult === 'deposit') && (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="outcome-cash">Cash Collected (£)</Label>
-                        <Input
-                          id="outcome-cash"
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          placeholder="0"
-                          value={editCash}
-                          onChange={(e) => setEditCash(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="outcome-revenue">Revenue Generated (£)</Label>
-                        <Input
-                          id="outcome-revenue"
-                          type="number"
-                          min={0}
-                          step={0.01}
-                          placeholder="0"
-                          value={editRevenue}
-                          onChange={(e) => setEditRevenue(e.target.value)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="outcome-commission">Commission rate (%)</Label>
-                        <Input
-                          id="outcome-commission"
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          placeholder="e.g. 10"
-                          value={editCommissionRatePct}
-                          onChange={(e) => setEditCommissionRatePct(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  <div className="space-y-2">
-                    <Label htmlFor="outcome-reason">Why did the prospect buy or not buy? What objections were raised?</Label>
-                    <Textarea
-                      id="outcome-reason"
-                      placeholder="e.g. Prospect agreed to £3,600 program; 3-month payment plan."
-                      rows={2}
-                      value={editReason}
-                      onChange={(e) => setEditReason(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="submit" disabled={savingOutcome}>
-                      {savingOutcome ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save outcome'}
-                    </Button>
-                    <Button type="button" variant="outline" onClick={() => setEditingOutcome(false)}>
-                      Cancel
-                    </Button>
-                  </div>
-                </form>
-              ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Call date:</span>{' '}
@@ -783,7 +509,6 @@ export default function CallDetailPage() {
                     </div>
                   )}
                 </div>
-              )}
             </CardContent>
           </Card>
         </>

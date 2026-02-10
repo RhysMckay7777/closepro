@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Filter, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, Search, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 import { EmptyCallsIllustration } from '@/components/illustrations';
@@ -19,7 +19,6 @@ interface Call {
   date: string;
   offerName: string;
   prospectName?: string;
-  offerType: string;
   callType: string;
   result: string;
   prospectDifficulty?: number;
@@ -33,7 +32,6 @@ export default function CallsPage() {
   const [calls, setCalls] = useState<Call[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [offerTypeFilter, setOfferTypeFilter] = useState<string>('all');
   const [callTypeFilter, setCallTypeFilter] = useState<string>('all');
   const [resultFilter, setResultFilter] = useState<string>('all');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('all');
@@ -54,7 +52,6 @@ export default function CallsPage() {
           date: call.createdAt || call.date,
           offerName: call.offerName || 'Unknown Offer',
           prospectName: call.prospectName,
-          offerType: call.offerType || 'Unknown',
           callType: call.callType || 'closing_call',
           result: call.result || 'unknown',
           prospectDifficulty: call.prospectDifficulty,
@@ -69,17 +66,6 @@ export default function CallsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const getOfferTypeLabel = (type: string) => {
-    const labels: Record<string, string> = {
-      b2c_health: 'B2C Health',
-      b2c_relationships: 'B2C Relationships',
-      b2c_wealth: 'B2C Wealth',
-      mixed_wealth: 'Mixed Wealth',
-      b2b_services: 'B2B Services',
-    };
-    return labels[type] || type;
   };
 
   const getCallTypeLabel = (type: string) => {
@@ -153,14 +139,13 @@ export default function CallsPage() {
     const matchesSearch =
       call.offerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (call as any).notes?.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesOfferType = offerTypeFilter === 'all' || call.offerType === offerTypeFilter;
     const matchesCallType = callTypeFilter === 'all' || call.callType === callTypeFilter;
     const matchesResult = resultFilter === 'all' || call.result === resultFilter;
     const matchesDifficulty =
       difficultyFilter === 'all' ||
       call.difficultyTier === difficultyFilter;
 
-    return matchesSearch && matchesOfferType && matchesCallType && matchesResult && matchesDifficulty;
+    return matchesSearch && matchesCallType && matchesResult && matchesDifficulty;
   });
 
   // Re-group filtered calls
@@ -239,20 +224,6 @@ export default function CallsPage() {
               className="pl-9"
             />
           </div>
-          <Select value={offerTypeFilter} onValueChange={setOfferTypeFilter}>
-            <SelectTrigger className="w-full sm:w-[180px]">
-              <Filter className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Offer Type" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Offer Types</SelectItem>
-              <SelectItem value="b2c_health">B2C Health</SelectItem>
-              <SelectItem value="b2c_relationships">B2C Relationships</SelectItem>
-              <SelectItem value="b2c_wealth">B2C Wealth</SelectItem>
-              <SelectItem value="mixed_wealth">Mixed Wealth</SelectItem>
-              <SelectItem value="b2b_services">B2B Services</SelectItem>
-            </SelectContent>
-          </Select>
           <Select value={callTypeFilter} onValueChange={setCallTypeFilter}>
             <SelectTrigger className="w-full sm:w-[180px]">
               <SelectValue placeholder="Call Type" />
@@ -326,7 +297,6 @@ export default function CallsPage() {
                   variant="outline"
                   onClick={() => {
                     setSearchQuery('');
-                    setOfferTypeFilter('all');
                     setCallTypeFilter('all');
                     setResultFilter('all');
                     setDifficultyFilter('all');
@@ -347,7 +317,6 @@ export default function CallsPage() {
                   <TableHead>Date</TableHead>
                   <TableHead>Offer Name</TableHead>
                   <TableHead>Prospect Name</TableHead>
-                  <TableHead>Offer Type</TableHead>
                   <TableHead>Call Result</TableHead>
                   <TableHead>Prospect Difficulty</TableHead>
                   <TableHead>Overall Score</TableHead>
@@ -364,7 +333,7 @@ export default function CallsPage() {
                         className="cursor-pointer hover:bg-accent/50 bg-muted/30"
                         onClick={() => toggleMonth(monthKey)}
                       >
-                        <TableCell colSpan={7} className="font-semibold">
+                        <TableCell colSpan={6} className="font-semibold">
                           <div className="flex items-center gap-2">
                             {isExpanded ? (
                               <ChevronDown className="h-4 w-4" />
@@ -390,9 +359,6 @@ export default function CallsPage() {
                           </TableCell>
                           <TableCell className="font-medium">{call.offerName}</TableCell>
                           <TableCell className="text-muted-foreground">{call.prospectName ?? '—'}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{getOfferTypeLabel(call.offerType)}</Badge>
-                          </TableCell>
                           <TableCell>
                             <Badge variant={getResultBadgeVariant(call.result)}>
                               {getResultLabel(call.result)}

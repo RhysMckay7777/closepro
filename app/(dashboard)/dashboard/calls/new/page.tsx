@@ -284,21 +284,17 @@ export default function NewCallPage() {
           }),
         });
 
-        // Advance to 'analysing' after 15s while waiting for the single request
-        const analysisTimer = setTimeout(() => setUploadStep('analysing'), 15000);
-
         const response = await analysisPromise;
-        clearTimeout(analysisTimer);
 
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.error || 'Upload failed');
         }
         setUploadStep('complete');
-        toastSuccess('Call uploaded. Analysis in progress...');
+        toastSuccess('Call uploaded. Please confirm call details.');
         setTimeout(() => {
           if (data.callId) {
-            router.push(`/dashboard/calls/${data.callId}?openOutcome=1`);
+            router.push(`/dashboard/calls/${data.callId}/confirm`);
           } else {
             router.push('/dashboard/calls');
           }
@@ -340,9 +336,9 @@ export default function NewCallPage() {
           throw new Error(data.error || 'Failed to create call from transcript');
         }
         const data = await response.json();
-        toastSuccess('Transcript saved. Analysis in progress...');
+        toastSuccess('Transcript saved. Please confirm call details.');
         if (data.callId) {
-          router.push(`/dashboard/calls/${data.callId}?openOutcome=1`);
+          router.push(`/dashboard/calls/${data.callId}/confirm`);
         } else {
           router.push('/dashboard/calls');
         }

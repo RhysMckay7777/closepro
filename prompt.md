@@ -1,290 +1,266 @@
-═══════════════════════════════════════════════════════════════════════════
-TWO FIXES — Manual Call Log 400 Error + Roleplay Results Accordion
-═══════════════════════════════════════════════════════════════════════════
+CALL ANALYSIS — MAJOR FLOW RESTRUCTURE
+Connor has specified a new mandatory flow for call analysis.
+This is the highest priority change before launch.
 
+Read this ENTIRE prompt before making any changes.
 
-FIX 1 (CRITICAL): MANUAL CALL LOG — 400 "Missing required fields"
-═══════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
+CHANGE 1: NEW "CONFIRM CALL DETAILS" STEP (CRITICAL)
+═══════════════════════════════════════════════════════════════
 
-PROBLEM:
-When submitting a manual call log at /dashboard/calls/new, the API 
-returns 400 with error: "Missing required fields: offerId, result, 
-reasonForOutcome"
+CURRENT FLOW (BROKEN):
+  Upload → AI immediately analyses → Results page 
+  (figures buried at bottom, often skipped)
 
-The form DOES have these fields filled in (Offer dropdown shows 
-"Mixed Wealth Closing Mastery", Revenue/Payment fields are filled), 
-but the frontend is NOT sending them correctly to the API.
-
-CONSOLE ERROR (exact):
-  Failed to load resource: the server responded with a status of 400 ()
-  /api/calls/manual
-  Error logging call: Error: Missing required fields: offerId, result, 
-  reasonForOutcome
-
-ALSO IN CONSOLE:
-  [Performance] Response period: Last Month → totalAnalyses: 0
-  [Performance] Response period: This Month → totalAnalyses: 22
-  (This confirms the date range IS working — Last Month returns 0, 
-  This Month returns 22. Date range bug is FIXED.)
-
-DEBUG STEPS — DO THESE IN ORDER:
-
-STEP 1: Find the Manual Call Log form component.
-Search for the file that handles /dashboard/calls/new — likely:
-  app/(dashboard)/dashboard/calls/new/page.tsx
-
-STEP 2: Find the submit handler for the manual log form.
-Search for: "manual", "logCall", "handleSubmit", "/api/calls/manual"
-
-STEP 3: Check what the form sends vs what the API expects.
-Log the request body BEFORE sending:
-
-  const handleSubmit = async () => {
-    const body = {
-      // ... whatever is currently here
-    };
-    console.log('[MANUAL LOG] Sending body:', JSON.stringify(body, null, 2));
-    
-    const response = await fetch('/api/calls/manual', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  };
-
-STEP 4: Find the API route handler.
-Search for: app/api/calls/manual/route.ts
-
-Check what fields it requires:
-  const { offerId, result, reasonForOutcome, ... } = await request.json();
-  
-  if (!offerId || !result || !reasonForOutcome) {
-    return NextResponse.json({ error: 'Missing required fields...' }, { status: 400 });
-  }
-
-STEP 5: Fix the mismatch. Common causes:
-
-  A) Form sends "offer" but API expects "offerId"
-  B) Form sends "outcome" but API expects "result"  
-  C) Form doesn't send "reasonForOutcome" at all — for "Closed" result 
-     there may not be a text reason, but the API still requires it
-  D) The result value format doesn't match — form sends "Closed" but 
-     API expects "closed" (lowercase)
-
-LIKELY FIX:
-The API requires "reasonForOutcome" but when result is "Closed", 
-there IS no reason textarea — only payment fields. The fix is:
-
-  OPTION A (RECOMMENDED): Make reasonForOutcome optional when result 
-  is "closed" or "deposit":
-  
-  // In the API route:
-  if (!offerId || !result) {
-    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
-  }
-  
-  // Only require reasonForOutcome for results that have a textarea:
-  if (['lost', 'follow-up', 'unqualified'].includes(result.toLowerCase()) && !reasonForOutcome) {
-    return NextResponse.json({ error: 'Reason is required for this result type' }, { status: 400 });
-  }
-
-  OPTION B: Send an empty string for reasonForOutcome when Closed:
-  
-  // In the frontend form:
-  const body = {
-    offerId: selectedOffer,        // NOT "offer"
-    result: selectedResult,         // Must match API expectation
-    reasonForOutcome: reasonText || '',  // Default to empty string
-    prospectName: prospectName,
-    callDate: callDate,
-    // ... payment fields when result is Closed
-    cashCollected: cashCollected,
-    revenueGenerated: revenueGenerated,
-    commissionRate: commissionRate,
-    paymentType: paymentType,
-    instalments: instalments,
-    monthlyAmount: monthlyAmount,
-  };
-
-STEP 6: Also check the field name mapping. Print both sides:
-
-  // Frontend — log what's being sent:
-  console.log('[MANUAL LOG] offerId:', selectedOffer);
-  console.log('[MANUAL LOG] result:', selectedResult);
-  console.log('[MANUAL LOG] reasonForOutcome:', reasonText);
-
-  // API — log what's being received:
-  const body = await request.json();
-  console.log('[MANUAL API] Received body keys:', Object.keys(body));
-  console.log('[MANUAL API] offerId:', body.offerId);
-  console.log('[MANUAL API] result:', body.result);
-  console.log('[MANUAL API] reasonForOutcome:', body.reasonForOutcome);
-
-VERIFY:
-1. Fill out Manual Call Log with result "Closed", offer selected, 
-   all payment fields filled → click "Log Call" → saves successfully
-2. Fill out with result "Lost", type reason → saves successfully
-3. Check Figures page → new call appears in commission table
-4. No 400 errors in console
-
-
-═══════════════════════════════════════════════════════════════════════════
-FIX 2 (IMPORTANT): ROLEPLAY RESULTS — SKILL BREAKDOWN ACCORDION
-═══════════════════════════════════════════════════════════════════════════
-
-PROBLEM:
-The "10-Category Skill Breakdown" section on the roleplay results page 
-(/dashboard/roleplay/[sessionId]/results) currently shows a flat 2×5 
-grid of category name cards with no scores and no expand functionality.
-
-This must be changed to match the SAME accordion pattern used on:
-1. The Performance page (Box 3) — which already works correctly
-2. The Call Analysis page (Section 3) — per Connor's doc
-
-FIND THE CODE:
-1. app/(dashboard)/dashboard/roleplay/[sessionId]/results/page.tsx
-2. Find the section that renders the 10 category grid
-3. Find the Performance page's Box 3 accordion component for reference
-
-CURRENT CODE (approximately):
-  <div className="grid grid-cols-2 gap-4">
-    {categories.map(cat => (
-      <div className="border rounded p-4">
-        <h3>{cat.name}</h3>
-      </div>
-    ))}
-  </div>
-
-CHANGE TO:
-Each of the 10 categories must be rendered as an expandable accordion 
-row, NOT a flat grid card.
-
-REQUIREMENTS:
-- Show each category as a ROW (full width, not 2-column grid)
-- Each row displays: Category name + Score out of 10
-- Each row is CLICKABLE — expands accordion-style
-- When expanded, show 4 sub-sections:
-  1. "Why this score was given" — from categoryFeedback.reason or 
-     skillScores[category].feedback
-  2. "What was done well" — from categoryFeedback.strengths or 
-     skillScores[category].strengths
-  3. "What was missing or misaligned" — from categoryFeedback.weaknesses 
-     or skillScores[category].weaknesses
-  4. "How this affected the call outcome" — from 
-     categoryFeedback.impact or skillScores[category].impact
-
-DATA MAPPING:
-The roleplay scoring API already returns category-level feedback. 
-Check the analysis object structure:
-
-  // If analysis.categoryScores is an array:
-  analysis.categoryScores.forEach(cat => {
-    cat.name    // "Authority"
-    cat.score   // 3
-    cat.reason  // "Why this score..."
-    cat.strengths // "What was done well..."
-    cat.weaknesses // "What was missing..."
-    cat.impact  // "How this affected..."
-  });
-
-  // OR if analysis.skillScores is an object:
-  Object.entries(analysis.skillScores).forEach(([key, value]) => {
-    key         // "authority"
-    value.score // 3
-    value.feedback // May contain all sub-fields
-  });
+NEW FLOW (REQUIRED):
+  Upload → AI pre-processes → "Confirm Call Details" page 
+  → User confirms → "Log Call & Analyse" button 
+  → THEN full analysis runs → Results page
 
 IMPLEMENTATION:
-Use the same accordion pattern as the call analysis page. Here's the 
-structure:
 
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+STEP 1: AI Pre-Processing (modify existing upload handler)
 
-  <div className="space-y-2">
-    {categories.map(cat => (
-      <div key={cat.name} className="border rounded-lg">
-        {/* Collapsed row — always visible */}
-        <button 
-          onClick={() => setExpandedCategory(
-            expandedCategory === cat.name ? null : cat.name
-          )}
-          className="w-full flex items-center justify-between p-4"
-        >
-          <span className="font-medium">{cat.name}</span>
-          <div className="flex items-center gap-3">
-            <span className="text-xl font-bold">{cat.score}</span>
-            <span className="text-muted-foreground">/10</span>
-            <ChevronDown className={`h-4 w-4 transition-transform ${
-              expandedCategory === cat.name ? 'rotate-180' : ''
-            }`} />
-          </div>
-        </button>
-        
-        {/* Expanded content */}
-        {expandedCategory === cat.name && (
-          <div className="px-4 pb-4 space-y-3 border-t">
-            {cat.reason && (
-              <div>
-                <h4 className="text-sm font-semibold text-muted-foreground">
-                  Why this score was given
-                </h4>
-                <p className="text-sm">{cat.reason}</p>
-              </div>
-            )}
-            {cat.strengths && (
-              <div>
-                <h4 className="text-sm font-semibold text-green-500">
-                  What was done well
-                </h4>
-                <p className="text-sm">{cat.strengths}</p>
-              </div>
-            )}
-            {cat.weaknesses && (
-              <div>
-                <h4 className="text-sm font-semibold text-red-500">
-                  What was missing or misaligned
-                </h4>
-                <p className="text-sm">{cat.weaknesses}</p>
-              </div>
-            )}
-            {cat.impact && (
-              <div>
-                <h4 className="text-sm font-semibold text-amber-500">
-                  How this affected the outcome
-                </h4>
-                <p className="text-sm">{cat.impact}</p>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-    ))}
-  </div>
+When user uploads audio/transcript, the AI should ONLY do 
+lightweight detection — NOT full analysis:
 
-If the sub-field data doesn't exist in the current scoring output, 
-update the roleplay scoring prompt to include these 4 fields per 
-category in the JSON response format.
+  // In the upload API route:
+  const preProcess = await detectCallMetadata(transcript);
+  // Returns: { 
+  //   likelyOffer: string | null,
+  //   prospectName: string | null,
+  //   likelyResult: 'closed' | 'lost' | 'follow-up' | 'deposit' | 'unqualified' | null,
+  //   prospectDifficulty: string | null 
+  // }
+
+  // Save the call record with status: 'pending_confirmation'
+  // Do NOT run scoring yet
+  await db.insert(calls).values({
+    ...callData,
+    status: 'pending_confirmation',
+    transcript: transcriptText,
+    audioUrl: audioUrl,
+    // Pre-detected metadata (draft, not final):
+    offerName: preProcess.likelyOffer,
+    prospectName: preProcess.prospectName,
+    result: preProcess.likelyResult,
+    prospectDifficulty: preProcess.prospectDifficulty,
+    // Score is NULL until confirmed and analysed
+    overallScore: null,
+  });
+
+  // Redirect to: /dashboard/calls/[callId]/confirm
+  // NOT to the analysis page
+
+STEP 2: "Confirm Call Details" Page (NEW PAGE)
+
+Create: app/dashboard/calls/[callId]/confirm/page.tsx
+
+This page title: "Confirm Call Details"
+
+Layout: Clean form with these fields, pre-filled by AI detection 
+but EDITABLE by user:
+
+  - Call date (date picker, default: today)
+  - Offer name (dropdown from user's offers list — REQUIRED)
+  - Prospect name (text input — REQUIRED)
+  - Call result (dropdown — REQUIRED):
+    - Closed
+    - Lost
+    - Deposit
+    - Follow-up
+    - Unqualified
+
+CONDITIONAL FIELDS based on result (same logic as Manual Call Log):
+
+  If result === 'closed':
+    - Cash collected (£ number input)
+    - Revenue generated (£ number input)
+    - Commission rate (% number input)
+    - Payment type (radio: "Paid in full" / "Payment plan")
+    - If payment plan:
+      - Number of instalments (number input)
+      - Monthly amount (£ number input)
+
+  If result === 'lost':
+    - Textarea: "Why did this deal not close? 
+      What objections were raised and how were they handled?"
+
+  If result === 'deposit':
+    - Textarea: "Deposit details"
+
+  If result === 'follow-up':
+    - Textarea: "Why was this not closed yet? 
+      What objections remain?"
+
+  If result === 'unqualified':
+    - Textarea: "Why was this call unqualified?"
+
+ACTION BUTTON at bottom:
+  "Log Call & Analyse" (primary button, prominent)
+
+When clicked:
+  1. Validate all required fields
+  2. Save confirmed metadata to the call record
+  3. Update status: 'pending_confirmation' → 'analysing'
+  4. THEN trigger full AI analysis (the scoring)
+  5. Redirect to /dashboard/calls/[callId] (analysis results)
+
+⚠️ The call must NOT appear in the calls list until status 
+is 'analysed' (after scoring completes).
+
+⚠️ The call must NOT be scored until the user clicks 
+"Log Call & Analyse".
+
+STEP 3: Modify upload redirect
+
+Currently, after upload, the user is probably redirected to the 
+analysis page. Change this to redirect to the confirm page:
+
+  // After upload completes:
+  router.push(`/dashboard/calls/${callId}/confirm`);
+  // NOT: router.push(`/dashboard/calls/${callId}`);
+
+STEP 4: Handle the "buried figures" section
+
+The current call analysis page probably has a "Sales Figures 
+Outcome" section at the bottom where users can edit figures.
+This is now REPLACED by the Confirm page (which comes BEFORE 
+analysis). 
+
+On the analysis results page (/dashboard/calls/[callId]):
+- Section 7 (Figures Outcome) becomes READ-ONLY
+- It shows the data the user confirmed, but cannot be edited
+- If user needs to change figures, add a small "Edit details" 
+  link that goes back to /dashboard/calls/[callId]/confirm
 
 VERIFY:
-1. Open a completed roleplay results page
-2. See 10 category ROWS (not 2×5 grid) with name + score/10
-3. Click any category → accordion expands with 4 sub-sections
-4. Click again → collapses
+1. Upload call → redirected to "Confirm Call Details" page
+2. AI pre-fills offer/name/result (editable)
+3. Select "Closed" → cash/revenue/commission fields appear
+4. Click "Log Call & Analyse" → redirected to analysis page
+5. Analysis page shows score
+6. Same score appears in calls list
 
 
-═══════════════════════════════════════════════════════════════════════════
-BONUS CONFIRMATION: DATE RANGE IS WORKING
-═══════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
+CHANGE 2: FIX SCORE MISMATCH (CRITICAL)
+═══════════════════════════════════════════════════════════════
 
-The console logs confirm the Performance date range IS functioning:
-  [Performance] Response period: Last Month → totalAnalyses: 0
-  [Performance] Response period: This Month → totalAnalyses: 22
+PROBLEM:
+The calls list page shows score 42 for a call, but the call 
+detail/analysis page shows 34 for the SAME call. This is a 
+data integrity violation.
 
-This means when switching to "Last Month", the API correctly returns 
-0 analyses (no data last month), and "This Month" returns 22. 
-The date range bug from earlier rounds is FIXED. No action needed.
+ROOT CAUSE (likely one of these):
+A) The calls list recalculates the score differently than the 
+   analysis page
+B) The calls list reads from a different DB field than the 
+   analysis page
+C) There are two scoring runs — one on upload, one on analysis
+D) The score in the list is rounded/weighted differently
+
+FIX — SINGLE SOURCE OF TRUTH:
+
+1. There must be ONE score field in the database: overallScore
+2. This score is written ONCE by the scoring engine after 
+   the user confirms call details
+3. Every page reads from this SAME field:
+   - Call analysis page: reads call.overallScore
+   - Calls list page: reads call.overallScore  
+   - Performance dashboard: reads call.overallScore
+   - Figures calculations: reads call.overallScore
+
+FIND THE MISMATCH:
+
+Search the codebase for ALL places that calculate or display 
+"score" or "overallScore" for calls:
+
+  grep -r "overallScore\|overall_score\|totalScore\|total_score" 
+    --include="*.ts" --include="*.tsx"
+
+Check:
+- Does the calls list page compute score differently?
+  (e.g. averaging category scores vs using stored total)
+- Does the analysis page use a different field?
+- Is there a scoring function called in two different places?
+
+THE FIX:
+- Ensure the scoring engine saves ONE overallScore to the DB
+- Ensure the calls list page reads call.overallScore directly
+  (NOT recalculating from categories)
+- Ensure the analysis detail page reads the SAME call.overallScore
+- Remove any secondary score calculation
+
+Add a console.log to verify:
+  console.log('[SCORE CHECK] Call', callId, 
+    'DB overallScore:', call.overallScore,
+    'Category sum:', categories.reduce((s,c) => s + c.score, 0));
+
+If they differ, the DB field is correct — fix wherever the 
+category sum is being used as the display score.
 
 
-═══════════════════════════════════════════════════════════════════════════
-DEPLOY AND VERIFY BOTH FIXES
-═══════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════
+CHANGE 3: CALLS LIST — REMOVE OFFER TYPE COLUMN
+═══════════════════════════════════════════════════════════════
+
+Current columns: Date | Offer Name | Prospect Name | Offer Type | 
+  Call Result | Prospect Difficulty | Overall Score
+
+Change to: Date | Offer Name | Prospect Name | Call Result | 
+  Prospect Difficulty | Overall Score
+
+Simply remove the "Offer Type" column from the calls list table.
+
+Also: calls must NOT appear in the list until status is 
+'analysed'. Add a WHERE filter:
+
+  const calls = await db.query.calls.findMany({
+    where: eq(calls.status, 'analysed'),
+    // or: where: not(eq(calls.status, 'pending_confirmation')),
+    orderBy: desc(calls.createdAt),
+  });
+
+
+═══════════════════════════════════════════════════════════════
+CHANGE 4: ENSURE DATA POPULATES CORRECTLY
+═══════════════════════════════════════════════════════════════
+
+After the user confirms call details, these fields must be 
+populated (not "Unknown" or "—"):
+
+  - Offer name: from the dropdown selection on confirm page
+  - Prospect name: from the text input on confirm page
+  - Call result: from the dropdown on confirm page
+  - Prospect difficulty: from AI detection (or user override)
+
+When saving confirmed details:
+  await db.update(calls)
+    .set({
+      offerName: confirmedOffer,
+      prospectName: confirmedProspectName,
+      result: confirmedResult,
+      prospectDifficulty: confirmedDifficulty,
+      status: 'analysing',
+      // Plus result-specific fields:
+      cashCollected: resultData.cashCollected || null,
+      revenueGenerated: resultData.revenueGenerated || null,
+      commissionRate: resultData.commissionRate || null,
+      paymentType: resultData.paymentType || null,
+      // etc.
+    })
+    .where(eq(calls.id, callId));
+
+Then trigger analysis. After analysis completes:
+  await db.update(calls)
+    .set({
+      status: 'analysed',
+      overallScore: analysisResult.overallScore,
+      analysis: JSON.stringify(analysisResult),
+    })
+    .where(eq(calls.id, callId));
+
+
+BUILD AND DEPLOY AFTER IMPLEMENTING ALL 4 CHANGES.
+These must all ship together — they're interdependent.
