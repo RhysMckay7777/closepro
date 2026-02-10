@@ -238,27 +238,6 @@ export default function CallDetailPage() {
         </div>
       </div>
 
-      {/* Call Recording Playback */}
-      {call.fileUrl && (
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-serif">Call Recording</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <audio
-              controls
-              className="w-full"
-              preload="metadata"
-            >
-              <source src={call.fileUrl} type="audio/mpeg" />
-              <source src={call.fileUrl} type="audio/mp4" />
-              <source src={call.fileUrl} type="audio/webm" />
-              Your browser does not support audio playback.
-            </audio>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Processing State */}
       {isProcessing && (
         <Card className="border border-primary/20 bg-linear-to-br from-primary/5 to-primary/10 backdrop-blur-xl shadow-xl">
@@ -323,18 +302,14 @@ export default function CallDetailPage() {
                     <p className="text-sm font-medium">{new Date(call.callDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                   </div>
                 )}
-                {call.offerName && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Offer</p>
-                    <p className="text-sm font-medium">{call.offerName}</p>
-                  </div>
-                )}
-                {(call.prospectName || analysis.prospectName) && (
-                  <div>
-                    <p className="text-xs text-muted-foreground">Prospect</p>
-                    <p className="text-sm font-medium">{call.prospectName || analysis.prospectName}</p>
-                  </div>
-                )}
+                <div>
+                  <p className="text-xs text-muted-foreground">Offer</p>
+                  <p className="text-sm font-medium">{call.offerName || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Prospect</p>
+                  <p className="text-sm font-medium">{call.prospectName || analysis.prospectName || '—'}</p>
+                </div>
                 <div>
                   <p className="text-xs text-muted-foreground">Result</p>
                   {(() => {
@@ -395,13 +370,25 @@ export default function CallDetailPage() {
               <CardDescription>10 categories from the Sales Call Scoring Framework. Click to expand.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Overall score */}
-              <div className="text-center py-4">
-                <div className="text-6xl font-bold bg-linear-to-br from-primary to-primary/70 bg-clip-text text-transparent">
-                  {analysis.overallScore}
-                </div>
-                <p className="text-muted-foreground mt-1">out of 100</p>
-              </div>
+              {/* Overall score — always calculated from the 10 category scores */}
+              {(() => {
+                const CATEGORY_ORDER = ['authority', 'structure', 'communication', 'discovery', 'gap', 'value', 'trust', 'adaptation', 'objection_handling', 'closing'];
+                const rawScores = analysis.categoryScores && typeof analysis.categoryScores === 'object'
+                  ? analysis.categoryScores
+                  : (analysis.skillScores && typeof analysis.skillScores === 'object' && !Array.isArray(analysis.skillScores) ? analysis.skillScores : {});
+                const calculatedOverall = CATEGORY_ORDER.reduce((sum, catId) => {
+                  const s = typeof rawScores[catId] === 'number' ? rawScores[catId] : (typeof rawScores[catId] === 'object' && rawScores[catId]?.score != null ? rawScores[catId].score : 0);
+                  return sum + s;
+                }, 0);
+                return (
+                  <div className="text-center py-4">
+                    <div className="text-6xl font-bold bg-linear-to-br from-primary to-primary/70 bg-clip-text text-transparent">
+                      {calculatedOverall}
+                    </div>
+                    <p className="text-muted-foreground mt-1">out of 100</p>
+                  </div>
+                );
+              })()}
 
               {/* 10 categories */}
               <div className="space-y-1">
@@ -619,7 +606,6 @@ export default function CallDetailPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <p className="text-xs text-muted-foreground">Qualified if result ≠ Unqualified. Only &quot;Unqualified&quot; marks the call as not qualified.</p>
                   </div>
                   {(editResult === 'closed' || editResult === 'deposit') && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -697,10 +683,6 @@ export default function CallDetailPage() {
                   <div>
                     <span className="text-muted-foreground">Result:</span>{' '}
                     {call.result ? call.result.replace('_', ' ') : '—'}
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Qualified:</span>{' '}
-                    {call.qualified === true ? 'Yes' : call.qualified === false ? 'No' : '—'}
                   </div>
                   <div>
                     <span className="text-muted-foreground">Cash collected:</span>{' '}

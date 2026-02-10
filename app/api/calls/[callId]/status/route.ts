@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, users, roleplaySessions } from '@/db/schema';
+import { salesCalls, users, roleplaySessions, offers } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { analyzeCall } from '@/lib/ai/analysis';
 import { callAnalysis } from '@/db/schema';
@@ -55,6 +55,7 @@ export async function GET(
       callType: salesCalls.callType,
       prospectName: salesCalls.prospectName,
       commissionRatePct: salesCalls.commissionRatePct,
+      offerName: offers.name,
     };
     const whereClause = and(
       eq(salesCalls.id, callId),
@@ -73,6 +74,7 @@ export async function GET(
           reasonForOutcome: salesCalls.reasonForOutcome,
         })
         .from(salesCalls)
+        .leftJoin(offers, eq(salesCalls.offerId, offers.id))
         .where(whereClause)
         .limit(1);
     } catch (err: unknown) {
@@ -82,6 +84,7 @@ export async function GET(
       call = await db
         .select(baseSelect)
         .from(salesCalls)
+        .leftJoin(offers, eq(salesCalls.offerId, offers.id))
         .where(whereClause)
         .limit(1);
       if (call[0]) {

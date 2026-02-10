@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ArrowLeft, Upload, FileText, Calendar, Briefcase, User, Phone } from 'lucide-react';
+import { Loader2, ArrowLeft, Upload, FileText, Calendar, Briefcase, User, Phone, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { toastError, toastSuccess } from '@/lib/toast';
 
@@ -79,6 +79,7 @@ export default function NewCallPage() {
   const [addToFigures, setAddToFigures] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [transcriptSubmitting, setTranscriptSubmitting] = useState(false);
+  const [uploadStep, setUploadStep] = useState<'idle' | 'uploading' | 'transcribing' | 'analysing' | 'complete' | 'error'>('idle');
 
   const isAudioFile = (file: File) => {
     const t = file.type?.toLowerCase() || '';
@@ -258,19 +259,21 @@ export default function NewCallPage() {
 
     if (isAudio) {
       setUploading(true);
+      setUploadStep('uploading');
       try {
         // Dynamic import — only loaded when needed (client-side)
         const { upload } = await import('@vercel/blob/client');
 
         // STEP A: Upload file directly to Vercel Blob from browser
-        // This bypasses the 4.5 MB serverless function body limit
         const blob = await upload(`${Date.now()}-${file!.name}`, file!, {
           access: 'public',
           handleUploadUrl: '/api/calls/upload-blob',
         });
 
         // STEP B: Send blob URL + metadata to the API for transcription & analysis
-        const response = await fetch('/api/calls/upload', {
+        setUploadStep('transcribing');
+
+        const analysisPromise = fetch('/api/calls/upload', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -280,18 +283,29 @@ export default function NewCallPage() {
             addToFigures,
           }),
         });
+
+        // Advance to 'analysing' after 15s while waiting for the single request
+        const analysisTimer = setTimeout(() => setUploadStep('analysing'), 15000);
+
+        const response = await analysisPromise;
+        clearTimeout(analysisTimer);
+
         const data = await response.json();
         if (!response.ok) {
           throw new Error(data.error || 'Upload failed');
         }
+        setUploadStep('complete');
         toastSuccess('Call uploaded. Analysis in progress...');
-        if (data.callId) {
-          router.push(`/dashboard/calls/${data.callId}?openOutcome=1`);
-        } else {
-          router.push('/dashboard/calls');
-        }
+        setTimeout(() => {
+          if (data.callId) {
+            router.push(`/dashboard/calls/${data.callId}?openOutcome=1`);
+          } else {
+            router.push('/dashboard/calls');
+          }
+        }, 1500);
       } catch (err: unknown) {
         console.error('Upload error:', err);
+        setUploadStep('error');
         toastError(err instanceof Error ? err.message : 'Failed to upload call');
       } finally {
         setUploading(false);
@@ -431,9 +445,55 @@ export default function NewCallPage() {
                     Add to sales figures (include outcome in Performance → Figures)
                   </Label>
                 </div>
+                {/* Progress stepper — shown during upload */}
+                {uploading && uploadStep !== 'idle' && (
+                  <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                    {([
+                      { key: 'uploading', label: 'Uploading audio', sublabel: 'Sending file to server...' },
+                      { key: 'transcribing', label: 'Transcribing', sublabel: 'Converting speech to text...' },
+                      { key: 'analysing', label: 'Analysing call', sublabel: 'AI is reviewing your call. This may take 1-2 minutes...' },
+                      { key: 'complete', label: 'Complete', sublabel: 'Your analysis is ready!' },
+                    ] as const).map((step, idx) => {
+                      const stepOrder = ['uploading', 'transcribing', 'analysing', 'complete'] as const;
+                      const currentIdx = stepOrder.indexOf(uploadStep as typeof stepOrder[number]);
+                      const stepIdx = idx;
+                      const isDone = currentIdx > stepIdx;
+                      const isCurrent = currentIdx === stepIdx;
+                      return (
+                        <div key={step.key} className="flex items-start gap-3">
+                          <div className="mt-0.5">
+                            {isDone ? (
+                              <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                                <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                              </div>
+                            ) : isCurrent ? (
+                              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                            ) : (
+                              <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
+                            )}
+                          </div>
+                          <div>
+                            <p className={`text-sm font-medium ${isCurrent ? 'text-foreground' : isDone ? 'text-green-600' : 'text-muted-foreground'}`}>{step.label}</p>
+                            {isCurrent && <p className="text-xs text-muted-foreground">{step.sublabel}</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {uploadStep === 'error' && (
+                      <div className="flex items-start gap-3">
+                        <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-destructive">Upload failed</p>
+                          <p className="text-xs text-muted-foreground">Please try again or use a different file.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <Link href="/dashboard/calls" className="flex-1">
-                    <Button type="button" variant="outline" className="w-full">
+                    <Button type="button" variant="outline" className="w-full" disabled={uploading}>
                       Cancel
                     </Button>
                   </Link>
@@ -445,7 +505,7 @@ export default function NewCallPage() {
                     {uploading ? (
                       <>
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Uploading...
+                        Processing...
                       </>
                     ) : transcriptSubmitting ? (
                       <>

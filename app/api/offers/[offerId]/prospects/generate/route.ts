@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName, inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
@@ -84,15 +84,10 @@ export async function POST(
     }
 
     if (regenerate) {
-      // Only delete AI-generated prospects — preserve user-created and transcript-derived
+      // Delete ALL existing prospects for this offer (including manually created)
       await db
         .delete(prospectAvatars)
-        .where(
-          and(
-            eq(prospectAvatars.offerId, offerId),
-            eq(prospectAvatars.sourceType, 'auto_generated')
-          )
-        );
+        .where(eq(prospectAvatars.offerId, offerId));
     }
 
     // Generate 4 prospects: Easy, Realistic, Hard, Elite (with bios)
@@ -101,8 +96,14 @@ export async function POST(
     const usedNames = new Set<string>();
     const prospectGender = inferGenderFromOffer(offer[0].whoItsFor);
 
+    const VALID_TIERS = new Set(['easy', 'realistic', 'hard', 'elite']);
+
     for (const difficulty of difficulties) {
       const prospectProfile = generateRandomProspectInBand(difficulty);
+      // Validate difficulty tier — map any invalid values to the expected tier
+      if (!VALID_TIERS.has(prospectProfile.difficultyTier)) {
+        prospectProfile.difficultyTier = prospectProfile.difficultyTier === 'near_impossible' ? 'elite' : difficulty;
+      }
       const name = generateRandomProspectName(usedNames, prospectGender);
       const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier, name, {
         offerCategory: offer[0].offerCategory ?? undefined,
@@ -163,8 +164,13 @@ export async function POST(
           const prospectsToPhoto = allProspects.filter(p => !p.avatarUrl);
           console.log(`[prospects/generate after()] Found ${prospectsToPhoto.length} prospects needing photos (out of ${allProspects.length} total)`);
 
-          for (const prospect of prospectsToPhoto) {
-            console.log(`[prospects/generate after()] Generating image for: ${prospect.name}...`);
+          for (let i = 0; i < prospectsToPhoto.length; i++) {
+            const prospect = prospectsToPhoto[i];
+            // Add delay between API calls to avoid rate limiting (skip first)
+            if (i > 0) {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+            console.log(`[prospects/generate after()] Generating image for: ${prospect.name} (${i + 1}/${prospectsToPhoto.length})...`);
             try {
               const { url } = await generateImageWithGemini({
                 prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription, prospectGender),

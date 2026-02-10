@@ -8,7 +8,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
 import { toastError } from '@/lib/toast';
 
 export default function EditProspectAvatarPage() {
@@ -21,6 +20,7 @@ export default function EditProspectAvatarPage() {
   const authorityFromScore = (score: number): 'advisee' | 'peer' | 'advisor' =>
     score <= 3 ? 'advisor' : score <= 7 ? 'peer' : 'advisee';
 
+  const [offerId, setOfferId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     positionProblemAlignment: 5,
@@ -41,7 +41,8 @@ export default function EditProspectAvatarPage() {
       if (!response.ok) throw new Error('Failed to fetch avatar');
       const data = await response.json();
       const avatar = data.avatar;
-      
+      if (avatar.offerId) setOfferId(avatar.offerId);
+
       const p = avatar.perceivedNeedForHelp;
       const a = avatar.authorityLevel;
       const score = typeof p === 'number' ? p : a === 'advisor' ? 2 : a === 'peer' ? 5 : 9;
@@ -57,7 +58,7 @@ export default function EditProspectAvatarPage() {
     } catch (error) {
       console.error('Error fetching avatar:', error);
       toastError('Failed to load avatar');
-      router.push('/dashboard/prospect-avatars');
+      router.back();
     } finally {
       setLoading(false);
     }
@@ -95,7 +96,11 @@ export default function EditProspectAvatarPage() {
         throw new Error(error.error || 'Failed to update avatar');
       }
 
-      router.push('/dashboard/prospect-avatars');
+      if (offerId) {
+        router.push(`/dashboard/offers/${offerId}`);
+      } else {
+        router.back();
+      }
     } catch (error: any) {
       console.error('Error updating avatar:', error);
       toastError('Failed to update avatar: ' + error.message);
@@ -115,12 +120,10 @@ export default function EditProspectAvatarPage() {
   return (
     <div className="container mx-auto p-4 sm:p-6 max-w-4xl">
       <div className="mb-4 sm:mb-6">
-        <Link href="/dashboard/prospect-avatars">
-          <Button variant="ghost" size="sm" className="mb-2">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Avatars
-          </Button>
-        </Link>
+        <Button variant="ghost" size="sm" className="mb-2" onClick={() => offerId ? router.push(`/dashboard/offers/${offerId}`) : router.back()}>
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back
+        </Button>
         <h1 className="text-2xl sm:text-3xl font-bold">Edit Prospect Avatar</h1>
         <p className="text-sm sm:text-base text-muted-foreground mt-1">
           Update prospect profile details
@@ -236,11 +239,9 @@ export default function EditProspectAvatarPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t">
-            <Link href="/dashboard/prospect-avatars" className="flex-1">
-              <Button type="button" variant="outline" className="w-full">
-                Cancel
-              </Button>
-            </Link>
+            <Button type="button" variant="outline" className="w-full flex-1" onClick={() => offerId ? router.push(`/dashboard/offers/${offerId}`) : router.back()}>
+              Cancel
+            </Button>
             <Button type="submit" disabled={saving} className="flex-1 w-full sm:w-auto">
               {saving ? (
                 <>

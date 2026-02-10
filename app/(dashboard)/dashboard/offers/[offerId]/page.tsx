@@ -139,22 +139,6 @@ export default function OfferDetailsPage() {
     }
   };
 
-  const triggerAvatarGeneration = async (prospects: Prospect[]) => {
-    const needsAvatar = prospects.filter(p => !p.avatarUrl);
-    if (needsAvatar.length === 0) return;
-    await Promise.allSettled(
-      needsAvatar.map(async (prospect) => {
-        try {
-          await fetch(`/api/prospect-avatars/${prospect.id}/generate-avatar`, {
-            method: 'POST',
-          });
-        } catch (err) {
-          console.error(`Failed to generate avatar for ${prospect.name}:`, err);
-        }
-      })
-    );
-  };
-
   const generateProspects = async () => {
     setGenerating(true);
     try {
@@ -172,10 +156,8 @@ export default function OfferDetailsPage() {
       const data = await response.json();
       const newProspects: Prospect[] = data.prospects || [];
       setProspects(newProspects);
-      // Start polling for avatar images (generated in background)
+      // Start polling for avatar images (generated in background by the API's after() callback)
       startAvatarPolling();
-      // Safety net: explicitly trigger avatar generation for each prospect
-      triggerAvatarGeneration(newProspects);
     } catch (error: any) {
       console.error('Error generating prospects:', error);
       toastError(error.message || 'Failed to generate prospects');
@@ -185,6 +167,9 @@ export default function OfferDetailsPage() {
   };
 
   const regenerateProspects = async () => {
+    if (!window.confirm('This will replace all current prospects with 4 new AI-generated prospects. Continue?')) {
+      return;
+    }
     setGenerating(true);
     try {
       const response = await fetch(
@@ -204,10 +189,8 @@ export default function OfferDetailsPage() {
       const data = await response.json();
       const newProspects: Prospect[] = data.prospects || [];
       setProspects(newProspects);
-      // Start polling for avatar images (generated in background)
+      // Start polling for avatar images (generated in background by the API's after() callback)
       startAvatarPolling();
-      // Safety net: explicitly trigger avatar generation for each prospect
-      triggerAvatarGeneration(newProspects);
     } catch (error: any) {
       console.error('Error regenerating prospects:', error);
       toastError(error.message || 'Failed to regenerate prospects');
@@ -439,7 +422,7 @@ export default function OfferDetailsPage() {
                         <div>
                           <DialogTitle className="text-2xl font-bold mb-1">{selectedProspect.name}</DialogTitle>
                           <DialogDescription className="text-sm text-muted-foreground">
-                            Start A Discovery Call With {getShortTitle(selectedProspect)}
+                            Start A Roleplay With {getShortTitle(selectedProspect)}
                           </DialogDescription>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
@@ -482,7 +465,7 @@ export default function OfferDetailsPage() {
                           </Link>
                           <Button onClick={() => handleStartDiscovery(selectedProspect.id)}>
                             <Phone className="h-4 w-4 mr-2" />
-                            Start Discovery
+                            Start Roleplay
                           </Button>
                         </div>
                       </div>

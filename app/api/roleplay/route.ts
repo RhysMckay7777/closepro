@@ -81,13 +81,31 @@ export async function GET(request: NextRequest) {
     const offerIds = [...new Set(sessions.map(s => s.offerId).filter(Boolean))];
     const offersMap = new Map();
     if (offerIds.length > 0) {
-      const offersList = await db
-        .select({ id: offers.id, name: offers.name, offerCategory: offers.offerCategory })
-        .from(offers)
-        .where(eq(offers.id, offerIds[0] as string));
-      
-      for (const offer of offersList) {
-        offersMap.set(offer.id, { name: offer.name, category: offer.offerCategory });
+      for (const oid of offerIds) {
+        const offersList = await db
+          .select({ id: offers.id, name: offers.name, offerCategory: offers.offerCategory })
+          .from(offers)
+          .where(eq(offers.id, oid as string));
+
+        for (const offer of offersList) {
+          offersMap.set(offer.id, { name: offer.name, category: offer.offerCategory });
+        }
+      }
+    }
+
+    // Get prospect avatar names for sessions
+    const avatarIds = [...new Set(sessions.map(s => s.prospectAvatarId).filter(Boolean))];
+    const avatarsMap = new Map<string, string>();
+    if (avatarIds.length > 0) {
+      for (const aid of avatarIds) {
+        const avatarRows = await db
+          .select({ id: prospectAvatars.id, name: prospectAvatars.name })
+          .from(prospectAvatars)
+          .where(eq(prospectAvatars.id, aid as string))
+          .limit(1);
+        if (avatarRows[0]) {
+          avatarsMap.set(avatarRows[0].id, avatarRows[0].name);
+        }
       }
     }
 
@@ -97,6 +115,7 @@ export async function GET(request: NextRequest) {
         ...s,
         offerName: offer?.name || 'Unknown Offer',
         offerType: offer?.category || 'Unknown',
+        prospectName: s.prospectAvatarId ? (avatarsMap.get(s.prospectAvatarId) || '—') : '—',
       };
     });
 
