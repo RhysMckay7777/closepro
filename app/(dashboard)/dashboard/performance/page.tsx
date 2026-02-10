@@ -138,32 +138,65 @@ export default function PerformancePage() {
     }
   };
 
-  const handleDownloadSummary = () => {
+  const handleDownloadSummary = async () => {
     if (!performance) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    const period = performance.period;
-    const content = `
-      <!DOCTYPE html>
-      <html>
-        <head><title>Performance Summary - ${period}</title></head>
-        <body style="font-family: system-ui; padding: 24px; max-width: 640px;">
-          <h1>Performance Summary</h1>
-          <p><strong>Period:</strong> ${period}</p>
-          <p><strong>Sessions:</strong> ${performance.totalAnalyses} (${performance.totalCalls} calls, ${performance.totalRoleplays} roleplays)</p>
-          <p><strong>Average Score:</strong> ${performance.averageOverall}</p>
-          ${performance.weeklySummary ? `<h2>This Week</h2><p>${performance.weeklySummary.overview}</p><p>${performance.weeklySummary.skillTrends}</p><ul>${(performance.weeklySummary.actionPlan || []).map(a => `<li>${a}</li>`).join('')}</ul>` : ''}
-          ${performance.monthlySummary ? `<h2>This Month</h2><p>${performance.monthlySummary.overview}</p><p>${performance.monthlySummary.skillTrends}</p><ul>${(performance.monthlySummary.actionPlan || []).map(a => `<li>${a}</li>`).join('')}</ul>` : ''}
-          ${performance.aiInsight ? `<h2>Insight</h2><p>${performance.aiInsight}</p>` : ''}
-        </body>
-      </html>
-    `;
-    printWindow.document.write(content);
-    printWindow.document.close();
-    setTimeout(() => {
-      printWindow.print();
-      printWindow.onafterprint = () => printWindow.close();
-    }, 250);
+    try {
+      const { jsPDF } = await import('jspdf');
+      const pdf = new jsPDF({ unit: 'pt', format: 'a4' });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const margin = 40;
+      const maxWidth = pageWidth - margin * 2;
+      let y = margin;
+
+      const addText = (text: string, fontSize: number, opts?: { bold?: boolean }) => {
+        pdf.setFontSize(fontSize);
+        if (opts?.bold) pdf.setFont('helvetica', 'bold');
+        else pdf.setFont('helvetica', 'normal');
+        const lines = pdf.splitTextToSize(text, maxWidth);
+        if (y + lines.length * fontSize * 1.2 > pdf.internal.pageSize.getHeight() - margin) {
+          pdf.addPage();
+          y = margin;
+        }
+        pdf.text(lines, margin, y);
+        y += lines.length * fontSize * 1.2 + 4;
+      };
+
+      addText('Performance Summary', 20, { bold: true });
+      addText(`Period: ${performance.period}`, 11);
+      addText(`Sessions: ${performance.totalAnalyses} (${performance.totalCalls} calls, ${performance.totalRoleplays} roleplays)`, 11);
+      addText(`Average Score: ${performance.averageOverall}`, 11);
+      y += 10;
+
+      if (performance.weeklySummary) {
+        addText('This Week', 14, { bold: true });
+        addText(performance.weeklySummary.overview, 10);
+        if (performance.weeklySummary.skillTrends) addText(performance.weeklySummary.skillTrends, 10);
+        if (performance.weeklySummary.actionPlan?.length) {
+          performance.weeklySummary.actionPlan.forEach((a) => addText(`• ${a}`, 10));
+        }
+        y += 8;
+      }
+
+      if (performance.monthlySummary) {
+        addText('This Month', 14, { bold: true });
+        addText(performance.monthlySummary.overview, 10);
+        if (performance.monthlySummary.skillTrends) addText(performance.monthlySummary.skillTrends, 10);
+        if (performance.monthlySummary.actionPlan?.length) {
+          performance.monthlySummary.actionPlan.forEach((a) => addText(`• ${a}`, 10));
+        }
+        y += 8;
+      }
+
+      if (performance.aiInsight) {
+        addText('AI Insight', 14, { bold: true });
+        addText(performance.aiInsight, 10);
+      }
+
+      const safePeriod = performance.period.replace(/[^a-zA-Z0-9_-]/g, '_');
+      pdf.save(`Performance_Summary_${safePeriod}.pdf`);
+    } catch (err) {
+      console.error('PDF export error:', err);
+    }
   };
 
   const getScoreColor = (score: number) => {

@@ -47,6 +47,19 @@ interface UserProfile {
   profilePhoto: string | null;
 }
 
+/**
+ * Strip stage directions, emotional cues, and action descriptions from prospect text.
+ * Ensures TTS never says "(hesitant)" and transcript never shows "*sighs*".
+ */
+function cleanForSpeech(text: string): string {
+  return text
+    .replace(/\([^)]*\)/g, '')          // Remove (anything in parens)
+    .replace(/\*[^*]*\*/g, '')          // Remove *anything in asterisks*
+    .replace(/\[(?![\d£$€¥])[^\]]*\]/g, '') // Remove [narration] but not [£2,000]
+    .replace(/\s{2,}/g, ' ')            // Collapse double spaces
+    .trim();
+}
+
 function RoleplaySessionContent() {
   const params = useParams();
   const router = useRouter();
@@ -316,7 +329,7 @@ function RoleplaySessionContent() {
       // Speak prospect response (ElevenLabs TTS if configured, else browser speechSynthesis)
       if (!isMuted) {
         if (synthRef.current) synthRef.current.cancel();
-        const speakText = data.response;
+        const speakText = cleanForSpeech(data.response);
         const onEnd = () => setActiveSpeaker(null);
         try {
           // Get voice ID from prospect avatar (matches character appearance)
@@ -708,7 +721,7 @@ function RoleplaySessionContent() {
                             )}
                           </div>
                           <p className="text-sm text-white whitespace-pre-wrap">
-                            {msg.content}
+                            {msg.role === 'prospect' ? cleanForSpeech(msg.content) : msg.content}
                           </p>
                         </div>
                       ));
@@ -759,7 +772,7 @@ function RoleplaySessionContent() {
                               <Pin className="h-4 w-4 fill-current" />
                             </Button>
                           </div>
-                          <p className="text-sm text-white whitespace-pre-wrap">{msg.content}</p>
+                          <p className="text-sm text-white whitespace-pre-wrap">{msg.role === 'prospect' ? cleanForSpeech(msg.content) : msg.content}</p>
                         </div>
                       ))
                   )}

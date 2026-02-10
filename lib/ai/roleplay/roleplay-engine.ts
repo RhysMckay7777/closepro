@@ -182,6 +182,17 @@ RESPONSE RULES:
 - Use broken/interrupted sentences sometimes: "I just... I don't know if—", "Well the thing is—"
 - Do NOT use perfect grammar. Real people trail off, restart sentences, and ramble slightly
 
+CRITICAL FORMATTING RULE:
+- NEVER include stage directions, emotional cues, or action descriptions in your responses
+- Do NOT use parenthetical annotations like (sighing), (hesitant), (pausing), (skeptical), (laughing), (warmly), (nervously), etc.
+- Do NOT use asterisk actions like *sighs*, *pauses*, *leans forward*, *nervous laugh*
+- Express all emotions through your WORDS and TONE only
+- BAD: "(hesitant) I don't know about this..."
+- GOOD: "I don't know about this... honestly I'm not sure."
+- BAD: "(skeptical) Can you prove that?"
+- GOOD: "I mean... can you actually prove that though?"
+- Your responses must contain ONLY spoken dialogue — exactly what a real person would say out loud
+
 OBJECTION TIMING:
 - Do NOT raise price/investment objections until the closer has actually mentioned price or investment
 - Surface your FIRST real objection only AFTER the closer pitches or mentions cost
@@ -429,8 +440,8 @@ function cleanResponse(text: string): string {
     .replace(/\[(?![\d£$€¥])[^\]]*\]/g, '')
     // Remove *italicized narration*
     .replace(/\*[^*]+\*/g, '')
-    // Remove (parenthetical stage directions)
-    .replace(/\((?:sighs?|pauses?|laughs?|thinks?|thinking|hesitat\w*|nervous\w*|softly|quietly|long pause|beat|silence|takes? a (?:deep )?breath|leans? (?:back|forward)|nods?|shakes? head|smiles?|frowns?|tears? up|crying|emotional\w*|whispers?|chuckles?|clears? throat)\)/gi, '')
+    // Remove ALL (parenthetical stage directions) — catches (sighing), (still skeptical), (warmly), etc.
+    .replace(/\([^)]*\)/g, '')
     // Remove em-dash narration like —she pauses—
     .replace(/—[a-z][^—]*—/gi, '')
     // Collapse excess whitespace
