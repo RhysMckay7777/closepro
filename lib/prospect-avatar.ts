@@ -1,8 +1,9 @@
 /**
- * Resolve prospect avatar URL: use stored human portrait if present, else null.
- * Returns null when no real image is available so the UI can show a proper placeholder.
+ * Resolve prospect avatar URL: use stored human portrait if present,
+ * fall back to a static randomuser.me portrait based on name hash,
+ * or return null as a last resort.
  * IMPORTANT: Filters out cartoon/illustration URLs (DiceBear, UI Avatars, etc.)
- * so old prospects with cartoon avatars stored in DB will fall back to initials.
+ * so old prospects with cartoon avatars stored in DB will fall back to realistic photos.
  */
 
 // URLs matching these patterns are cartoon/illustration generators — reject them
@@ -18,18 +19,67 @@ const CARTOON_URL_PATTERNS = [
   'multiavatar.com',
 ];
 
+// Common female first names for gender inference
+const FEMALE_FIRST_NAMES = new Set([
+  'maria', 'sarah', 'emma', 'rachel', 'sophie', 'jessica', 'laura', 'hannah',
+  'charlotte', 'olivia', 'nicole', 'katie', 'amy', 'lisa', 'jennifer', 'emily',
+  'amanda', 'megan', 'ashley', 'brooke', 'hayley', 'lauren', 'bella', 'anna',
+  'natasha', 'rebecca', 'victoria', 'samantha', 'katherine', 'catherine',
+]);
+
+// Static fallback portrait IDs (randomuser.me)
+const MALE_PORTRAIT_IDS = [32, 45, 67, 22, 55, 78, 11, 36];
+const FEMALE_PORTRAIT_IDS = [44, 68, 33, 55, 12, 72, 26, 81];
+
+/**
+ * Hash a string to a consistent positive integer.
+ */
+function nameHash(name: string): number {
+  let hash = 0;
+  const s = name.toLowerCase().trim();
+  for (let i = 0; i < s.length; i++) {
+    hash = ((hash << 5) - hash) + s.charCodeAt(i);
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Infer gender from a prospect's first name.
+ */
+function inferGender(name?: string): 'male' | 'female' {
+  if (!name) return 'male';
+  const firstName = name.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+  return FEMALE_FIRST_NAMES.has(firstName) ? 'female' : 'male';
+}
+
+/**
+ * Get a deterministic static fallback portrait URL from randomuser.me.
+ */
+function getStaticFallbackUrl(name?: string): string {
+  const gender = inferGender(name);
+  const hash = nameHash(name || 'default');
+  const ids = gender === 'female' ? FEMALE_PORTRAIT_IDS : MALE_PORTRAIT_IDS;
+  const portraitId = ids[hash % ids.length];
+  const folder = gender === 'female' ? 'women' : 'men';
+  return `https://randomuser.me/api/portraits/${folder}/${portraitId}.jpg`;
+}
+
 export function resolveProspectAvatarUrl(
   prospectId: string,
   name?: string,
   avatarUrl?: string | null
 ): string | null {
-  if (!avatarUrl || !avatarUrl.trim()) return null;
+  if (!avatarUrl || !avatarUrl.trim()) {
+    // No stored URL — return a static fallback portrait
+    return getStaticFallbackUrl(name);
+  }
 
   // Reject any URL from cartoon/illustration avatar services
   const lower = avatarUrl.toLowerCase();
   for (const pattern of CARTOON_URL_PATTERNS) {
     if (lower.includes(pattern)) {
-      return null; // Force initials placeholder instead of cartoon
+      return getStaticFallbackUrl(name); // Return photo fallback instead of null
     }
   }
 
@@ -60,10 +110,7 @@ export function getProspectPlaceholderColor(name: string): string {
     'from-amber-400 to-orange-500',
     'from-cyan-400 to-sky-500',
   ];
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = ((hash << 5) - hash) + name.charCodeAt(i);
-    hash = hash & hash;
-  }
-  return colors[Math.abs(hash) % colors.length];
+  const hash = nameHash(name);
+  return colors[hash % colors.length];
 }
+

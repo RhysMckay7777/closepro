@@ -688,6 +688,15 @@ function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_r
     subSkills: { [c.id]: categoryScores[c.id] ?? 0 },
   }));
 
+  // Map objections to objectionAnalysis format for roleplay results page
+  const objectionAnalysis: ObjectionAnalysis[] = objections.map(o => ({
+    objection: o.objection,
+    pillar: o.pillar,
+    howRepHandled: o.howRepHandled || o.handling || '',
+    wasHandledWell: (o.handlingQuality ?? 5) >= 6,
+    howCouldBeHandledBetter: o.preventionOpportunity || '',
+  }));
+
   return {
     overallScore,
     categoryScores,
@@ -701,6 +710,7 @@ function normalizeAnalysis(analysis: any, _offerCategory?: 'b2c_health' | 'b2c_r
     prospectDifficulty,
     outcome,
     enhancedPriorityFixes: enhancedPriorityFixes.length > 0 ? enhancedPriorityFixes : undefined,
+    objectionAnalysis: objectionAnalysis.length > 0 ? objectionAnalysis : undefined,
   };
 }
 
