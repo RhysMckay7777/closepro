@@ -77,6 +77,181 @@ function getRangeDates(range: string): { start: Date; end: Date; label: string }
   }
 }
 
+// ── Helpers ──────────────────────────────────────────────────
+
+/** Safe JSON parse */
+function safeParse(raw: string | null | undefined): any {
+  if (!raw) return null;
+  try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return null; }
+}
+
+/** Parse skill scores from a single analysis record. Returns { categoryId: score0to10 } map. */
+function parseSkillScoresFlat(rawSkillScores: any): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!rawSkillScores) return out;
+
+  if (typeof rawSkillScores === 'object' && !Array.isArray(rawSkillScores)) {
+    // Object format: { authority: 7, ... } or { authority: { score: 7, ... }, ... }
+    for (const [key, val] of Object.entries(rawSkillScores)) {
+      if (typeof val === 'number') {
+        const label = getCategoryLabel(key);
+        out[label] = val * 10; // 0-10 → display scale 0-100
+      } else if (val && typeof val === 'object' && 'score' in (val as any)) {
+        const label = getCategoryLabel(key);
+        out[label] = ((val as any).score ?? 0) * 10;
+      }
+    }
+  } else if (Array.isArray(rawSkillScores)) {
+    // Array format: [{ category: "Authority", subSkills: { authority: 7 } }, ...]
+    for (const skill of rawSkillScores) {
+      if (skill?.category) {
+        const subSkills = skill.subSkills || {};
+        const vals = Object.values(subSkills) as number[];
+        const avg = vals.length > 0 ? vals.reduce((s, v) => s + v, 0) / vals.length : 0;
+        out[skill.category] = avg;
+      }
+    }
+  }
+  return out;
+}
+
+/** Parse category feedback JSON into per-category text fields. */
+function parseCategoryFeedbackText(raw: any): Record<string, { whatWasDoneWell: string; whatWasMissing: string; howItAffectedOutcome: string }> {
+  const out: Record<string, { whatWasDoneWell: string; whatWasMissing: string; howItAffectedOutcome: string }> = {};
+  if (!raw || typeof raw !== 'object') return out;
+
+  for (const [key, val] of Object.entries(raw)) {
+    if (val && typeof val === 'object') {
+      const v = val as any;
+      const label = getCategoryLabel(key);
+      out[label] = {
+        whatWasDoneWell: typeof v.whatWasDoneWell === 'string' ? v.whatWasDoneWell : '',
+        whatWasMissing: typeof v.whatWasMissing === 'string' ? v.whatWasMissing : '',
+        howItAffectedOutcome: typeof v.howItAffectedOutcome === 'string' ? v.howItAffectedOutcome : '',
+      };
+    }
+  }
+  return out;
+}
+
+interface AnalysisRow {
+  overallScore: number | null;
+  skillScores: any;
+  categoryFeedback: any;
+  createdAt: Date;
+  type: 'call' | 'roleplay';
+  // Join fields
+  offerId?: string | null;
+  offerCategory?: string | null;
+  offerName?: string | null;
+  actualDifficultyTier?: string | null;
+  selectedDifficulty?: string | null;
+  objectionData?: any;
+  priorityFixesData?: any;
+  // IDs for recent analyses
+  entityId?: string | null;
+  analysisId?: string | null;
+}
+
+/** Compute per-category averages, trends, and text summaries from a set of analyses. */
+function computeSkillBreakdown(
+  analyses: AnalysisRow[],
+  endDate: Date,
+) {
+  const categoryScores: Record<string, { total: number; count: number }> = {};
+  const categoryTexts: Record<string, { strengths: string[]; weaknesses: string[]; actionPoints: string[] }> = {};
+
+  // Per-analysis per-category scores for trend computation
+  const perAnalysisScores: Array<{ createdAt: Date; scores: Record<string, number> }> = [];
+
+  for (const analysis of analyses) {
+    const scores = parseSkillScoresFlat(analysis.skillScores);
+    if (Object.keys(scores).length > 0) {
+      perAnalysisScores.push({ createdAt: new Date(analysis.createdAt), scores });
+    }
+
+    for (const [cat, score] of Object.entries(scores)) {
+      if (!categoryScores[cat]) categoryScores[cat] = { total: 0, count: 0 };
+      categoryScores[cat].total += score;
+      categoryScores[cat].count += 1;
+    }
+
+    // Parse category feedback text
+    const feedback = parseCategoryFeedbackText(analysis.categoryFeedback);
+    for (const [cat, fb] of Object.entries(feedback)) {
+      if (!categoryTexts[cat]) categoryTexts[cat] = { strengths: [], weaknesses: [], actionPoints: [] };
+      if (fb.whatWasDoneWell) categoryTexts[cat].strengths.push(fb.whatWasDoneWell);
+      if (fb.whatWasMissing) categoryTexts[cat].weaknesses.push(fb.whatWasMissing);
+      if (fb.howItAffectedOutcome) categoryTexts[cat].actionPoints.push(fb.howItAffectedOutcome);
+    }
+  }
+
+  // Compute trend (first half vs second half)
+  const midpoint = Math.floor(perAnalysisScores.length / 2);
+  const firstHalf = perAnalysisScores.slice(midpoint); // older
+  const secondHalf = perAnalysisScores.slice(0, midpoint); // newer
+  const categoryTrends: Record<string, number> = {};
+  for (const cat of Object.keys(categoryScores)) {
+    const f = firstHalf.filter(r => r.scores[cat] != null);
+    const s = secondHalf.filter(r => r.scores[cat] != null);
+    const fAvg = f.length > 0 ? f.reduce((sum, r) => sum + (r.scores[cat] ?? 0), 0) / f.length : 0;
+    const sAvg = s.length > 0 ? s.reduce((sum, r) => sum + (r.scores[cat] ?? 0), 0) / s.length : 0;
+    categoryTrends[cat] = Math.round((sAvg - fAvg) * 10) / 10;
+  }
+
+  // Compute per-category weekly trend data (12 weeks ending at endDate)
+  const categoryTrendData: Record<string, number[]> = {};
+  for (const cat of Object.keys(categoryScores)) {
+    const weeklyScores: number[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const weekStart = new Date(endDate);
+      weekStart.setDate(weekStart.getDate() - (i * 7));
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 7);
+
+      const weekAnalyses = perAnalysisScores.filter(a => a.createdAt >= weekStart && a.createdAt < weekEnd && a.scores[cat] != null);
+      if (weekAnalyses.length > 0) {
+        weeklyScores.push(Math.round(weekAnalyses.reduce((s, a) => s + (a.scores[cat] ?? 0), 0) / weekAnalyses.length) / 10);
+      } else {
+        weeklyScores.push(0);
+      }
+    }
+    categoryTrendData[cat] = weeklyScores;
+  }
+
+  // Build sorted skill categories
+  const skillCategories = Object.entries(categoryScores).map(([category, data]) => {
+    const texts = categoryTexts[category] || { strengths: [], weaknesses: [], actionPoints: [] };
+    // Deduplicate and take most recent 3
+    const dedup = (arr: string[]) => [...new Set(arr)].slice(-3);
+    return {
+      category,
+      averageScore: Math.round(data.total / (data.count || 1)),
+      trend: categoryTrends[category] ?? 0,
+      trendData: categoryTrendData[category] ?? [],
+      strengths: dedup(texts.strengths),
+      weaknesses: dedup(texts.weaknesses),
+      actionPoints: dedup(texts.actionPoints),
+    };
+  }).sort((a, b) => b.averageScore - a.averageScore);
+
+  return skillCategories;
+}
+
+/** Compute best and worst categories from skill breakdown. */
+function computeBestWorst(skillCategories: ReturnType<typeof computeSkillBreakdown>) {
+  if (skillCategories.length === 0) return { bestCategory: null, bestCategoryScore: null, improvementOpportunity: null, improvementOpportunityScore: null };
+  return {
+    bestCategory: skillCategories[0].category,
+    bestCategoryScore: skillCategories[0].averageScore,
+    improvementOpportunity: skillCategories[skillCategories.length - 1].category,
+    improvementOpportunityScore: skillCategories[skillCategories.length - 1].averageScore,
+  };
+}
+
+// ── Main GET handler ─────────────────────────────────────────
+
 /**
  * Get current user's performance data
  */
@@ -105,14 +280,16 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id;
 
-    // Fetch call analyses (optionally with offer for breakdowns if column exists)
+    // ── Fetch call analyses (with categoryFeedback + priorityFixes) ──
     const callAnalysesRaw = await db
       .select({
         id: callAnalysis.id,
         callId: salesCalls.id,
         overallScore: callAnalysis.overallScore,
         skillScores: callAnalysis.skillScores,
+        categoryFeedback: callAnalysis.categoryFeedback,
         objectionDetails: callAnalysis.objectionDetails,
+        priorityFixes: callAnalysis.priorityFixes,
         createdAt: salesCalls.createdAt,
       })
       .from(callAnalysis)
@@ -126,32 +303,29 @@ export async function GET(request: NextRequest) {
       )
       .orderBy(desc(salesCalls.createdAt));
 
-    // Parse skillScores from JSON strings
-    const callAnalyses = callAnalysesRaw.map(analysis => {
-      let parsedSkillScores = null;
-      if (analysis.skillScores) {
-        try {
-          parsedSkillScores = typeof analysis.skillScores === 'string'
-            ? JSON.parse(analysis.skillScores)
-            : analysis.skillScores;
-        } catch (e) {
-          // Invalid JSON, keep as null
-        }
-      }
-      return {
-        ...analysis,
-        skillScores: parsedSkillScores,
-      };
-    });
+    // Parse JSON fields
+    const callAnalyses: AnalysisRow[] = callAnalysesRaw.map(a => ({
+      overallScore: a.overallScore,
+      skillScores: safeParse(a.skillScores as any),
+      categoryFeedback: safeParse(a.categoryFeedback as any),
+      objectionData: a.objectionDetails,
+      priorityFixesData: a.priorityFixes,
+      createdAt: a.createdAt,
+      type: 'call' as const,
+      entityId: a.callId,
+      analysisId: a.id,
+    }));
 
-    // Fetch roleplay analyses with offer and difficulty
+    // ── Fetch roleplay analyses (with categoryFeedback + priorityFixes) ──
     const roleplayAnalysesRaw = await db
       .select({
         id: roleplayAnalysis.id,
         sessionId: roleplaySessions.id,
         overallScore: roleplayAnalysis.overallScore,
         skillScores: roleplayAnalysis.skillScores,
+        categoryFeedback: roleplayAnalysis.categoryFeedback,
         objectionAnalysis: roleplayAnalysis.objectionAnalysis,
+        priorityFixes: roleplayAnalysis.priorityFixes,
         createdAt: roleplaySessions.createdAt,
         offerId: roleplaySessions.offerId,
         offerCategory: offers.offerCategory,
@@ -171,31 +345,29 @@ export async function GET(request: NextRequest) {
       )
       .orderBy(desc(roleplaySessions.createdAt));
 
-    // Parse skillScores from JSON strings
-    const roleplayAnalyses = roleplayAnalysesRaw.map(analysis => {
-      let parsedSkillScores = null;
-      if (analysis.skillScores) {
-        try {
-          parsedSkillScores = typeof analysis.skillScores === 'string'
-            ? JSON.parse(analysis.skillScores)
-            : analysis.skillScores;
-        } catch (e) {
-          // Invalid JSON, keep as null
-        }
-      }
-      return {
-        ...analysis,
-        skillScores: parsedSkillScores,
-      };
-    });
+    // Parse JSON fields
+    const roleplayAnalyses: AnalysisRow[] = roleplayAnalysesRaw.map(a => ({
+      overallScore: a.overallScore,
+      skillScores: safeParse(a.skillScores as any),
+      categoryFeedback: safeParse(a.categoryFeedback as any),
+      objectionData: a.objectionAnalysis,
+      priorityFixesData: a.priorityFixes,
+      createdAt: a.createdAt,
+      type: 'roleplay' as const,
+      offerId: a.offerId,
+      offerCategory: a.offerCategory,
+      offerName: a.offerName,
+      selectedDifficulty: a.selectedDifficulty,
+      actualDifficultyTier: a.actualDifficultyTier,
+      entityId: a.sessionId,
+      analysisId: a.id,
+    }));
 
-    // Combine and sort all analyses
-    const allAnalyses = [
-      ...callAnalyses.map(a => ({ ...a, type: 'call' as const })),
-      ...roleplayAnalyses.map(a => ({ ...a, type: 'roleplay' as const })),
-    ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // ── Combine and sort ──
+    const allAnalyses = [...callAnalyses, ...roleplayAnalyses]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-    // Calculate averages
+    // ── Calculate overall averages ──
     const totalAnalyses = allAnalyses.length;
     const averageOverall = totalAnalyses > 0
       ? Math.round(allAnalyses.reduce((sum, a) => sum + (a.overallScore || 0), 0) / totalAnalyses)
@@ -205,183 +377,65 @@ export async function GET(request: NextRequest) {
       ? Math.round(roleplayOnly.reduce((sum, a) => sum + (a.overallScore || 0), 0) / roleplayOnly.length)
       : 0;
 
-
-    // Calculate trend (compare first half vs second half)
+    // ── Calculate trend ──
     let trend: 'improving' | 'declining' | 'neutral' = 'neutral';
     if (allAnalyses.length >= 4) {
       const midpoint = Math.floor(allAnalyses.length / 2);
       const firstHalf = allAnalyses.slice(midpoint);
       const secondHalf = allAnalyses.slice(0, midpoint);
-
       const firstHalfAvg = firstHalf.reduce((sum, a) => sum + (a.overallScore || 0), 0) / firstHalf.length;
       const secondHalfAvg = secondHalf.reduce((sum, a) => sum + (a.overallScore || 0), 0) / secondHalf.length;
-
       const diff = secondHalfAvg - firstHalfAvg;
       if (diff > 2) trend = 'improving';
       else if (diff < -2) trend = 'declining';
     }
 
-    // Group by time periods for chart data (last 12 weeks)
-    const weeklyData: Array<{ week: string; score: number; count: number }> = [];
-    const now = new Date();
+    // ── FIX P10: Weekly chart data anchored to endDate, not now ──
+    const generateWeeklyData = (analyses: AnalysisRow[]) => {
+      const weekly: Array<{ week: string; score: number; count: number }> = [];
+      for (let i = 11; i >= 0; i--) {
+        const weekStart = new Date(endDate);
+        weekStart.setDate(weekStart.getDate() - (i * 7));
+        weekStart.setHours(0, 0, 0, 0);
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 7);
 
-    for (let i = 11; i >= 0; i--) {
-      const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - (i * 7));
-      weekStart.setHours(0, 0, 0, 0);
-
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-
-      const weekAnalyses = allAnalyses.filter(a => {
-        const date = new Date(a.createdAt);
-        return date >= weekStart && date < weekEnd;
-      });
-
-      const weekScore = weekAnalyses.length > 0
-        ? Math.round(weekAnalyses.reduce((sum, a) => sum + (a.overallScore || 0), 0) / weekAnalyses.length)
-        : 0;
-
-      weeklyData.push({
-        week: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        score: weekScore,
-        count: weekAnalyses.length,
-      });
-    }
-
-    // Generate separate weekly data for calls and roleplays
-    const callWeeklyData: Array<{ week: string; score: number; count: number }> = [];
-    const roleplayWeeklyData: Array<{ week: string; score: number; count: number }> = [];
-
-    for (let i = 11; i >= 0; i--) {
-      const weekStart = new Date(now);
-      weekStart.setDate(weekStart.getDate() - (i * 7));
-      weekStart.setHours(0, 0, 0, 0);
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 7);
-      const weekLabel = weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-      const callsInWeek = allAnalyses.filter(a => a.type === 'call' && new Date(a.createdAt) >= weekStart && new Date(a.createdAt) < weekEnd);
-      const roleplaysInWeek = allAnalyses.filter(a => a.type === 'roleplay' && new Date(a.createdAt) >= weekStart && new Date(a.createdAt) < weekEnd);
-
-      callWeeklyData.push({
-        week: weekLabel,
-        score: callsInWeek.length > 0 ? Math.round(callsInWeek.reduce((s, a) => s + (a.overallScore || 0), 0) / callsInWeek.length) : 0,
-        count: callsInWeek.length,
-      });
-      roleplayWeeklyData.push({
-        week: weekLabel,
-        score: roleplaysInWeek.length > 0 ? Math.round(roleplaysInWeek.reduce((s, a) => s + (a.overallScore || 0), 0) / roleplaysInWeek.length) : 0,
-        count: roleplaysInWeek.length,
-      });
-    }
-
-    // Calculate skill category averages
-    const skillCategoryScores: Record<string, { total: number; count: number }> = {};
-
-    allAnalyses.forEach(analysis => {
-      const skillScoresData = analysis.skillScores;
-
-      if (skillScoresData) {
-        // Handle array format
-        if (Array.isArray(skillScoresData)) {
-          skillScoresData.forEach((skill: any) => {
-            if (skill?.category) {
-              const category = skill.category;
-              const subSkills = skill.subSkills || {};
-              const subSkillValues = Object.values(subSkills) as number[];
-              const avg = subSkillValues.length > 0
-                ? subSkillValues.reduce((sum, v) => sum + v, 0) / subSkillValues.length
-                : 0;
-
-              if (!skillCategoryScores[category]) {
-                skillCategoryScores[category] = { total: 0, count: 0 };
-              }
-              skillCategoryScores[category].total += avg;
-              skillCategoryScores[category].count += 1;
-            }
-          });
-        } else if (typeof skillScoresData === 'object') {
-          // Handle object format
-          Object.values(skillScoresData).forEach((skill: any) => {
-            if (skill?.category) {
-              const category = skill.category;
-              const subSkills = skill.subSkills || {};
-              const subSkillValues = Object.values(subSkills) as number[];
-              const avg = subSkillValues.length > 0
-                ? subSkillValues.reduce((sum, v) => sum + v, 0) / subSkillValues.length
-                : 0;
-
-              if (!skillCategoryScores[category]) {
-                skillCategoryScores[category] = { total: 0, count: 0 };
-              }
-              skillCategoryScores[category].total += avg;
-              skillCategoryScores[category].count += 1;
-            }
-          });
-        }
-      }
-    });
-
-    // Average skill categories with trend (first half vs second half within period)
-    const categoryScoresByAnalysis: Array<Record<string, number>> = [];
-    allAnalyses.forEach(analysis => {
-      const row: Record<string, number> = {};
-      const skillScoresData = analysis.skillScores;
-      if (skillScoresData && typeof skillScoresData === 'object' && !Array.isArray(skillScoresData)) {
-        const entries = Object.entries(skillScoresData);
-        if (entries.length > 0 && typeof entries[0][1] === 'number') {
-          entries.forEach(([id, score]) => {
-            const category = getCategoryLabel(id);
-            row[category] = (typeof score === 'number' ? score : 0) * 10;
-          });
-        }
-      }
-      if (Object.keys(row).length === 0 && skillScoresData && Array.isArray(skillScoresData)) {
-        skillScoresData.forEach((skill: { category?: string; subSkills?: Record<string, number> }) => {
-          if (skill?.category) {
-            const subSkillValues = Object.values(skill.subSkills || {}) as number[];
-            row[skill.category] = subSkillValues.length > 0
-              ? subSkillValues.reduce((s, v) => s + v, 0) / subSkillValues.length
-              : 0;
-          }
+        const weekAnalyses = analyses.filter(a => {
+          const date = new Date(a.createdAt);
+          return date >= weekStart && date < weekEnd;
+        });
+        const weekScore = weekAnalyses.length > 0
+          ? Math.round(weekAnalyses.reduce((sum, a) => sum + (a.overallScore || 0), 0) / weekAnalyses.length)
+          : 0;
+        weekly.push({
+          week: weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          score: weekScore,
+          count: weekAnalyses.length,
         });
       }
-      categoryScoresByAnalysis.push(row);
-    });
-    const midpoint = Math.floor(allAnalyses.length / 2);
-    const firstHalfRows = categoryScoresByAnalysis.slice(midpoint);
-    const secondHalfRows = categoryScoresByAnalysis.slice(0, midpoint);
-    const categoryTrends: Record<string, number> = {};
-    Object.keys(skillCategoryScores).forEach(cat => {
-      const firstAvg = firstHalfRows.filter(r => r[cat] != null).length > 0
-        ? firstHalfRows.reduce((s, r) => s + (r[cat] ?? 0), 0) / firstHalfRows.filter(r => r[cat] != null).length
-        : 0;
-      const secondAvg = secondHalfRows.filter(r => r[cat] != null).length > 0
-        ? secondHalfRows.reduce((s, r) => s + (r[cat] ?? 0), 0) / secondHalfRows.filter(r => r[cat] != null).length
-        : 0;
-      categoryTrends[cat] = Math.round((secondAvg - firstAvg) * 10) / 10;
-    });
+      return weekly;
+    };
 
-    const skillCategories = Object.entries(skillCategoryScores).map(([category, data]) => ({
-      category,
-      averageScore: Math.round(data.total / (data.count || 1)),
-      trend: (categoryTrends[category] ?? 0) as number,
-    })).sort((a, b) => b.averageScore - a.averageScore);
+    const weeklyData = generateWeeklyData(allAnalyses);
+    const callWeeklyData = generateWeeklyData(callAnalyses);
+    const roleplayWeeklyData = generateWeeklyData(roleplayAnalyses);
 
-    // If no skill categories, use pillar scores as fallback
-    let strengths: Array<{ category: string; averageScore: number }> = [];
-    let weaknesses: Array<{ category: string; averageScore: number }> = [];
+    // ── FIX P4 + P7: Compute SEPARATE skill breakdowns ──
+    const allSkillCategories = computeSkillBreakdown(allAnalyses, endDate);
+    const callSkillCategories = computeSkillBreakdown(callAnalyses, endDate);
+    const roleplaySkillCategories = computeSkillBreakdown(roleplayAnalyses, endDate);
 
-    if (skillCategories.length > 0) {
-      strengths = skillCategories.slice(0, 3);
-      weaknesses = skillCategories.slice(-3).reverse();
-    }
+    const callBestWorst = computeBestWorst(callSkillCategories);
+    const roleplayBestWorst = computeBestWorst(roleplaySkillCategories);
 
-    // By offer type (offer category)
+    // Strengths / weaknesses (from combined for backward compat)
+    const strengths = allSkillCategories.length > 0 ? allSkillCategories.slice(0, 3) : [];
+    const weaknesses = allSkillCategories.length > 0 ? allSkillCategories.slice(-3).reverse() : [];
+
+    // ── By offer type ──
     const byOfferType: Record<string, { averageScore: number; count: number }> = {};
     allAnalyses.forEach(a => {
-      const category = (a as any).offerType ?? (a as any).offerCategory ?? 'unknown';
+      const category = a.offerCategory ?? 'unknown';
       const key = typeof category === 'string' ? category : 'unknown';
       if (!byOfferType[key]) byOfferType[key] = { averageScore: 0, count: 0 };
       byOfferType[key].averageScore += a.overallScore ?? 0;
@@ -392,11 +446,11 @@ export async function GET(request: NextRequest) {
       d.averageScore = d.count > 0 ? Math.round(d.averageScore / d.count) : 0;
     });
 
-    // By difficulty (roleplay only; calls don't have difficulty in this query)
+    // ── By difficulty ──
     const byDifficulty: Record<string, { averageScore: number; count: number }> = {};
     allAnalyses.forEach(a => {
       if (a.type !== 'roleplay') return;
-      const tier = (a as any).actualDifficultyTier ?? (a as any).selectedDifficulty ?? 'unknown';
+      const tier = a.actualDifficultyTier ?? a.selectedDifficulty ?? 'unknown';
       const key = typeof tier === 'string' ? tier : 'unknown';
       if (!byDifficulty[key]) byDifficulty[key] = { averageScore: 0, count: 0 };
       byDifficulty[key].averageScore += a.overallScore ?? 0;
@@ -407,31 +461,24 @@ export async function GET(request: NextRequest) {
       d.averageScore = d.count > 0 ? Math.round(d.averageScore / d.count) : 0;
     });
 
-    // By offer (specific offer)
-    const byOffer: Array<{ offerId: string; offerName: string; averageScore: number; count: number }> = [];
+    // ── By offer (specific) ──
     const byOfferMap: Record<string, { name: string; total: number; count: number }> = {};
     allAnalyses.forEach(a => {
-      const offerId = (a as any).offerId;
-      const name = (a as any).offerName ?? 'Unknown';
+      const offerId = a.offerId;
+      const name = a.offerName ?? 'Unknown';
       const key = offerId ?? 'none';
       if (!byOfferMap[key]) byOfferMap[key] = { name, total: 0, count: 0 };
       byOfferMap[key].total += a.overallScore ?? 0;
       byOfferMap[key].count += 1;
     });
-    Object.entries(byOfferMap).forEach(([id, d]) => {
-      byOffer.push({
-        offerId: id,
-        offerName: d.name,
-        averageScore: d.count > 0 ? Math.round(d.total / d.count) : 0,
-        count: d.count,
-      });
-    });
-    byOffer.sort((a, b) => b.averageScore - a.averageScore);
+    const byOffer = Object.entries(byOfferMap).map(([id, d]) => ({
+      offerId: id,
+      offerName: d.name,
+      averageScore: d.count > 0 ? Math.round(d.total / d.count) : 0,
+      count: d.count,
+    })).sort((a, b) => b.averageScore - a.averageScore);
 
-    // Objection insights — aggregate from objectionDetails (calls) and objectionAnalysis (roleplays)
-    const objectionCounts: Record<string, { count: number; pillar: string }> = {};
-    const pillarHandlingScores: Record<string, { total: number; count: number }> = {};
-
+    // ── FIX P9: Objection insights with rootCause, preventionOpportunity, handlingQuality ──
     const parseObjections = (raw: string | null | undefined): any[] => {
       if (!raw) return [];
       try {
@@ -440,47 +487,68 @@ export async function GET(request: NextRequest) {
       } catch { return []; }
     };
 
-    // Process call objection data
-    callAnalyses.forEach(a => {
-      const objections = parseObjections((a as any).objectionDetails);
-      objections.forEach((obj: any) => {
+    // Aggregate objection data — track extra fields per objection
+    const objectionAgg: Record<string, {
+      count: number;
+      pillar: string;
+      rootCause: string | null;
+      preventionOpportunity: string | null;
+      handlingQuality: number | null;
+      handlingQualityTotal: number;
+      handlingQualityCount: number;
+    }> = {};
+    const pillarHandlingScores: Record<string, { total: number; count: number }> = {};
+
+    const processObjections = (objections: any[], source: string) => {
+      for (const obj of objections) {
         const text = obj.objection || obj.text || 'Unknown';
         const pillar = obj.pillar || obj.classification || 'Unknown';
-        const handling = typeof obj.handling === 'number' ? obj.handling : (typeof obj.score === 'number' ? obj.score : null);
+        const handling = typeof obj.handling === 'number' ? obj.handling : (typeof obj.handlingQuality === 'number' ? obj.handlingQuality : (typeof obj.score === 'number' ? obj.score : null));
         const key = text.toLowerCase().trim();
-        if (!objectionCounts[key]) objectionCounts[key] = { count: 0, pillar };
-        objectionCounts[key].count += 1;
+
+        if (!objectionAgg[key]) {
+          objectionAgg[key] = {
+            count: 0,
+            pillar,
+            rootCause: null,
+            preventionOpportunity: null,
+            handlingQuality: null,
+            handlingQualityTotal: 0,
+            handlingQualityCount: 0,
+          };
+        }
+        objectionAgg[key].count += 1;
+        // Carry through the most recent non-null rootCause, preventionOpportunity
+        if (obj.rootCause) objectionAgg[key].rootCause = obj.rootCause;
+        if (obj.preventionOpportunity) objectionAgg[key].preventionOpportunity = obj.preventionOpportunity;
         if (handling != null) {
+          objectionAgg[key].handlingQualityTotal += handling;
+          objectionAgg[key].handlingQualityCount += 1;
           if (!pillarHandlingScores[pillar]) pillarHandlingScores[pillar] = { total: 0, count: 0 };
           pillarHandlingScores[pillar].total += handling;
           pillarHandlingScores[pillar].count += 1;
         }
-      });
-    });
+      }
+    };
 
-    // Process roleplay objection data
-    roleplayAnalyses.forEach(a => {
-      const objections = parseObjections((a as any).objectionAnalysis);
-      objections.forEach((obj: any) => {
-        const text = obj.objection || obj.text || 'Unknown';
-        const pillar = obj.pillar || obj.classification || 'Unknown';
-        const handling = typeof obj.handling === 'number' ? obj.handling : (typeof obj.score === 'number' ? obj.score : null);
-        const key = text.toLowerCase().trim();
-        if (!objectionCounts[key]) objectionCounts[key] = { count: 0, pillar };
-        objectionCounts[key].count += 1;
-        if (handling != null) {
-          if (!pillarHandlingScores[pillar]) pillarHandlingScores[pillar] = { total: 0, count: 0 };
-          pillarHandlingScores[pillar].total += handling;
-          pillarHandlingScores[pillar].count += 1;
-        }
-      });
-    });
+    // Process call and roleplay objections
+    callAnalyses.forEach(a => processObjections(parseObjections(a.objectionData), 'call'));
+    roleplayAnalyses.forEach(a => processObjections(parseObjections(a.objectionData), 'roleplay'));
 
-    // Build objection insights
-    const topObjections = Object.entries(objectionCounts)
+    // Build top objections with enriched fields
+    const topObjections = Object.entries(objectionAgg)
       .sort((a, b) => b[1].count - a[1].count)
       .slice(0, 5)
-      .map(([text, data]) => ({ text, count: data.count, pillar: data.pillar }));
+      .map(([text, data]) => ({
+        text,
+        count: data.count,
+        pillar: data.pillar,
+        rootCause: data.rootCause ?? undefined,
+        preventionOpportunity: data.preventionOpportunity ?? undefined,
+        handlingQuality: data.handlingQualityCount > 0
+          ? Math.round((data.handlingQualityTotal / data.handlingQualityCount) * 10) / 10
+          : undefined,
+      }));
 
     const pillarAverages = Object.entries(pillarHandlingScores).map(([pillar, data]) => ({
       pillar,
@@ -496,16 +564,37 @@ export async function GET(request: NextRequest) {
       objectionGuidance = `You encounter "${topObjections[0].text}" most often (${topObjections[0].count}x). Prepare a stronger script for this objection.`;
     }
 
+    // FIX P9: Aggregate priorityFixes into improvementActions
+    const improvementActions: Array<{ problem: string; whatToDoDifferently: string; whenToApply: string; whyItMatters: string }> = [];
+    const seenProblems = new Set<string>();
+    for (const analysis of allAnalyses) {
+      const fixes = parseObjections(analysis.priorityFixesData); // reuse generic JSON array parser
+      for (const fix of fixes) {
+        if (fix.problem && !seenProblems.has(fix.problem)) {
+          seenProblems.add(fix.problem);
+          improvementActions.push({
+            problem: fix.problem,
+            whatToDoDifferently: fix.whatToDoDifferently || fix.whatToDo || '',
+            whenToApply: fix.whenToApply || '',
+            whyItMatters: fix.whyItMatters || '',
+          });
+          if (improvementActions.length >= 5) break;
+        }
+      }
+      if (improvementActions.length >= 5) break;
+    }
+
     const objectionInsights = topObjections.length > 0 ? {
       topObjections,
       pillarBreakdown: pillarAverages,
       weakestArea: weakestPillar ? { pillar: weakestPillar.pillar, averageHandling: weakestPillar.averageHandling } : null,
       guidance: objectionGuidance,
+      improvementActions: improvementActions.length > 0 ? improvementActions : undefined,
     } : null;
 
-    // AI insight (template-driven from top/bottom categories and difficulty)
-    const bestCat = skillCategories[0];
-    const worstCat = skillCategories[skillCategories.length - 1];
+    // ── AI insight ──
+    const bestCat = allSkillCategories[0];
+    const worstCat = allSkillCategories[allSkillCategories.length - 1];
     const difficultyKeys = Object.keys(byDifficulty);
     let aiInsight = '';
     if (bestCat && worstCat) {
@@ -520,7 +609,7 @@ export async function GET(request: NextRequest) {
       aiInsight = `You have ${totalAnalyses} session(s) in this period. Keep practicing to see skill breakdowns.`;
     }
 
-    // Weekly summary (last 7 days) and monthly summary (current month) - template-driven
+    // ── Summaries ──
     const weekAgo = new Date();
     weekAgo.setDate(weekAgo.getDate() - 7);
     const thisMonthStart = new Date();
@@ -536,34 +625,44 @@ export async function GET(request: NextRequest) {
       : 0;
     const weeklySummary = {
       overview: `Last 7 days: ${weekAnalyses.length} session(s), average score ${weekAvg}.`,
-      skillTrends: skillCategories.length > 0 ? `Top: ${skillCategories[0].category}. Focus: ${skillCategories[skillCategories.length - 1]?.category ?? 'N/A'}.` : '',
+      skillTrends: allSkillCategories.length > 0 ? `Top: ${allSkillCategories[0].category}. Focus: ${allSkillCategories[allSkillCategories.length - 1]?.category ?? 'N/A'}.` : '',
       actionPlan: ['Review lowest-scoring category', 'Practice objection handling', 'Book a roleplay session'].slice(0, 3),
     };
     const monthlySummary = {
       overview: `This month: ${monthAnalyses.length} session(s), average score ${monthAvg}.`,
-      skillTrends: skillCategories.length > 0 ? `Best: ${skillCategories[0].category}. Improve: ${skillCategories[skillCategories.length - 1]?.category ?? 'N/A'}.` : '',
+      skillTrends: allSkillCategories.length > 0 ? `Best: ${allSkillCategories[0].category}. Improve: ${allSkillCategories[allSkillCategories.length - 1]?.category ?? 'N/A'}.` : '',
       actionPlan: ['Set a weekly practice goal', 'Compare scores by offer type', 'Export summary for coaching'].slice(0, 3),
     };
 
+    // ── FIX P4: Separate summaries for calls vs roleplays ──
     const callOnly = allAnalyses.filter(a => a.type === 'call');
     const roleplayOnlyForSummary = allAnalyses.filter(a => a.type === 'roleplay');
+
+    // Compute separate trends for calls and roleplays
+    const computeTrend = (analyses: AnalysisRow[]): 'improving' | 'declining' | 'neutral' => {
+      if (analyses.length < 4) return 'neutral';
+      const mp = Math.floor(analyses.length / 2);
+      const fh = analyses.slice(mp);
+      const sh = analyses.slice(0, mp);
+      const fhAvg = fh.reduce((s, a) => s + (a.overallScore || 0), 0) / fh.length;
+      const shAvg = sh.reduce((s, a) => s + (a.overallScore || 0), 0) / sh.length;
+      const d = shAvg - fhAvg;
+      if (d > 2) return 'improving';
+      if (d < -2) return 'declining';
+      return 'neutral';
+    };
+
     const salesCallsSummary = {
       totalCalls: callAnalyses.length,
       averageOverall: callOnly.length > 0 ? Math.round(callOnly.reduce((s, a) => s + (a.overallScore ?? 0), 0) / callOnly.length) : 0,
-      bestCategory: skillCategories.length > 0 ? skillCategories[0].category : null,
-      bestCategoryScore: skillCategories.length > 0 ? skillCategories[0].averageScore : null,
-      improvementOpportunity: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].category : null,
-      improvementOpportunityScore: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].averageScore : null,
-      trend,
+      ...callBestWorst,
+      trend: computeTrend(callOnly),
     };
     const roleplaysSummary = {
       totalRoleplays: roleplayAnalyses.length,
       averageRoleplayScore: roleplayOnlyForSummary.length > 0 ? Math.round(roleplayOnlyForSummary.reduce((s, a) => s + (a.overallScore ?? 0), 0) / roleplayOnlyForSummary.length) : 0,
-      bestCategory: skillCategories.length > 0 ? skillCategories[0].category : null,
-      bestCategoryScore: skillCategories.length > 0 ? skillCategories[0].averageScore : null,
-      improvementOpportunity: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].category : null,
-      improvementOpportunityScore: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].averageScore : null,
-      trend,
+      ...roleplayBestWorst,
+      trend: computeTrend(roleplayOnlyForSummary),
     };
 
     return NextResponse.json({
@@ -580,7 +679,7 @@ export async function GET(request: NextRequest) {
       weeklyData,
       callWeeklyData,
       roleplayWeeklyData,
-      skillCategories,
+      skillCategories: allSkillCategories,
       strengths,
       weaknesses,
       byOfferType,
@@ -591,11 +690,11 @@ export async function GET(request: NextRequest) {
       weeklySummary,
       monthlySummary,
       recentAnalyses: allAnalyses.slice(0, 10).map(a => ({
-        id: a.type === 'call' ? (a as any).callId : (a as any).sessionId ?? a.id,
+        id: a.entityId ?? a.analysisId ?? '',
         type: a.type,
         overallScore: a.overallScore,
         createdAt: a.createdAt,
-        difficultyTier: (a as any).actualDifficultyTier ?? (a as any).selectedDifficulty ?? null,
+        difficultyTier: a.actualDifficultyTier ?? a.selectedDifficulty ?? null,
       })),
     });
   } catch (error) {

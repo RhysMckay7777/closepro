@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Minus, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, TrendingDown, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -98,6 +98,7 @@ export default function PerformancePage() {
   const [selectionMode, setSelectionMode] = useState<'range' | 'month'>('range');
   const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [dataSource, setDataSource] = useState<'all' | 'calls' | 'roleplays'>('all');
+  const [box4Tab, setBox4Tab] = useState<'offerType' | 'offer' | 'difficulty'>('offerType');
 
   const years = [selectedYear - 2, selectedYear - 1, selectedYear, selectedYear + 1].filter((y) => y >= 2020 && y <= 2030);
 
@@ -324,7 +325,7 @@ export default function PerformancePage() {
             <CardDescription>Based on {performance.period}. Data: analysed sales calls only.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="text-center p-4 rounded-lg bg-muted/30">
                 <p className="text-sm text-muted-foreground mb-2">Overall Score</p>
                 <p className={`text-4xl font-bold ${getScoreColor(performance.salesCallsSummary?.averageOverall ?? performance.averageOverall)}`}>
@@ -353,15 +354,6 @@ export default function PerformancePage() {
                     {performance.salesCallsSummary?.improvementOpportunityScore ?? performance.weaknesses[0]?.averageScore}
                   </p>
                 )}
-              </div>
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
-                <div className="flex items-center justify-center gap-1 mt-2">
-                  {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
-                  {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
-                  {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
               </div>
             </div>
 
@@ -421,7 +413,7 @@ export default function PerformancePage() {
             <CardDescription>Based on {performance.period}. Data: roleplay sessions only.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="text-center p-4 rounded-lg bg-muted/30">
                 <p className="text-sm text-muted-foreground mb-2">Average Roleplay Score</p>
                 <p className={`text-4xl font-bold ${getScoreColor(performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0)}`}>
@@ -446,15 +438,6 @@ export default function PerformancePage() {
                     {performance.roleplaysSummary.improvementOpportunityScore}
                   </p>
                 )}
-              </div>
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
-                <div className="flex items-center justify-center gap-1 mt-2">
-                  {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
-                  {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
-                  {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
               </div>
             </div>
 
@@ -507,13 +490,13 @@ export default function PerformancePage() {
       )}
 
       {/* Sales Skill Breakdown (10 categories from API) */}
-      {performance.skillCategories.length > 0 && (
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader>
-            <CardTitle>Sales Skills Breakdown</CardTitle>
-            <CardDescription>Average score and trend per category (from analyses). Sales categories defined in Knowledge Doc: Sales Call Scoring Framework.</CardDescription>
-          </CardHeader>
-          <CardContent>
+      <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+        <CardHeader>
+          <CardTitle>Sales Skills Breakdown</CardTitle>
+          <CardDescription>Average score and trend per category (from analyses). Sales categories defined in Knowledge Doc: Sales Call Scoring Framework.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {performance.skillCategories.length > 0 ? (
             <div className="space-y-1">
               {performance.skillCategories.map((skill, idx) => {
                 const isExpanded = expandedCategories.has(idx);
@@ -557,7 +540,7 @@ export default function PerformancePage() {
                     {isExpanded && (
                       <div className="px-4 pb-4 pt-1 space-y-3 border-t border-white/10">
                         {/* Trend sparkline */}
-                        {skill.trendData && skill.trendData.length > 1 && (
+                        {skill.trendData && skill.trendData.some(v => v > 0) && (
                           <div>
                             <p className="text-xs font-semibold text-muted-foreground mb-1">Trend Over Time</p>
                             <svg viewBox={`0 0 ${(skill.trendData.length - 1) * 20} 30`} className="w-full h-8" preserveAspectRatio="none">
@@ -604,78 +587,123 @@ export default function PerformancePage() {
                 );
               })}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-muted-foreground">No scored sessions yet.</p>
+              <p className="text-sm text-muted-foreground mt-1">Complete a call analysis or roleplay to see your skills breakdown.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-      {/* Breakdowns: by offer type, difficulty, offer */}
-      {(performance.byOfferType && Object.keys(performance.byOfferType).length > 0) ||
+      {/* Box 4: Average Scores By (Tabs) */}
+      {((performance.byOfferType && Object.keys(performance.byOfferType).length > 0) ||
         (performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0) ||
-        (performance.byOffer && performance.byOffer.length > 0) ? (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {performance.byOfferType && Object.keys(performance.byOfferType).length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">By Offer Type</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {Object.entries(performance.byOfferType).map(([k, v]) => (
-                    <div key={k} className="flex justify-between text-sm">
-                      <span>{OFFER_TYPE_LABELS[k] ?? k}</span>
-                      <span className="font-medium">{v.averageScore} ({v.count})</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-          {performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Prospect Difficulty Trends</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border/40">
-                      <th className="text-left py-1.5 font-medium text-muted-foreground">Difficulty</th>
-                      <th className="text-right py-1.5 font-medium text-muted-foreground">Calls</th>
-                      <th className="text-right py-1.5 font-medium text-muted-foreground">Avg Score</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(performance.byDifficulty).map(([k, v]) => (
-                      <tr key={k} className="border-b border-border/20">
-                        <td className="py-1.5">{DIFFICULTY_LABELS[k] ?? k}</td>
-                        <td className="py-1.5 text-right">{v.count}</td>
-                        <td className={`py-1.5 text-right font-medium ${getScoreColor(v.averageScore)}`}>{v.averageScore}</td>
+        (performance.byOffer && performance.byOffer.length > 0)) && (
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader>
+              <CardTitle>Average Scores By</CardTitle>
+              <CardDescription>Performance breakdown by offer type, specific offer, and prospect difficulty</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {/* Tab buttons */}
+              <div className="flex rounded-lg border border-white/10 overflow-hidden mb-4">
+                {[
+                  { key: 'offerType' as const, label: 'By Offer Type' },
+                  { key: 'offer' as const, label: 'By Specific Offer' },
+                  { key: 'difficulty' as const, label: 'By Prospect Difficulty' },
+                ].map((tab) => (
+                  <button
+                    key={tab.key}
+                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${box4Tab === tab.key
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted/20 hover:bg-muted/40 text-muted-foreground'
+                      }`}
+                    onClick={() => setBox4Tab(tab.key)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab content */}
+              {box4Tab === 'offerType' && (
+                performance.byOfferType && Object.keys(performance.byOfferType).length > 0 ? (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/40">
+                        <th className="text-left py-2 font-medium text-muted-foreground">Offer Type</th>
+                        <th className="text-right py-2 font-medium text-muted-foreground">Avg Score</th>
+                        <th className="text-right py-2 font-medium text-muted-foreground">Sessions</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </CardContent>
-            </Card>
-          )}
-          {performance.byOffer && performance.byOffer.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">By Offer</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {performance.byOffer.slice(0, 8).map((o) => (
-                    <div key={o.offerId} className="flex justify-between text-sm gap-2">
-                      <span className="truncate" title={o.offerName}>{o.offerName}</span>
-                      <span className="font-medium shrink-0">{o.averageScore} ({o.count})</span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      ) : null}
+                    </thead>
+                    <tbody>
+                      {Object.entries(performance.byOfferType).map(([k, v]) => (
+                        <tr key={k} className="border-b border-border/20">
+                          <td className="py-2">{OFFER_TYPE_LABELS[k] ?? k}</td>
+                          <td className={`py-2 text-right font-medium ${getScoreColor(v.averageScore)}`}>{v.averageScore}</td>
+                          <td className="py-2 text-right text-muted-foreground">{v.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No offer type data available</p>
+                )
+              )}
+
+              {box4Tab === 'offer' && (
+                performance.byOffer && performance.byOffer.length > 0 ? (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/40">
+                        <th className="text-left py-2 font-medium text-muted-foreground">Offer</th>
+                        <th className="text-right py-2 font-medium text-muted-foreground">Avg Score</th>
+                        <th className="text-right py-2 font-medium text-muted-foreground">Sessions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {performance.byOffer.slice(0, 10).map((o) => (
+                        <tr key={o.offerId} className="border-b border-border/20">
+                          <td className="py-2 truncate max-w-[200px]" title={o.offerName}>{o.offerName}</td>
+                          <td className={`py-2 text-right font-medium ${getScoreColor(o.averageScore)}`}>{o.averageScore}</td>
+                          <td className="py-2 text-right text-muted-foreground">{o.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No specific offer data available</p>
+                )
+              )}
+
+              {box4Tab === 'difficulty' && (
+                performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0 ? (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border/40">
+                        <th className="text-left py-2 font-medium text-muted-foreground">Difficulty</th>
+                        <th className="text-right py-2 font-medium text-muted-foreground">Avg Score</th>
+                        <th className="text-right py-2 font-medium text-muted-foreground">Sessions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(performance.byDifficulty).map(([k, v]) => (
+                        <tr key={k} className="border-b border-border/20">
+                          <td className="py-2">{DIFFICULTY_LABELS[k] ?? k}</td>
+                          <td className={`py-2 text-right font-medium ${getScoreColor(v.averageScore)}`}>{v.averageScore}</td>
+                          <td className="py-2 text-right text-muted-foreground">{v.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-4">No difficulty data available</p>
+                )
+              )}
+            </CardContent>
+          </Card>
+        )}
 
       {/* Objection Handling Insights */}
       {performance.objectionInsights && (
@@ -775,54 +803,6 @@ export default function PerformancePage() {
         </Card>
       )}
 
-      {/* Strengths & Weaknesses */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader>
-            <CardTitle className="text-green-500">Top Strengths</CardTitle>
-            <CardDescription>Your strongest skill categories</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {performance.strengths.length > 0 ? (
-              <div className="space-y-3">
-                {performance.strengths.map((strength, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                    <p className="font-medium">{strength.category}</p>
-                    <Badge variant="default" className="text-lg px-3 py-1">
-                      {strength.averageScore}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Complete calls or roleplays to see your strengths</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader>
-            <CardTitle className="text-red-500">Biggest Focus Areas</CardTitle>
-            <CardDescription>Bottom categories to improve (data-backed)</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {performance.weaknesses.length > 0 ? (
-              <div className="space-y-3">
-                {performance.weaknesses.map((weakness, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <p className="font-medium">{weakness.category}</p>
-                    <Badge variant="destructive" className="text-lg px-3 py-1">
-                      {weakness.averageScore}
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">Complete calls or roleplays to identify focus areas</p>
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Weekly & Monthly Summary + PDF export */}
       {(performance.weeklySummary || performance.monthlySummary) && (
