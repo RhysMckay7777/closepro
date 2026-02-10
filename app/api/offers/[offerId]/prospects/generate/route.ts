@@ -95,14 +95,16 @@ export async function POST(
     const generatedProspects = [];
     const usedNames = new Set<string>();
     const prospectGender = inferGenderFromOffer(offer[0].whoItsFor);
+    console.log('[PROSPECT GEN] Gender inferred from whoItsFor:', JSON.stringify(offer[0].whoItsFor), '→', prospectGender);
 
     const VALID_TIERS = new Set(['easy', 'realistic', 'hard', 'expert']);
 
     for (const difficulty of difficulties) {
       const prospectProfile = generateRandomProspectInBand(difficulty);
       // Validate difficulty tier — map any invalid values to the expected tier
-      if (!VALID_TIERS.has(prospectProfile.difficultyTier)) {
-        prospectProfile.difficultyTier = (prospectProfile.difficultyTier === 'near_impossible' || prospectProfile.difficultyTier === 'elite') ? 'expert' : difficulty;
+      const tierStr = prospectProfile.difficultyTier as string;
+      if (!VALID_TIERS.has(tierStr)) {
+        prospectProfile.difficultyTier = (tierStr === 'near_impossible' || tierStr === 'elite') ? 'expert' : difficulty;
       }
       const name = generateRandomProspectName(usedNames, prospectGender);
       const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier, name, {
@@ -110,7 +112,7 @@ export async function POST(
         whoItsFor: offer[0].whoItsFor ?? undefined,
         coreProblems: offer[0].coreProblems ?? undefined,
         offerName: offer[0].name ?? undefined,
-      });
+      }, prospectGender);
 
       const [newProspect] = await db
         .insert(prospectAvatars)
@@ -139,11 +141,13 @@ export async function POST(
 
     // Return prospects immediately so the page loads fast
     // Image generation happens in the background (fire-and-forget)
+    const geminiConfigured = isGeminiImageConfigured();
     const responsePayload = {
       prospects: generatedProspects,
       message: regenerate
         ? 'Prospects regenerated with bios.'
         : 'Successfully generated 4 prospects with bios.',
+      imageGenStatus: geminiConfigured ? 'generating' as const : 'not_configured' as const,
     };
 
     // Generate human photos in the background via Gemini (Google AI Studio)

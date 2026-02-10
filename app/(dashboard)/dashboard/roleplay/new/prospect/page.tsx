@@ -52,6 +52,7 @@ function ProspectSelectionContent() {
   const [generating, setGenerating] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('Loading prospects...');
   const [selectedProspect, setSelectedProspect] = useState<ProspectAvatar | null>(null);
+  const [imageGenStatus, setImageGenStatus] = useState<'idle' | 'generating' | 'not_configured' | 'complete'>('idle');
   const hasTriedGenerateRef = useRef(false);
   const avatarPollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -90,7 +91,7 @@ function ProspectSelectionContent() {
     let attempts = 0;
     avatarPollRef.current = setInterval(async () => {
       attempts++;
-      if (attempts > 10) { // Stop after ~30 seconds
+      if (attempts > 20) { // Stop after ~60 seconds
         if (avatarPollRef.current) clearInterval(avatarPollRef.current);
         avatarPollRef.current = null;
         return;
@@ -105,6 +106,7 @@ function ProspectSelectionContent() {
           if (avatars.length > 0 && avatars.every(a => a.avatarUrl)) {
             if (avatarPollRef.current) clearInterval(avatarPollRef.current);
             avatarPollRef.current = null;
+            setImageGenStatus('complete');
           }
         }
       } catch { /* ignore poll errors */ }
@@ -142,7 +144,10 @@ function ProspectSelectionContent() {
             setLoading(false);
             // Start polling if any are missing avatar images
             if (existing.some(a => !a.avatarUrl)) {
+              setImageGenStatus('generating');
               startAvatarPoll();
+            } else {
+              setImageGenStatus('complete');
             }
             return;
           }
@@ -160,7 +165,14 @@ function ProspectSelectionContent() {
         );
         if (cancelled) return;
         if (res.ok) {
+          const genData = await res.json().catch(() => ({}));
           setLoadingStatus('Prospects created! Loading...');
+          // Capture image generation status from API
+          if (genData.imageGenStatus === 'not_configured') {
+            setImageGenStatus('not_configured');
+          } else {
+            setImageGenStatus('generating');
+          }
           await fetchProspects();
           // Start polling for avatar images (generated async in background)
           startAvatarPoll();
@@ -223,7 +235,13 @@ function ProspectSelectionContent() {
         }
       );
       if (response.ok) {
+        const regenData = await response.json().catch(() => ({}));
         setLoadingStatus('Prospects regenerated! Loading...');
+        if (regenData.imageGenStatus === 'not_configured') {
+          setImageGenStatus('not_configured');
+        } else {
+          setImageGenStatus('generating');
+        }
         await fetchProspects();
         // Start polling for new avatar images
         startAvatarPoll();
@@ -417,7 +435,7 @@ function ProspectSelectionContent() {
                       <h4 className="text-sm font-semibold mb-1">Selling {offer.name}</h4>
                       {(offer.priceRange ?? offer.coreOfferPrice) && (
                         <p className="text-xs text-muted-foreground mb-2">
-                          Price point: {offer.coreOfferPrice ?? offer.priceRange}
+                          Price point: £{Number(offer.coreOfferPrice ?? offer.priceRange).toLocaleString()}
                         </p>
                       )}
                       <p className="text-sm text-foreground leading-relaxed rounded-md bg-muted/50 p-3 max-h-24 overflow-y-auto">
@@ -550,6 +568,18 @@ function ProspectSelectionContent() {
                 'Regenerate prospects (with bios)'
               )}
             </Button>
+          )}
+          {/* Image generation status indicator */}
+          {imageGenStatus === 'generating' && prospects.some(p => !p.avatarUrl) && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+              Generating prospect photos…
+            </p>
+          )}
+          {imageGenStatus === 'not_configured' && (
+            <p className="text-xs text-amber-500 mt-1">
+              ⚠️ Photo generation unavailable — GOOGLE_AI_STUDIO_KEY not set
+            </p>
           )}
         </div>
 

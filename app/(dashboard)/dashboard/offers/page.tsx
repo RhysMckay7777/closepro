@@ -86,7 +86,7 @@ export default function OffersPage() {
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
-        {/* Header */}
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="hidden sm:block shrink-0 w-14 h-14 text-muted-foreground/70">
@@ -99,7 +99,7 @@ export default function OffersPage() {
             </p>
           </div>
         </div>
-        <Button 
+        <Button
           className="w-full sm:w-auto"
           onClick={() => {
             console.log('New Offer button clicked');
@@ -161,7 +161,7 @@ export default function OffersPage() {
                     </TableCell>
                     <TableCell>{getDeliveryLabel(offer.deliveryModel)}</TableCell>
                     <TableCell>
-                      {offer.coreOfferPrice || offer.priceRange || '—'}
+                      {(offer.coreOfferPrice || offer.priceRange) ? `£${Number(offer.coreOfferPrice || offer.priceRange).toLocaleString()}` : '—'}
                     </TableCell>
                     <TableCell>
                       <Link href={`/dashboard/offers/${offer.id}`} onClick={(e) => e.stopPropagation()}>

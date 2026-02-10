@@ -287,7 +287,7 @@ export default function RoleplayPage() {
                     <TableCell>
                       {session.actualDifficultyTier ? (
                         <Badge variant={getDifficultyBadgeVariant(session.actualDifficultyTier)}>
-                          {session.actualDifficultyTier.charAt(0).toUpperCase() + session.actualDifficultyTier.slice(1)}
+                          {session.actualDifficultyTier === 'elite' ? 'Expert' : session.actualDifficultyTier.charAt(0).toUpperCase() + session.actualDifficultyTier.slice(1)}
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground">—</span>

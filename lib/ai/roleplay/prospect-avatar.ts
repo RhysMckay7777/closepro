@@ -308,6 +308,7 @@ const CHARACTER_ARCHETYPES = {
 /**
  * Generate a character-driven bio using the prospect's name and a character archetype.
  * Creates realistic, person-focused descriptions like "Busy dad George trying to figure out his business".
+ * Filters archetypes by gender to avoid mismatches (e.g. no "working mom" for male prospects).
  */
 export function getDefaultBioForDifficulty(
   tier: DifficultyTier | 'realistic' | 'hard' | 'expert' | 'elite' | 'easy' | 'near_impossible',
@@ -317,12 +318,25 @@ export function getDefaultBioForDifficulty(
     whoItsFor?: string;
     coreProblems?: string;
     offerName?: string;
-  }
+  },
+  gender?: ProspectGender
 ): string {
   // Map near_impossible/elite → expert for backward compat
   const key = (tier === 'near_impossible' || tier === 'elite' ? 'expert' : tier) as DifficultyTier;
   const archetypes = CHARACTER_ARCHETYPES[key] ?? CHARACTER_ARCHETYPES.realistic;
-  const archetype = archetypes[randomInt(0, archetypes.length - 1)];
+
+  // Filter archetypes by gender to avoid mismatches
+  const FEMALE_ROLES = ['working mom', 'busy mom', 'mother'];
+  const MALE_ROLES = ['busy dad', 'father'];
+  let filtered = archetypes;
+  if (gender === 'male') {
+    filtered = archetypes.filter(a => !FEMALE_ROLES.some(r => a.role.toLowerCase().includes(r)));
+  } else if (gender === 'female') {
+    filtered = archetypes.filter(a => !MALE_ROLES.some(r => a.role.toLowerCase().includes(r)));
+  }
+  if (filtered.length === 0) filtered = archetypes; // safety fallback
+
+  const archetype = filtered[randomInt(0, filtered.length - 1)];
 
   // Extract first name from prospect name if provided
   const firstName = prospectName?.split(' ')[0] || 'They';
@@ -334,6 +348,13 @@ export function getDefaultBioForDifficulty(
     bio += ` Matches ICP: ${offerContext.whoItsFor.slice(0, 120)}.`;
   } else if (offerContext?.offerCategory) {
     bio += ` Industry: ${offerContext.offerCategory.replace(/_/g, ' ')}.`;
+  }
+
+  // Post-generation sanity check: replace gender-mismatched words
+  if (gender === 'male') {
+    bio = bio.replace(/\bmom\b/gi, 'dad').replace(/\bmother\b/gi, 'father').replace(/\bwife\b/gi, 'husband').replace(/\bher\b/gi, 'his');
+  } else if (gender === 'female') {
+    bio = bio.replace(/\bdad\b/gi, 'mom').replace(/\bfather\b/gi, 'mother').replace(/\bhusband\b/gi, 'wife').replace(/\bhis\b/gi, 'her');
   }
 
   return bio;

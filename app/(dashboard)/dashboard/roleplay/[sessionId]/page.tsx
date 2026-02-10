@@ -365,11 +365,33 @@ function RoleplaySessionContent() {
         }
       }
 
+      function inferProspectGender(name: string): 'male' | 'female' | 'unknown' {
+        const first = name.trim().split(/\s+/)[0]?.toLowerCase() || '';
+        const FEMALE = new Set(['maria', 'sarah', 'emma', 'rachel', 'sophie', 'jessica', 'laura', 'hannah', 'charlotte', 'olivia', 'nicole', 'katie', 'amy', 'lisa', 'jennifer', 'emily', 'amanda', 'megan', 'ashley', 'brooke', 'hayley', 'lauren', 'bella']);
+        const MALE = new Set(['james', 'david', 'michael', 'robert', 'daniel', 'thomas', 'william', 'richard', 'joseph', 'marcus', 'ryan', 'nathan', 'ben', 'luke', 'adam', 'jack', 'chris', 'connor', 'john', 'brian', 'kevin', 'jason', 'josh', 'arnold', 'anthony', 'andrew', 'steven', 'matthew', 'mark', 'george']);
+        if (FEMALE.has(first)) return 'female';
+        if (MALE.has(first)) return 'male';
+        return 'unknown';
+      }
+
       function fallbackSpeak(text: string, onEnd: () => void) {
         if (synthRef.current) {
           const utterance = new SpeechSynthesisUtterance(text);
           utterance.rate = 0.9;
-          utterance.pitch = 1;
+
+          // Pick a gender-appropriate browser voice based on prospect name
+          const gender = inferProspectGender(prospectAvatar?.name || '');
+          const voices = synthRef.current.getVoices();
+          if (voices.length > 0) {
+            const preferred = voices.find(v => {
+              const vn = v.name.toLowerCase();
+              if (gender === 'male') return /\b(male|david|mark|james|daniel|george|guy)\b/.test(vn);
+              if (gender === 'female') return /\b(female|zira|hazel|susan|samantha|karen|fiona)\b/.test(vn);
+              return false;
+            });
+            if (preferred) utterance.voice = preferred;
+          }
+          utterance.pitch = gender === 'male' ? 0.85 : 1.0;
           utterance.onend = onEnd;
           synthRef.current.speak(utterance);
         } else {

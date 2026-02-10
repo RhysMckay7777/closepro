@@ -383,7 +383,7 @@ export default function OfferDetailsPage() {
           </div>
           <div>
             <p className="text-sm text-muted-foreground">Price Range</p>
-            <p className="font-medium">{offer.priceRange}</p>
+            <p className="font-medium">£{Number(offer.priceRange).toLocaleString()}</p>
           </div>
         </div>
       </Card>
@@ -479,7 +479,7 @@ export default function OfferDetailsPage() {
                         <div>
                           <h4 className="text-sm font-semibold mb-1">Selling {offer.name}</h4>
                           {offer.priceRange && (
-                            <p className="text-xs text-muted-foreground mb-2">Price point: {offer.priceRange}</p>
+                            <p className="text-xs text-muted-foreground mb-2">Price point: £{Number(offer.priceRange).toLocaleString()}</p>
                           )}
                           <p className="text-sm text-foreground leading-relaxed rounded-md bg-muted/50 p-3 max-h-24 overflow-y-auto">
                             {offer.coreOutcome ?? offer.mechanismHighLevel ?? offer.offerCategory ?? 'No offer description.'}

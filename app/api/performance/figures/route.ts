@@ -223,7 +223,7 @@ export async function GET(request: NextRequest) {
         callId: r.id!,
         date: dateFor(r).toISOString().slice(0, 10),
         offerName: r.offerName ?? '—',
-        prospectName: r.prospectName ?? '',
+        prospectName: r.prospectName || 'Unknown',
         cashCollected: r.cashCollected ?? 0,
         revenueGenerated: rev,
         commissionPct: pct,

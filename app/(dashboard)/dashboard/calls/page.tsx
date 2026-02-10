@@ -401,7 +401,7 @@ export default function CallsPage() {
                           <TableCell>
                             {call.difficultyTier ? (
                               <Badge variant={getDifficultyBadgeVariant(call.difficultyTier)}>
-                                {call.difficultyTier.charAt(0).toUpperCase() + call.difficultyTier.slice(1)}
+                                {call.difficultyTier === 'elite' ? 'Expert' : call.difficultyTier.charAt(0).toUpperCase() + call.difficultyTier.slice(1)}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground">—</span>

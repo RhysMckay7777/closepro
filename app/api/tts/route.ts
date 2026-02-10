@@ -12,7 +12,9 @@ export const maxDuration = 60;
  */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
+  console.log('[TTS] ElevenLabs API key:', apiKey ? `SET (${apiKey.length} chars)` : 'MISSING');
   if (!apiKey?.trim()) {
+    console.warn('[TTS] ELEVENLABS_API_KEY not configured — falling back to browser speech');
     return NextResponse.json(
       { error: 'TTS not configured', fallback: true },
       { status: 503 }
@@ -23,6 +25,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const text = typeof body.text === 'string' ? body.text.trim() : '';
     const voiceId = typeof body.voiceId === 'string' ? body.voiceId.trim() : process.env.ELEVENLABS_VOICE_ID?.trim() || '21m00Tcm4TlvDq8ikWAM';
+    console.log(`[TTS] Requesting voice=${voiceId}, text length=${text.length}`);
 
     if (!text) {
       return NextResponse.json(
@@ -48,17 +51,13 @@ export async function POST(request: NextRequest) {
       const errText = await res.text();
       // 401/403 = auth or free-tier disabled (e.g. "Unusual activity", "Free Tier usage disabled")
       if (res.status === 401 || res.status === 403) {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('ElevenLabs TTS unavailable (auth/quota). Use browser voice or a paid ElevenLabs plan.', res.status);
-        }
+        console.warn(`[TTS] ElevenLabs auth/quota error (${res.status}):`, errText.slice(0, 300));
         return NextResponse.json(
           { error: 'ElevenLabs unavailable (use browser voice or upgrade plan)', fallback: true },
           { status: 503 }
         );
       }
-      if (process.env.NODE_ENV === 'development') {
-        console.error('ElevenLabs TTS error:', res.status, errText.slice(0, 200));
-      }
+      console.error(`[TTS] ElevenLabs error (${res.status}):`, errText.slice(0, 300));
       return NextResponse.json(
         { error: 'TTS request failed', fallback: true },
         { status: 503 }
@@ -66,6 +65,7 @@ export async function POST(request: NextRequest) {
     }
 
     const audioBuffer = await res.arrayBuffer();
+    console.log(`[TTS] ElevenLabs SUCCESS — ${audioBuffer.byteLength} bytes`);
     return new NextResponse(audioBuffer, {
       status: 200,
       headers: {
@@ -74,9 +74,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    if (process.env.NODE_ENV === 'development') {
-      console.error('TTS error:', error);
-    }
+    console.error('[TTS] Unexpected error:', error instanceof Error ? error.message : error);
     return NextResponse.json(
       { error: 'TTS failed', fallback: true },
       { status: 503 }

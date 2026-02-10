@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, DollarSign, AlertCircle, FileDown } from 'lucide-react';
+import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, PoundSterling, AlertCircle, FileDown } from 'lucide-react';
 import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -301,19 +301,19 @@ export default function FiguresPage() {
             <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5 text-green-500" />
+                  <PoundSterling className="h-5 w-5 text-green-500" />
                   <CardTitle className="text-sm font-semibold">Cash Collected</CardTitle>
                 </div>
               </CardHeader>
               <CardContent>
                 <p className="text-3xl font-bold">£{(figures.cashCollected / 100).toLocaleString()}</p>
-                <p className="text-xs text-muted-foreground mt-1">Amount actually collected (cents stored)</p>
+                <p className="text-xs text-muted-foreground mt-1">Total cash received this month</p>
               </CardContent>
             </Card>
             <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
               <CardHeader className="pb-2">
                 <div className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5 text-green-500" />
+                  <PoundSterling className="h-5 w-5 text-green-500" />
                   <CardTitle className="text-sm font-semibold">Revenue Generated</CardTitle>
                 </div>
               </CardHeader>
@@ -342,7 +342,7 @@ export default function FiguresPage() {
           <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader className="pb-2">
               <div className="flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-primary" />
+                <PoundSterling className="h-5 w-5 text-primary" />
                 <CardTitle className="text-sm font-semibold">Total Commission</CardTitle>
               </div>
               <p className="text-xs text-muted-foreground">{MONTHS[Number(month) - 1]} {year}</p>
@@ -417,7 +417,7 @@ export default function FiguresPage() {
                         <tr key={row.callId} className="border-b border-border/50">
                           <td className="py-2 pr-4">{row.date}</td>
                           <td className="py-2 pr-4">{row.offerName}</td>
-                          <td className="py-2 pr-4">{row.prospectName || '—'}</td>
+                          <td className="py-2 pr-4">{row.prospectName || 'Unknown'}</td>
                           <td className="py-2 pr-4 text-right">£{(row.cashCollected / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">£{(row.revenueGenerated / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">{row.commissionPct}%</td>
