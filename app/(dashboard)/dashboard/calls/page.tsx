@@ -7,7 +7,8 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, ChevronDown, ChevronRight, Loader2 } from 'lucide-react';
+import { Plus, Search, ChevronDown, ChevronRight, Loader2, Trash2 } from 'lucide-react';
+import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 import { EmptyCallsIllustration } from '@/components/illustrations';
@@ -65,6 +66,21 @@ export default function CallsPage() {
       console.error('Error fetching calls:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteCall = async (e: React.MouseEvent, callId: string) => {
+    e.stopPropagation(); // Prevent row click navigation
+    if (!confirm('Are you sure you want to delete this call? This cannot be undone.')) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/calls/${callId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+      setCalls((prev) => prev.filter((c) => c.id !== callId));
+      toastSuccess('Call deleted');
+    } catch {
+      toastError('Failed to delete call');
     }
   };
 
@@ -320,6 +336,7 @@ export default function CallsPage() {
                   <TableHead>Call Result</TableHead>
                   <TableHead>Prospect Difficulty</TableHead>
                   <TableHead>Overall Score</TableHead>
+                  <TableHead className="w-[60px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -333,7 +350,7 @@ export default function CallsPage() {
                         className="cursor-pointer hover:bg-accent/50 bg-muted/30"
                         onClick={() => toggleMonth(monthKey)}
                       >
-                        <TableCell colSpan={6} className="font-semibold">
+                        <TableCell colSpan={7} className="font-semibold">
                           <div className="flex items-center gap-2">
                             {isExpanded ? (
                               <ChevronDown className="h-4 w-4" />
@@ -379,6 +396,16 @@ export default function CallsPage() {
                             ) : (
                               <span className="text-muted-foreground">—</span>
                             )}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => handleDeleteCall(e, call.id)}
+                              className="text-muted-foreground hover:text-destructive"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}

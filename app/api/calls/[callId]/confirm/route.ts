@@ -117,8 +117,12 @@ export async function POST(
       .set(updatePayload as any)
       .where(eq(salesCalls.id, callId));
 
-    // Create payment plan instalments if applicable (first confirmation only — avoid duplicates)
-    if (isFirstConfirmation && result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
+    // Always delete existing instalments first (handles edits changing plan details or switching away)
+    await db.delete(paymentPlanInstalments)
+      .where(eq(paymentPlanInstalments.salesCallId, callId));
+
+    // Create payment plan instalments if applicable (both new confirmations and edits)
+    if (result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
       const numInstalments = Number(numberOfInstalments);
       const monthlyAmountCents = Math.round(Number(monthlyAmount) * 100);
 

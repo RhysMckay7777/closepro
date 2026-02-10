@@ -6,7 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { getCategoryLabel } from '@/lib/ai/scoring-framework';
 
@@ -134,6 +135,25 @@ export default function CallDetailPage() {
             {call.fileName}
           </p>
         </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground hover:text-destructive self-start mt-6"
+          onClick={async () => {
+            if (!confirm('Delete this call and all its data? This cannot be undone.')) return;
+            try {
+              const res = await fetch(`/api/calls/${callId}`, { method: 'DELETE' });
+              if (!res.ok) throw new Error('Failed to delete');
+              toastSuccess('Call deleted');
+              router.push('/dashboard/calls');
+            } catch {
+              toastError('Failed to delete call');
+            }
+          }}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete
+        </Button>
       </div>
 
       {/* Processing State */}
