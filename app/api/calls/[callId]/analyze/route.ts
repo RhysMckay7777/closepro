@@ -54,7 +54,7 @@ export async function POST(
             );
         }
 
-        // If already completed, return existing analysis
+        // If already completed, return existing analysis — unless it's missing (re-analyse scenario)
         if (call.status === 'completed') {
             const existingAnalysis = await db
                 .select()
@@ -62,10 +62,18 @@ export async function POST(
                 .where(eq(callAnalysis.callId, callId))
                 .limit(1);
 
-            return NextResponse.json({
-                status: 'completed',
-                analysis: existingAnalysis[0] ?? null,
-            });
+            if (existingAnalysis[0]) {
+                return NextResponse.json({
+                    status: 'completed',
+                    analysis: existingAnalysis[0],
+                });
+            }
+            // Analysis missing — fall through to re-run analysis
+        }
+
+        // If failed, allow retry — update status to analyzing
+        if (call.status === 'failed') {
+            await db.update(salesCalls).set({ status: 'analyzing' }).where(eq(salesCalls.id, callId));
         }
 
         // Must have a transcript to analyze

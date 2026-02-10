@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil, ChevronDown, ChevronUp, Trash2, RefreshCw } from 'lucide-react';
 import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { getCategoryLabel } from '@/lib/ai/scoring-framework';
@@ -20,6 +20,7 @@ export default function CallDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [reanalyzing, setReanalyzing] = useState(false);
 
   useEffect(() => {
     if (!callId) return;
@@ -173,6 +174,59 @@ export default function CallDetailPage() {
                   This may take a few minutes. The page will update automatically when complete.
                 </p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Completed but analysis missing — offer re-analyse */}
+      {call.status === 'completed' && !analysis && (
+        <Card className="border border-amber-500/20 bg-linear-to-br from-amber-500/5 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardContent className="p-8">
+            <div className="flex flex-col items-center justify-center text-center space-y-4">
+              <AlertCircle className="h-12 w-12 text-amber-500" />
+              <div>
+                <p className="font-medium text-lg">Analysis not found</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  The call was saved but the AI analysis is missing. This can happen if the analysis timed out or encountered an error.
+                </p>
+              </div>
+              <Button
+                onClick={async () => {
+                  setReanalyzing(true);
+                  try {
+                    const res = await fetch(`/api/calls/${callId}/analyze`, { method: 'POST' });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      throw new Error(data.error || 'Failed to start re-analysis');
+                    }
+                    toastSuccess('Re-analysis started. This page will update automatically.');
+                    // Start polling for completion
+                    const interval = setInterval(async () => {
+                      const statusRes = await fetch(`/api/calls/${callId}/status`);
+                      if (statusRes.ok) {
+                        const statusData = await statusRes.json();
+                        setCall(statusData.call);
+                        setAnalysis(statusData.analysis);
+                        if (statusData.status === 'completed' || statusData.status === 'failed') {
+                          clearInterval(interval);
+                          setReanalyzing(false);
+                        }
+                      }
+                    }, 5000);
+                  } catch (err: any) {
+                    toastError(err.message || 'Failed to re-analyse');
+                    setReanalyzing(false);
+                  }
+                }}
+                disabled={reanalyzing}
+              >
+                {reanalyzing ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Re-analysing...</>
+                ) : (
+                  <><RefreshCw className="h-4 w-4 mr-2" />Re-analyse Call</>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -536,20 +590,82 @@ export default function CallDetailPage() {
 
       {/* Failed State */}
       {call.status === 'failed' && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {(() => {
-              try {
-                const meta = typeof call.metadata === 'string' ? JSON.parse(call.metadata) : call.metadata;
-                if (meta?.failureReason) return meta.failureReason;
-              } catch {
-                // ignore invalid metadata
-              }
-              return 'Call processing failed. Please try uploading again.';
-            })()}
-          </AlertDescription>
-        </Alert>
+        <Card className="border border-destructive/20 bg-linear-to-br from-destructive/5 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardContent className="p-8">
+            <div className="flex flex-col items-center justify-center text-center space-y-4">
+              <AlertCircle className="h-12 w-12 text-destructive" />
+              <div>
+                <p className="font-medium text-lg">Analysis Failed</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  {(() => {
+                    try {
+                      const meta = typeof call.metadata === 'string' ? JSON.parse(call.metadata) : call.metadata;
+                      if (meta?.failureReason) return meta.failureReason;
+                    } catch {
+                      // ignore invalid metadata
+                    }
+                    return 'Call processing failed. This can happen if the AI analysis timed out or there was an API error.';
+                  })()}
+                </p>
+              </div>
+              <Button
+                onClick={async () => {
+                  setReanalyzing(true);
+                  try {
+                    const res = await fetch(`/api/calls/${callId}/analyze`, { method: 'POST' });
+                    if (!res.ok) {
+                      const data = await res.json().catch(() => ({}));
+                      throw new Error(data.error || 'Failed to start re-analysis');
+                    }
+                    toastSuccess('Re-analysis started. This page will update automatically.');
+                    const interval = setInterval(async () => {
+                      const statusRes = await fetch(`/api/calls/${callId}/status`);
+                      if (statusRes.ok) {
+                        const statusData = await statusRes.json();
+                        setCall(statusData.call);
+                        setAnalysis(statusData.analysis);
+                        if (statusData.status === 'completed' || statusData.status === 'failed') {
+                          clearInterval(interval);
+                          setReanalyzing(false);
+                        }
+                      }
+                    }, 5000);
+                  } catch (err: any) {
+                    toastError(err.message || 'Failed to re-analyse');
+                    setReanalyzing(false);
+                  }
+                }}
+                disabled={reanalyzing}
+              >
+                {reanalyzing ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Re-analysing...</>
+                ) : (
+                  <><RefreshCw className="h-4 w-4 mr-2" />Retry Analysis</>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Catch-all for unexpected statuses — prevents blank page */}
+      {!isProcessing && call.status !== 'completed' && call.status !== 'failed' && (
+        <Card className="border border-primary/20 bg-linear-to-br from-primary/5 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardContent className="p-8">
+            <div className="flex flex-col items-center justify-center text-center space-y-4">
+              <Loader2 className="h-12 w-12 text-primary animate-spin" />
+              <div>
+                <p className="font-medium text-lg">Processing call...</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Your call is being processed. This page will update automatically when analysis is complete.
+                </p>
+                <p className="text-xs text-muted-foreground/70 mt-2">
+                  Current status: {call.status || 'unknown'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   );
