@@ -19,6 +19,7 @@ export async function POST(
 ) {
     try {
         const { callId } = await params;
+        console.log('[analyze-route] POST re-analyse request for callId:', callId);
         const session = await auth.api.getSession({
             headers: await headers(),
         });
@@ -45,6 +46,7 @@ export async function POST(
         }
 
         const call = calls[0];
+        console.log('[analyze-route] Found call, status:', call.status);
 
         // Verify ownership
         if (call.userId !== session.user.id) {
@@ -63,16 +65,19 @@ export async function POST(
                 .limit(1);
 
             if (existingAnalysis[0]) {
+                console.log('[analyze-route] Call already has analysis, returning existing');
                 return NextResponse.json({
                     status: 'completed',
                     analysis: existingAnalysis[0],
                 });
             }
             // Analysis missing — fall through to re-run analysis
+            console.log('[analyze-route] Call completed but analysis MISSING — will re-run');
         }
 
         // If failed, allow retry — update status to analyzing
         if (call.status === 'failed') {
+            console.log('[analyze-route] Call failed — retrying, setting status to analyzing');
             await db.update(salesCalls).set({ status: 'analyzing' }).where(eq(salesCalls.id, callId));
         }
 
@@ -110,7 +115,10 @@ export async function POST(
         }
 
         // Run analysis inline (awaited — maxDuration keeps us alive)
+        console.log('[analyze-route] Starting analyzeCallAsync...');
+        const t0 = Date.now();
         await analyzeCallAsync(callId, call.transcript, transcriptJson);
+        console.log('[analyze-route] ✅ Analysis complete in', ((Date.now() - t0) / 1000).toFixed(1), 's');
 
         // Fetch the analysis that was just created
         const analysis = await db
@@ -131,7 +139,7 @@ export async function POST(
             analysis: analysis[0] ?? null,
         });
     } catch (error: unknown) {
-        console.error('Error analyzing call:', error);
+        console.error('[analyze-route] ❌ Error analyzing call:', error);
         const msg = error instanceof Error ? error.message : 'Analysis failed';
         return NextResponse.json(
             { status: 'failed', error: msg },

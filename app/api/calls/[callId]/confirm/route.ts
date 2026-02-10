@@ -22,11 +22,14 @@ export async function POST(
 ) {
   try {
     const { callId } = await params;
+    console.log('[confirm-route] POST request for callId:', callId);
     const session = await auth.api.getSession({ headers: await headers() });
 
     if (!session?.user) {
+      console.log('[confirm-route] Unauthorized — no session');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    console.log('[confirm-route] Authenticated user:', session.user.id);
 
     // Fetch the call and verify ownership
     const rows = await db
@@ -36,20 +39,24 @@ export async function POST(
       .limit(1);
 
     if (!rows[0]) {
+      console.log('[confirm-route] Call not found:', callId);
       return NextResponse.json({ error: 'Call not found' }, { status: 404 });
     }
 
     const call = rows[0];
+    console.log('[confirm-route] Found call, status:', call.status);
 
     const isFirstConfirmation = call.status === 'pending_confirmation';
     const isEditUpdate = ['completed', 'failed', 'manual'].includes(call.status ?? '');
 
     if (!isFirstConfirmation && !isEditUpdate) {
+      console.log('[confirm-route] Call not in confirmable state:', call.status);
       return NextResponse.json(
         { error: 'Call is not in a confirmable state' },
         { status: 400 }
       );
     }
+    console.log('[confirm-route] Mode:', isFirstConfirmation ? 'first_confirmation' : 'edit_update');
 
     // Parse body
     const body = await request.json();
@@ -112,10 +119,12 @@ export async function POST(
     }
 
     // Save confirmed details
+    console.log('[confirm-route] Saving confirmed details:', { offerId: updatePayload.offerId, result: updatePayload.result, callType: updatePayload.callType });
     await db
       .update(salesCalls)
       .set(updatePayload as any)
       .where(eq(salesCalls.id, callId));
+    console.log('[confirm-route] Details saved to DB');
 
     // Always delete existing instalments first (handles edits changing plan details or switching away)
     await db.delete(paymentPlanInstalments)
@@ -165,6 +174,7 @@ export async function POST(
 
     // For edit updates, just return — no re-scoring needed
     if (isEditUpdate) {
+      console.log('[confirm-route] ✅ Edit update complete, no re-scoring');
       return NextResponse.json({
         callId,
         status: call.status,
@@ -194,10 +204,13 @@ export async function POST(
     }
 
     // Run full AI analysis (inline, awaited)
+    console.log('[confirm-route] Starting AI analysis for callId:', callId, '(transcript length:', transcript.length, 'chars)');
+    const analysisStartTime = Date.now();
     try {
       await analyzeCallAsync(callId, transcript, transcriptJson);
+      console.log('[confirm-route] ✅ AI analysis complete in', ((Date.now() - analysisStartTime) / 1000).toFixed(1), 'seconds');
     } catch (analysisErr: unknown) {
-      console.error('Analysis failed after confirmation:', analysisErr);
+      console.error('[confirm-route] ❌ Analysis FAILED after', ((Date.now() - analysisStartTime) / 1000).toFixed(1), 'seconds:', analysisErr);
       return NextResponse.json({
         callId,
         status: 'failed',
@@ -211,7 +224,7 @@ export async function POST(
       message: 'Call confirmed and analysis complete.',
     });
   } catch (error: unknown) {
-    console.error('Error confirming call:', error);
+    console.error('[confirm-route] ❌ Unexpected error confirming call:', error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Failed to confirm call' },
       { status: 500 }

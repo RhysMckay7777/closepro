@@ -52,8 +52,12 @@ export async function analyzeCallAsync(
   transcript: string,
   transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> }
 ): Promise<void> {
+  console.log('[analyze-call] Starting analysis for callId:', callId, '(transcript:', transcript.length, 'chars,', transcriptJson.utterances.length, 'utterances)');
+  const t0 = Date.now();
   try {
+    console.log('[analyze-call] Calling AI analyzeCall()...');
     const analysisResult = await analyzeCall(transcript, transcriptJson);
+    console.log('[analyze-call] AI analysis returned in', ((Date.now() - t0) / 1000).toFixed(1), 's — overallScore:', analysisResult.overallScore);
 
     // Enhance coaching recommendations with execution resistance context if applicable
     let enhancedRecommendations = [...(analysisResult.coachingRecommendations || [])];
@@ -97,8 +101,10 @@ export async function analyzeCallAsync(
       priorityFixes: analysisResult.enhancedPriorityFixes ? JSON.stringify(analysisResult.enhancedPriorityFixes) : null,
     };
 
+    console.log('[analyze-call] Inserting analysis row into DB...');
     try {
       await db.insert(callAnalysis).values(insertValues);
+      console.log('[analyze-call] Analysis row inserted successfully');
     } catch (insertErr) {
       if (isMissingColumnError(insertErr)) {
         // Auto-migrate: add Prompt 3 columns if they don't exist yet
@@ -110,6 +116,7 @@ export async function analyzeCallAsync(
         console.log('[analyze-call] Auto-migration complete. Retrying insert…');
         // Retry with all columns now present
         await db.insert(callAnalysis).values(insertValues);
+        console.log('[analyze-call] Analysis row inserted after migration');
       } else {
         throw insertErr;
       }
@@ -126,7 +133,7 @@ export async function analyzeCallAsync(
 
     const outcome = analysisResult.outcome;
     if (outcome) {
-      console.log('Analysis outcome for figures:', {
+      console.log('[analyze-call] Outcome detected:', {
         callId,
         result: outcome.result,
         qualified: outcome.qualified,
@@ -134,6 +141,8 @@ export async function analyzeCallAsync(
         revenueGenerated: outcome.revenueGenerated,
         reasonForOutcome: outcome.reasonForOutcome?.slice(0, 80),
       });
+    } else {
+      console.log('[analyze-call] No outcome in analysis result');
     }
     const hasOutcome = outcome && (
       outcome.result != null ||
@@ -146,6 +155,7 @@ export async function analyzeCallAsync(
     const shouldApplyOutcome =
       hasOutcome &&
       (callRow?.analysisIntent === 'update_figures' || callRow?.analysisIntent === null);
+    console.log('[analyze-call] Outcome decision:', { hasOutcome, analysisIntent: callRow?.analysisIntent, shouldApplyOutcome });
     if (shouldApplyOutcome) {
       try {
         const updatePayload: Record<string, unknown> = {
@@ -158,20 +168,26 @@ export async function analyzeCallAsync(
         if (outcome!.revenueGenerated !== undefined) updatePayload.revenueGenerated = outcome!.revenueGenerated;
         if (outcome!.reasonForOutcome?.trim()) updatePayload.reasonForOutcome = outcome!.reasonForOutcome.trim();
         await db.update(salesCalls).set(updatePayload as any).where(eq(salesCalls.id, callId));
+        console.log('[analyze-call] ✅ Call updated with outcome + completed status');
       } catch (err) {
-        if (isMissingColumnError(err)) await setCallStatusCompleted(callId);
-        else throw err;
+        if (isMissingColumnError(err)) {
+          console.log('[analyze-call] Missing column during outcome update, falling back to setCallStatusCompleted');
+          await setCallStatusCompleted(callId);
+        } else throw err;
       }
     } else {
+      console.log('[analyze-call] Setting call status to completed (no outcome applied)');
       await setCallStatusCompleted(callId);
     }
+    console.log('[analyze-call] ✅ Analysis pipeline complete for callId:', callId, 'in', ((Date.now() - t0) / 1000).toFixed(1), 's');
   } catch (error: unknown) {
-    console.error('Background analysis error:', error);
+    console.error('[analyze-call] ❌ Analysis FAILED for callId:', callId, 'after', ((Date.now() - t0) / 1000).toFixed(1), 's —', error);
     const msg = error instanceof Error ? error.message : String(error);
     const friendlyMessage =
       /credit|balance|too low|upgrade|purchase credits/i.test(msg)
         ? 'Your API credit balance is too low. Please upgrade or add credits to analyze calls.'
         : msg || 'Analysis failed.';
+    console.log('[analyze-call] Setting call status to failed with reason:', friendlyMessage.slice(0, 100));
     await setCallStatusFailed(callId, friendlyMessage);
   }
 }

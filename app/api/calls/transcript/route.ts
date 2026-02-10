@@ -63,16 +63,19 @@ function extractProspectNameFromTranscript(transcript: string): string | null {
  */
 export async function POST(request: NextRequest) {
   try {
+    console.log('[transcript-route] POST request received');
     const session = await auth.api.getSession({
       headers: await headers(),
     });
 
     if (!session?.user) {
+      console.log('[transcript-route] Unauthorized — no session');
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       );
     }
+    console.log('[transcript-route] Authenticated user:', session.user.id);
 
     const user = await db
       .select()
@@ -81,11 +84,13 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     if (!user[0]) {
+      console.log('[transcript-route] User not found in DB for id:', session.user.id);
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
       );
     }
+    console.log('[transcript-route] User found, orgId:', user[0].organizationId);
 
     let organizationId = user[0].organizationId;
     if (!organizationId) {
@@ -105,11 +110,13 @@ export async function POST(request: NextRequest) {
 
     const canUpload = await canPerformAction(organizationId, 'upload_call');
     if (!canUpload.allowed) {
+      console.log('[transcript-route] Subscription check failed:', canUpload.reason);
       return NextResponse.json(
         { error: canUpload.reason || 'Cannot add call' },
         { status: 403 }
       );
     }
+    console.log('[transcript-route] Subscription check passed');
 
     const contentType = request.headers.get('content-type') ?? '';
     let transcript: string;
@@ -179,6 +186,8 @@ export async function POST(request: NextRequest) {
     const metadataStr = JSON.stringify(callMetadata);
     const transcriptJsonStr = JSON.stringify(transcriptJson);
 
+    console.log('[transcript-route] Parsed transcript:', { charCount: trimmedTranscript.length, utteranceCount: transcriptJson.utterances.length, prospectName, fileName });
+
     let callId: string;
 
     try {
@@ -200,6 +209,7 @@ export async function POST(request: NextRequest) {
         .returning();
 
       callId = call.id;
+      console.log('[transcript-route] Call inserted via ORM, callId:', callId);
     } catch (insertError: unknown) {
       const err = insertError as { code?: string; cause?: { code?: string }; message?: string };
       const code = err?.code ?? err?.cause?.code;
@@ -218,6 +228,7 @@ export async function POST(request: NextRequest) {
           throw new Error('Database schema is out of date. Run: npm run db:migrate');
         }
         callId = id;
+        console.log('[transcript-route] Call inserted via raw SQL fallback, callId:', callId);
       } else {
         throw insertError;
       }
@@ -227,6 +238,7 @@ export async function POST(request: NextRequest) {
       await incrementUsage(organizationId, 'calls');
     }
 
+    console.log('[transcript-route] ✅ Complete — callId:', callId, 'status: pending_confirmation');
     // No analysis here — user must confirm details first on the confirm page.
     return NextResponse.json({
       callId,
@@ -234,7 +246,7 @@ export async function POST(request: NextRequest) {
       message: 'Transcript saved. Please confirm call details.',
     }, { status: 201 });
   } catch (error: unknown) {
-    console.error('Error creating call from transcript:', error);
+    console.error('[transcript-route] ❌ Error creating call from transcript:', error);
     const code = (error as { code?: string })?.code;
     const msg = error instanceof Error ? error.message : 'Failed to create call from transcript';
     const userMessage = code === '42703'

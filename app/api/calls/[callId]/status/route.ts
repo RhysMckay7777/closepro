@@ -24,6 +24,7 @@ export async function GET(
 ) {
   try {
     const { callId } = await params;
+    console.log('[status-route] GET callId:', callId);
     const session = await auth.api.getSession({
       headers: await headers(),
     });
@@ -134,6 +135,7 @@ export async function GET(
           priorityFixes: safeParse(row.priorityFixes, []),
         };
       }
+      console.log('[status-route] Returning completed call:', callId, '— analysis:', analysis ? 'found (score: ' + analysis.overallScore + ')' : 'MISSING');
       return NextResponse.json({
         status: 'completed',
         call: call[0],
@@ -180,6 +182,7 @@ export async function GET(
     }
 
     // If analyzing, check if analysis is complete
+    console.log('[status-route] Call status:', call[0].status);
     if (call[0].status === 'analyzing') {
       // Check if analysis exists
       const analysis = await db
@@ -245,7 +248,7 @@ export async function GET(
       call: call[0],
     });
   } catch (error: any) {
-    console.error('Error checking call status:', error);
+    console.error('[status-route] ❌ Error checking call status:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to check status' },
       { status: 500 }
