@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, TrendingDown, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, FileDown, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -196,6 +196,58 @@ export default function PerformancePage() {
       pdf.save(`Performance_Summary_${safePeriod}.pdf`);
     } catch (err) {
       console.error('PDF export error:', err);
+    }
+  };
+
+  const handleDownloadCSV = () => {
+    if (!performance) return;
+    try {
+      const rows: string[][] = [];
+      rows.push(['Performance Summary']);
+      rows.push(['Period', performance.period]);
+      rows.push(['Total Sessions', String(performance.totalAnalyses)]);
+      rows.push(['Total Calls', String(performance.totalCalls)]);
+      rows.push(['Total Roleplays', String(performance.totalRoleplays)]);
+      rows.push(['Average Overall Score', String(performance.averageOverall)]);
+      rows.push([]);
+
+      if (performance.skillCategories.length > 0) {
+        rows.push(['Sales Skills Breakdown']);
+        rows.push(['Category', 'Average Score', 'Trend']);
+        performance.skillCategories.forEach((s) => {
+          rows.push([s.category, String(s.averageScore), s.trend != null ? String(s.trend) : '']);
+        });
+        rows.push([]);
+      }
+
+      if (performance.byOffer && performance.byOffer.length > 0) {
+        rows.push(['Scores By Offer']);
+        rows.push(['Offer', 'Average Score', 'Sessions']);
+        performance.byOffer.forEach((o) => {
+          rows.push([`"${o.offerName.replace(/"/g, '""')}"`, String(o.averageScore), String(o.count)]);
+        });
+        rows.push([]);
+      }
+
+      if (performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0) {
+        rows.push(['Scores By Difficulty']);
+        rows.push(['Difficulty', 'Average Score', 'Sessions']);
+        Object.entries(performance.byDifficulty).forEach(([k, v]) => {
+          rows.push([k, String(v.averageScore), String(v.count)]);
+        });
+      }
+
+      const csv = rows.map((r) => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safePeriod = performance.period.replace(/[^a-zA-Z0-9_-]/g, '_');
+      a.href = url;
+      a.download = `Performance_${safePeriod}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export error:', err);
     }
   };
 
@@ -855,10 +907,16 @@ export default function PerformancePage() {
               <CardTitle>Summaries</CardTitle>
               <CardDescription>This week and this month overview</CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={handleDownloadSummary} className="shrink-0">
-              <Download className="h-4 w-4 mr-2" />
-              Download summary (PDF)
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
+                <FileDown className="h-4 w-4 mr-2" />
+                Export CSV
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleDownloadSummary}>
+                <Download className="h-4 w-4 mr-2" />
+                Download PDF
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4">
             {performance.weeklySummary && (
