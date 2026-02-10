@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil } from 'lucide-react';
+import { ArrowLeft, Loader2, CheckCircle2, AlertCircle, FileAudio, Clock, DollarSign, Pencil, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +28,7 @@ export default function CallDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [offers, setOffers] = useState<Array<{ id: string; name: string }>>([]);
   const [editingOutcome, setEditingOutcome] = useState(false);
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [savingOutcome, setSavingOutcome] = useState(false);
   const [editCallDate, setEditCallDate] = useState('');
   const [editOfferId, setEditOfferId] = useState('');
@@ -280,106 +281,205 @@ export default function CallDetailPage() {
         </Card>
       )}
 
-      {/* Completed State - Show Analysis */}
+      {/* Completed State - Show 7-Section Analysis */}
       {call.status === 'completed' && analysis && (
         <div className="space-y-6">
-          {/* Overall Score */}
+
+          {/* ══════ SECTION 1: CALL OVERVIEW ══════ */}
           <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader>
-              <CardTitle className="font-serif">Overall Score</CardTitle>
+              <CardTitle className="font-serif">1. Call Overview</CardTitle>
+              <CardDescription>Immediate context for this call</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="text-center">
-                <div className="text-6xl font-bold bg-linear-to-br from-primary to-primary/70 bg-clip-text text-transparent">
-                  {analysis.overallScore}
+            <CardContent className="space-y-6">
+              {/* Audio player */}
+              {call.fileUrl && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Recording</p>
+                  <audio controls className="w-full" preload="metadata">
+                    <source src={call.fileUrl} type="audio/mpeg" />
+                    <source src={call.fileUrl} type="audio/mp4" />
+                    <source src={call.fileUrl} type="audio/webm" />
+                    Your browser does not support audio playback.
+                  </audio>
                 </div>
-                <p className="text-muted-foreground mt-2">out of 100</p>
+              )}
+
+              {/* Transcript */}
+              {call.transcript && (
+                <div>
+                  <p className="text-sm font-medium mb-2">Transcript</p>
+                  <div className="max-h-64 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4 text-sm leading-relaxed whitespace-pre-wrap">
+                    {call.transcript}
+                  </div>
+                </div>
+              )}
+
+              {/* Call metadata grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {call.callDate && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Call Date</p>
+                    <p className="text-sm font-medium">{new Date(call.callDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                  </div>
+                )}
+                {call.offerName && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Offer</p>
+                    <p className="text-sm font-medium">{call.offerName}</p>
+                  </div>
+                )}
+                {(call.prospectName || analysis.prospectName) && (
+                  <div>
+                    <p className="text-xs text-muted-foreground">Prospect</p>
+                    <p className="text-sm font-medium">{call.prospectName || analysis.prospectName}</p>
+                  </div>
+                )}
+                <div>
+                  <p className="text-xs text-muted-foreground">Result</p>
+                  {(() => {
+                    const result = call.result || analysis.outcome?.result || '—';
+                    const colors: Record<string, string> = {
+                      closed: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+                      lost: 'bg-red-500/20 text-red-400 border-red-500/30',
+                      follow_up: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+                      deposit: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                      unqualified: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+                      no_show: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+                    };
+                    const label = result === 'follow_up' ? 'Follow-up' : result === 'no_show' ? 'No Show' : (result.charAt(0).toUpperCase() + result.slice(1));
+                    return <Badge className={colors[result] || 'bg-gray-500/20 text-gray-400'}>{label}</Badge>;
+                  })()}
+                </div>
               </div>
+
+              {/* Prospect Difficulty */}
+              {(analysis.prospectDifficulty || analysis.prospectDifficultyTier) && (
+                <div className="flex items-center gap-4 p-3 rounded-lg border border-white/10 bg-white/5">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Prospect Difficulty</p>
+                    <p className="text-lg font-bold">{analysis.prospectDifficulty ?? '—'} <span className="text-sm font-normal text-muted-foreground">/ 50</span></p>
+                  </div>
+                  {analysis.prospectDifficultyTier && (
+                    <Badge className={{
+                      easy: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+                      realistic: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                      hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+                      elite: 'bg-red-500/20 text-red-400 border-red-500/30',
+                    }[analysis.prospectDifficultyTier] || 'bg-gray-500/20 text-gray-400'}>
+                      {analysis.prospectDifficultyTier.charAt(0).toUpperCase() + analysis.prospectDifficultyTier.slice(1)}
+                    </Badge>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
-          {/* 10 Sales Categories (Sales Call Scoring Framework) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
-            {(analysis.categoryScores && typeof analysis.categoryScores === 'object'
-              ? Object.entries(analysis.categoryScores)
-              : (analysis.skillScores && typeof analysis.skillScores === 'object' && !Array.isArray(analysis.skillScores)
-                ? Object.entries(analysis.skillScores)
-                : SALES_CATEGORIES.map((c) => [c.id, null])
-              )
-            )
-              .filter(([, score]) => typeof score === 'number')
-              .map(([id, score]) => (
-                <Card key={String(id)} className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-xs font-serif">{getCategoryLabel(String(id))}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{Number(score)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">out of 10</p>
-                  </CardContent>
-                </Card>
-              ))}
-          </div>
-          <p className="text-xs text-muted-foreground">Sales categories defined in Knowledge Doc: Sales Call Scoring Framework.</p>
-
-          {/* Objections (pillar classification) */}
-          {analysis.objections && Array.isArray(analysis.objections) && analysis.objections.length > 0 && (
-            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+          {/* ══════ SECTION 2: OUTCOME DIAGNOSTIC ══════ */}
+          {analysis.outcomeDiagnostic && (
+            <Card className="border border-amber-500/20 bg-linear-to-br from-amber-500/5 to-card/40 backdrop-blur-xl shadow-xl">
               <CardHeader>
-                <CardTitle className="font-serif">Objections</CardTitle>
-                <CardDescription>Classified by pillar (Value, Trust, Fit, Logistics)</CardDescription>
+                <CardTitle className="font-serif">2. Outcome Diagnostic</CardTitle>
+                <CardDescription>Why this call ended the way it did</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {analysis.objections.map((obj: { objection?: string; pillar?: string; handling?: string }, i: number) => (
-                    <div key={i} className="p-3 rounded-lg border border-white/10 bg-white/5">
-                      <p className="font-medium">{obj.objection ?? '—'}</p>
-                      {obj.pillar && <Badge variant="secondary" className="mt-1 capitalize">{obj.pillar}</Badge>}
-                      {obj.handling && <p className="text-sm text-muted-foreground mt-2">{obj.handling}</p>}
-                    </div>
-                  ))}
-                </div>
+                <p className="text-base leading-relaxed">{analysis.outcomeDiagnostic}</p>
               </CardContent>
             </Card>
           )}
 
-          {/* Coaching Recommendations */}
-          {analysis.coachingRecommendations && (
+          {/* ══════ SECTION 3: SCORE BREAKDOWN ══════ */}
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader>
+              <CardTitle className="font-serif">3. Score Breakdown</CardTitle>
+              <CardDescription>10 categories from the Sales Call Scoring Framework. Click to expand.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Overall score */}
+              <div className="text-center py-4">
+                <div className="text-6xl font-bold bg-linear-to-br from-primary to-primary/70 bg-clip-text text-transparent">
+                  {analysis.overallScore}
+                </div>
+                <p className="text-muted-foreground mt-1">out of 100</p>
+              </div>
+
+              {/* 10 categories */}
+              <div className="space-y-1">
+                {(() => {
+                  const CATEGORY_ORDER = ['authority', 'structure', 'communication', 'discovery', 'gap', 'value', 'trust', 'adaptation', 'objection_handling', 'closing'];
+                  const rawScores = analysis.categoryScores && typeof analysis.categoryScores === 'object'
+                    ? analysis.categoryScores
+                    : (analysis.skillScores && typeof analysis.skillScores === 'object' && !Array.isArray(analysis.skillScores) ? analysis.skillScores : {});
+                  const feedback = analysis.categoryFeedback && typeof analysis.categoryFeedback === 'object' ? analysis.categoryFeedback : {};
+
+                  return CATEGORY_ORDER.map((catId) => {
+                    const score = typeof rawScores[catId] === 'number' ? rawScores[catId] : (typeof rawScores[catId] === 'object' && rawScores[catId]?.score != null ? rawScores[catId].score : null);
+                    if (score == null) return null;
+                    const isExpanded = expandedCategories.has(catId);
+                    const detail = feedback[catId] || (typeof rawScores[catId] === 'object' ? rawScores[catId] : null);
+                    const scoreColor = score >= 8 ? 'text-emerald-400' : score >= 6 ? 'text-blue-400' : score >= 4 ? 'text-amber-400' : 'text-red-400';
+
+                    return (
+                      <div key={catId} className="rounded-lg border border-white/10 overflow-hidden">
+                        <button
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors"
+                          onClick={() => {
+                            const next = new Set(expandedCategories);
+                            next.has(catId) ? next.delete(catId) : next.add(catId);
+                            setExpandedCategories(next);
+                          }}
+                        >
+                          <span className="text-sm font-medium">{getCategoryLabel(catId)}</span>
+                          <div className="flex items-center gap-3">
+                            <div className="w-24 h-2 rounded-full bg-white/10 overflow-hidden">
+                              <div className={`h-full rounded-full ${score >= 8 ? 'bg-emerald-500' : score >= 6 ? 'bg-blue-500' : score >= 4 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${(score / 10) * 100}%` }} />
+                            </div>
+                            <span className={`text-sm font-bold w-8 text-right ${scoreColor}`}>{score}</span>
+                            {detail ? (isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />) : <div className="w-4" />}
+                          </div>
+                        </button>
+                        {isExpanded && detail && (
+                          <div className="px-4 pb-4 pt-1 space-y-3 border-t border-white/10">
+                            {detail.whyThisScore && <div><p className="text-xs font-semibold text-muted-foreground mb-1">Why This Score</p><p className="text-sm">{detail.whyThisScore}</p></div>}
+                            {detail.whatWasDoneWell && <div><p className="text-xs font-semibold text-emerald-500 mb-1">What Was Done Well</p><p className="text-sm">{detail.whatWasDoneWell}</p></div>}
+                            {detail.whatWasMissing && <div><p className="text-xs font-semibold text-amber-500 mb-1">What Was Missing</p><p className="text-sm">{detail.whatWasMissing}</p></div>}
+                            {detail.howItAffectedOutcome && <div><p className="text-xs font-semibold text-blue-500 mb-1">How It Affected Outcome</p><p className="text-sm">{detail.howItAffectedOutcome}</p></div>}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }).filter(Boolean);
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* ══════ SECTION 4: MOMENT-BY-MOMENT COACHING ══════ */}
+          {Array.isArray(analysis.momentCoaching) && analysis.momentCoaching.length > 0 && (
             <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
               <CardHeader>
-                <CardTitle className="font-serif">Coaching Recommendations</CardTitle>
-                <CardDescription>
-                  AI-generated insights to improve your sales performance
-                </CardDescription>
+                <CardTitle className="font-serif">4. Moment-by-Moment Coaching</CardTitle>
+                <CardDescription>Specific moments where execution broke down or opportunities were missed</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {(() => {
-                    const recs = typeof analysis.coachingRecommendations === 'string'
-                      ? JSON.parse(analysis.coachingRecommendations)
-                      : (Array.isArray(analysis.coachingRecommendations) ? analysis.coachingRecommendations : []);
-                    return recs;
-                  })().map((rec: any, index: number) => (
-                    <div
-                      key={index}
-                      className={`p-4 rounded-lg border ${rec.priority === 'high'
-                        ? 'border-destructive/30 bg-destructive/5'
-                        : rec.priority === 'medium'
-                          ? 'border-amber-500/30 bg-amber-500/5'
-                          : 'border-white/10 bg-white/5'
-                        }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Badge variant={rec.priority === 'high' ? 'destructive' : 'secondary'}>
-                              {rec.priority}
-                            </Badge>
-                            <span className="text-sm font-medium">{rec.category}</span>
-                          </div>
-                          <p className="font-semibold mb-1">{rec.issue}</p>
-                          <p className="text-sm text-muted-foreground mb-2">{rec.explanation}</p>
-                          <p className="text-sm font-medium text-primary">{rec.action}</p>
+                  {analysis.momentCoaching.map((moment: any, idx: number) => (
+                    <div key={idx} className="flex gap-4 p-4 rounded-lg border border-white/10 bg-white/5">
+                      <div className="flex-shrink-0 w-16 text-center">
+                        <span className="inline-block px-2 py-1 rounded bg-primary/20 text-primary text-xs font-mono font-bold">{moment.timestamp || '—'}</span>
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div>
+                          <p className="text-xs font-semibold text-red-400 mb-0.5">What Happened</p>
+                          <p className="text-sm">{moment.whatHappened}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-emerald-400 mb-0.5">What Should Have Happened</p>
+                          <p className="text-sm">{moment.whatShouldHaveHappened}</p>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          {moment.affectedCategory && <Badge variant="secondary" className="text-xs">{getCategoryLabel(moment.affectedCategory)}</Badge>}
+                          {moment.whyItMatters && <p className="text-xs text-muted-foreground italic">{moment.whyItMatters}</p>}
                         </div>
                       </div>
                     </div>
@@ -388,10 +488,80 @@ export default function CallDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* ══════ SECTION 5: OBJECTION ANALYSIS ══════ */}
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader>
+              <CardTitle className="font-serif">5. Objection Analysis</CardTitle>
+              <CardDescription>Diagnose resistance and improve objection prevention and handling</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analysis.objections && Array.isArray(analysis.objections) && analysis.objections.length > 0 ? (
+                <div className="space-y-4">
+                  {analysis.objections.map((obj: any, i: number) => {
+                    const pillarColors: Record<string, string> = {
+                      value: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+                      trust: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+                      fit: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+                      logistics: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+                    };
+                    return (
+                      <div key={i} className="p-4 rounded-lg border border-white/10 bg-white/5 space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="font-medium italic">"{obj.objection}"</p>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            {obj.pillar && <Badge className={pillarColors[obj.pillar] || 'bg-gray-500/20 text-gray-400'}>{obj.pillar.charAt(0).toUpperCase() + obj.pillar.slice(1)}</Badge>}
+                            {obj.handlingQuality != null && (
+                              <span className={`text-sm font-bold ${obj.handlingQuality >= 7 ? 'text-emerald-400' : obj.handlingQuality >= 4 ? 'text-amber-400' : 'text-red-400'}`}>{obj.handlingQuality}/10</span>
+                            )}
+                          </div>
+                        </div>
+                        {obj.rootCause && <div><p className="text-xs font-semibold text-muted-foreground mb-0.5">Root Cause</p><p className="text-sm">{obj.rootCause}</p></div>}
+                        {obj.preventionOpportunity && <div><p className="text-xs font-semibold text-muted-foreground mb-0.5">Prevention Opportunity</p><p className="text-sm">{obj.preventionOpportunity}</p></div>}
+                        {(obj.handling || obj.howRepHandled) && <div><p className="text-xs font-semibold text-muted-foreground mb-0.5">How Rep Handled</p><p className="text-sm">{obj.handling || obj.howRepHandled}</p></div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No objections were raised during this call.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ══════ SECTION 6: PRIORITY FIXES ══════ */}
+          {Array.isArray(analysis.priorityFixes) && analysis.priorityFixes.length > 0 && (
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+              <CardHeader>
+                <CardTitle className="font-serif">6. Priority Fixes</CardTitle>
+                <CardDescription>Actionable, behavioural, context-aware improvements — ordered by impact</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {analysis.priorityFixes.map((fix: any, idx: number) => (
+                    <div key={idx} className="flex gap-4 p-4 rounded-lg border border-white/10 bg-white/5">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
+                        <span className="text-sm font-bold text-primary">{idx + 1}</span>
+                      </div>
+                      <div className="flex-1 space-y-2">
+                        <div><p className="text-xs font-semibold text-red-400 mb-0.5">The Problem</p><p className="text-sm font-medium">{fix.problem}</p></div>
+                        <div><p className="text-xs font-semibold text-emerald-400 mb-0.5">What To Do Differently</p><p className="text-sm">{fix.whatToDoDifferently}</p></div>
+                        <div className="flex gap-6">
+                          {fix.whenToApply && <div><p className="text-xs font-semibold text-blue-400 mb-0.5">When To Apply</p><p className="text-xs text-muted-foreground">{fix.whenToApply}</p></div>}
+                          {fix.whyItMatters && <div><p className="text-xs font-semibold text-amber-400 mb-0.5">Why It Matters</p><p className="text-xs text-muted-foreground">{fix.whyItMatters}</p></div>}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
         </div>
       )}
 
-      {/* Sales figures outcome – completed calls only */}
+      {/* ══════ SECTION 7: FIGURES OUTCOME ══════ */}
       {call.status === 'completed' && (
         <>
           {(
@@ -454,7 +624,7 @@ export default function CallDetailPage() {
                   {(editResult === 'closed' || editResult === 'deposit') && (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="outcome-cash">Cash collected ($)</Label>
+                        <Label htmlFor="outcome-cash">Cash Collected (£)</Label>
                         <Input
                           id="outcome-cash"
                           type="number"
@@ -466,7 +636,7 @@ export default function CallDetailPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="outcome-revenue">Revenue generated ($)</Label>
+                        <Label htmlFor="outcome-revenue">Revenue Generated (£)</Label>
                         <Input
                           id="outcome-revenue"
                           type="number"
@@ -534,11 +704,11 @@ export default function CallDetailPage() {
                   </div>
                   <div>
                     <span className="text-muted-foreground">Cash collected:</span>{' '}
-                    {call.cashCollected != null ? `$${(call.cashCollected / 100).toLocaleString()}` : '—'}
+                    {call.cashCollected != null ? `£${(call.cashCollected / 100).toLocaleString()}` : '—'}
                   </div>
                   <div>
                     <span className="text-muted-foreground">Revenue generated:</span>{' '}
-                    {call.revenueGenerated != null ? `$${(call.revenueGenerated / 100).toLocaleString()}` : '—'}
+                    {call.revenueGenerated != null ? `£${(call.revenueGenerated / 100).toLocaleString()}` : '—'}
                   </div>
                   {call.commissionRatePct != null && (
                     <div>

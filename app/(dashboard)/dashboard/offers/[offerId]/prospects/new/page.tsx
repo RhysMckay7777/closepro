@@ -83,7 +83,6 @@ export default function NewProspectPage() {
       realistic: 'bg-blue-500/20 text-blue-600 border-blue-500/50',
       hard: 'bg-orange-500/20 text-orange-600 border-orange-500/50',
       elite: 'bg-red-500/20 text-red-600 border-red-500/50',
-      near_impossible: 'bg-purple-500/20 text-purple-600 border-purple-500/50',
     };
     return colors[tier] || 'bg-gray-500/20 text-gray-600 border-gray-500/50';
   };

@@ -309,12 +309,12 @@ function ProspectSelectionContent() {
 
   const getModeLabel = (tier: string) => {
     const labels: Record<string, string> = {
-      easy: 'Easy Mode',
-      realistic: 'Intermediate Mode',
-      hard: 'Hard Mode',
-      elite: 'Expert Mode',
+      easy: 'Easy',
+      realistic: 'Realistic',
+      hard: 'Hard',
+      elite: 'Elite',
     };
-    return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)} Mode`;
+    return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
   };
 
   const getCardAccentClasses = (tier: string) => {
@@ -389,7 +389,7 @@ function ProspectSelectionContent() {
                   <div>
                     <DialogTitle className="text-2xl font-bold mb-1">{selectedProspect.name}</DialogTitle>
                     <DialogDescription className="text-sm text-muted-foreground">
-                      Start A Discovery Call With {getShortTitle(selectedProspect)}
+                      Start A Roleplay With {getShortTitle(selectedProspect)}
                     </DialogDescription>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -429,7 +429,7 @@ function ProspectSelectionContent() {
                   </Button>
                   <Button onClick={() => handleProspectSelect(selectedProspect.id)}>
                     <Phone className="h-4 w-4 mr-2" />
-                    Start Discovery
+                    Start Roleplay
                   </Button>
                 </div>
               </div>

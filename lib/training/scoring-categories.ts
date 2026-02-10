@@ -9,63 +9,147 @@
  */
 
 export const SCORING_CATEGORIES = [
-    'authority_leadership',
-    'structure_framework',
-    'communication_storytelling',
-    'discovery_diagnosis',
-    'gap_urgency',
-    'value_offer_positioning',
+    'authority',
+    'structure',
+    'communication',
+    'discovery',
+    'gap',
+    'value',
+    'trust',
+    'adaptation',
     'objection_handling',
-    'emotional_intelligence',
-    'closing_commitment',
-    'tonality_delivery',
+    'closing',
 ] as const;
 
 export type ScoringCategoryId = (typeof SCORING_CATEGORIES)[number];
 
 export const CATEGORY_LABELS: Record<ScoringCategoryId, string> = {
-    authority_leadership: 'Authority & Leadership',
-    structure_framework: 'Structure & Framework',
-    communication_storytelling: 'Communication & Storytelling',
-    discovery_diagnosis: 'Discovery & Diagnosis',
-    gap_urgency: 'Gap & Urgency',
-    value_offer_positioning: 'Value & Offer Positioning',
+    authority: 'Authority',
+    structure: 'Structure',
+    communication: 'Communication',
+    discovery: 'Discovery',
+    gap: 'Gap',
+    value: 'Value',
+    trust: 'Trust',
+    adaptation: 'Adaptation',
     objection_handling: 'Objection Handling',
-    emotional_intelligence: 'Emotional Intelligence',
-    closing_commitment: 'Closing & Commitment',
-    tonality_delivery: 'Tonality & Delivery',
+    closing: 'Closing',
 };
 
 /**
- * Category descriptions for AI prompt context.
- * Each describes what the AI should evaluate for a given category.
+ * Category descriptions — each is the core question the AI should answer.
  */
 export const CATEGORY_DESCRIPTIONS: Record<ScoringCategoryId, string> = {
-    authority_leadership:
-        'How the closer controls the frame, leads the conversation, and positions themselves as an authority figure the prospect respects.',
-    structure_framework:
-        'How well the closer follows a structured sales process — opening, discovery, offer, objection handling, close — without skipping or rushing stages.',
-    communication_storytelling:
-        'Use of stories, analogies, examples, and metaphors to make the offer tangible and memorable. Clarity of language.',
-    discovery_diagnosis:
-        'Depth of questioning — does the closer uncover the real problem, root causes, emotions, and consequences? Or do they stay surface-level?',
-    gap_urgency:
-        'How effectively the closer highlights the gap between where the prospect is now and where they want to be, and creates urgency to act.',
-    value_offer_positioning:
-        'How well the closer positions the offer as the bridge between the prospect\'s current state and desired outcome. Value > price.',
+    authority:
+        'How well does the closer control the frame, lead the conversation, and position themselves as an authority figure the prospect respects?',
+    structure:
+        'How well does the closer follow a structured sales process — opening, discovery, offer, objection handling, close — without skipping or rushing stages?',
+    communication:
+        'How effectively does the closer use stories, analogies, examples, and metaphors to make the offer tangible and memorable? Clarity of language.',
+    discovery:
+        'How deep is the questioning — does the closer uncover the real problem, root causes, emotions, and consequences? Or stay surface-level?',
+    gap:
+        'How effectively does the closer highlight the gap between the prospect\'s current state and desired outcome, and create urgency to act?',
+    value:
+        'How well does the closer position the offer as the bridge between the prospect\'s current state and desired outcome? Value > price.',
+    trust:
+        'Reading the room — pacing, empathy, knowing when to push and when to pull back. Building genuine rapport and safety.',
+    adaptation:
+        'Voice tonality, pacing, pauses, emphasis. Does the closer adapt their delivery style to the prospect and situation?',
     objection_handling:
-        'How the closer handles pushback — do they acknowledge, reframe, and resolve? Or do they argue, cave, or ignore?',
-    emotional_intelligence:
-        'Reading the room — pacing, empathy, knowing when to push and when to pull back. Matching the prospect\'s energy.',
-    closing_commitment:
-        'How the closer asks for the commitment — is it assumptive, direct, and confident? Or weak, hesitant, and avoidable?',
-    tonality_delivery:
-        'Voice tonality, pacing, pauses, emphasis. Does the closer sound confident, warm, and in control? Or monotone, nervous, or rushed?',
+        'How does the closer handle pushback — do they acknowledge, reframe, and resolve? Or argue, cave, or ignore?',
+    closing:
+        'How does the closer ask for the commitment — is it assumptive, direct, and confident? Or weak, hesitant, and avoidable?',
+};
+
+/**
+ * Subcategory definition — each has a stable ID and display name.
+ */
+export interface Subcategory {
+    id: string;
+    name: string;
+}
+
+/**
+ * Subcategories for each scoring category — Connor's Framework (49 total).
+ * Each subcategory is a named evaluation dimension the AI scores.
+ */
+export const CATEGORY_SUBCATEGORIES: Record<ScoringCategoryId, Subcategory[]> = {
+    authority: [
+        { id: 'position_based_authority', name: 'Position-Based Authority' },
+        { id: 'skill_based_authority', name: 'Skill-Based Authority' },
+        { id: 'conversational_authority', name: 'Conversational Authority' },
+        { id: 'personal_authority', name: 'Personal Authority' },
+    ],
+    structure: [
+        { id: 'overall_intentional_flow', name: 'Overall Intentional Flow' },
+        { id: 'introduction_framing', name: 'Introduction & Framing' },
+        { id: 'discovery_priority', name: 'Discovery Priority' },
+        { id: 'pitch_placement_structure', name: 'Pitch Placement & Structure' },
+        { id: 'close_placement', name: 'Close Placement' },
+        { id: 'transitions', name: 'Transitions' },
+    ],
+    communication: [
+        { id: 'framing_reframing', name: 'Framing & Reframing' },
+        { id: 'storytelling_analogies', name: 'Storytelling & Analogies' },
+        { id: 'tonality', name: 'Tonality' },
+        { id: 'conversational_flow', name: 'Conversational Flow' },
+    ],
+    discovery: [
+        { id: 'current_state', name: 'Current State' },
+        { id: 'problem_identification', name: 'Problem Identification' },
+        { id: 'impact_pain_severity', name: 'Impact, Pain & Severity' },
+        { id: 'why_theyre_stuck', name: "Why They're Stuck" },
+        { id: 'depth_control_diagnostic', name: 'Depth Control & Diagnostic Skill' },
+    ],
+    gap: [
+        { id: 'desired_state_clarity', name: 'Desired State Clarity' },
+        { id: 'emotional_strategic_importance', name: 'Emotional / Strategic Importance' },
+        { id: 'gap_creation', name: 'Gap Creation' },
+        { id: 'capability_gap', name: 'Capability Gap' },
+        { id: 'urgency_consequence_framing', name: 'Urgency & Consequence Framing' },
+        { id: 'readiness_priority_check', name: 'Readiness & Priority Check' },
+    ],
+    value: [
+        { id: 'value_seeding', name: 'Value Seeding' },
+        { id: 'offer_to_problem_alignment', name: 'Offer-to-Problem Alignment' },
+        { id: 'tailored_pitch_delivery', name: 'Tailored Pitch Delivery' },
+        { id: 'ups_vs_usp', name: 'UPS vs USP' },
+        { id: 'value_logic', name: 'Value Logic' },
+        { id: 'outcome_likelihood_logic', name: 'Outcome Likelihood Logic' },
+    ],
+    trust: [
+        { id: 'credibility_proof_usage', name: 'Credibility & Proof Usage' },
+        { id: 'trust_in_company_offer', name: 'Trust in Company & Offer' },
+        { id: 'rep_trust_signals', name: 'Rep Trust Signals' },
+        { id: 'prospect_self_trust', name: 'Prospect Self-Trust' },
+        { id: 'ethics_safety_boundary', name: 'Ethics & Safety Boundary' },
+    ],
+    adaptation: [
+        { id: 'offer_context_adaptation', name: 'Offer Context Adaptation' },
+        { id: 'prospect_stage_adaptation', name: 'Prospect Stage Adaptation' },
+        { id: 'authority_calibration', name: 'Authority Calibration' },
+        { id: 'pace_depth_intensity', name: 'Pace, Depth & Intensity' },
+    ],
+    objection_handling: [
+        { id: 'emotional_disarming', name: 'Emotional Disarming' },
+        { id: 'real_objection_discovery', name: 'Real Objection Discovery' },
+        { id: 'correct_defusal_technique', name: 'Correct Defusal Technique' },
+        { id: 'objection_preemption', name: 'Objection Preemption' },
+    ],
+    closing: [
+        { id: 'transition_to_close', name: 'Transition to Close' },
+        { id: 'value_confirmation', name: 'Value Confirmation' },
+        { id: 'commitment_logistics_alignment', name: 'Commitment & Logistics Alignment' },
+        { id: 'financial_qualification', name: 'Financial Qualification' },
+        { id: 'decision_outcome', name: 'Decision Outcome' },
+    ],
 };
 
 /**
  * The 4 objection pillars — used ONLY for classifying objections,
- * NOT as scoring categories.
+ * NOT as scoring categories. These classify the TYPE of objection,
+ * not the rep's skill.
  */
 export const OBJECTION_PILLARS = ['value', 'trust', 'fit', 'logistics'] as const;
 export type ObjectionPillar = (typeof OBJECTION_PILLARS)[number];

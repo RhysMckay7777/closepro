@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Minus, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, Lightbulb } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 
@@ -38,27 +38,24 @@ interface PerformanceData {
   totalRoleplays: number;
   averageOverall: number;
   averageRoleplayScore?: number;
-  averageValue: number;
-  averageTrust: number;
-  averageFit: number;
-  averageLogistics: number;
   trend: 'improving' | 'declining' | 'neutral';
-  salesCallsSummary?: { totalCalls: number; averageOverall: number; bestCategory: string | null; improvementOpportunity: string | null; trend: string };
-  roleplaysSummary?: { totalRoleplays: number; averageRoleplayScore: number; bestCategory: string | null; improvementOpportunity: string | null; trend: string };
+  salesCallsSummary?: { totalCalls: number; averageOverall: number; bestCategory: string | null; bestCategoryScore: number | null; improvementOpportunity: string | null; improvementOpportunityScore: number | null; trend: string };
+  roleplaysSummary?: { totalRoleplays: number; averageRoleplayScore: number; bestCategory: string | null; bestCategoryScore: number | null; improvementOpportunity: string | null; improvementOpportunityScore: number | null; trend: string };
   weeklyData: Array<{ week: string; score: number; count: number }>;
   callWeeklyData?: Array<{ week: string; score: number; count: number }>;
   roleplayWeeklyData?: Array<{ week: string; score: number; count: number }>;
-  skillCategories: Array<{ category: string; averageScore: number; trend?: number }>;
+  skillCategories: Array<{ category: string; averageScore: number; trend?: number; strengths?: string[]; weaknesses?: string[]; actionPoints?: string[]; trendData?: number[] }>;
   strengths: Array<{ category: string; averageScore: number }>;
   weaknesses: Array<{ category: string; averageScore: number }>;
   byOfferType?: Record<string, { averageScore: number; count: number }>;
   byDifficulty?: Record<string, { averageScore: number; count: number }>;
   byOffer?: Array<{ offerId: string; offerName: string; averageScore: number; count: number }>;
   objectionInsights?: {
-    topObjections: Array<{ text: string; count: number; pillar: string }>;
+    topObjections: Array<{ text: string; count: number; pillar: string; rootCause?: string; preventionOpportunity?: string; handlingQuality?: number }>;
     pillarBreakdown: Array<{ pillar: string; averageHandling: number; count: number }>;
     weakestArea: { pillar: string; averageHandling: number } | null;
     guidance: string;
+    improvementActions?: Array<{ problem: string; whatToDoDifferently: string; whenToApply: string; whyItMatters: string }>;
   } | null;
   aiInsight?: string;
   weeklySummary?: { overview: string; skillTrends: string; actionPlan: string[] };
@@ -81,6 +78,13 @@ const OFFER_TYPE_LABELS: Record<string, string> = {
   unknown: 'Unknown',
 };
 
+const DIFFICULTY_LABELS: Record<string, string> = {
+  easy: 'Easy',
+  realistic: 'Realistic',
+  hard: 'Hard',
+  elite: 'Elite',
+};
+
 export default function PerformancePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -92,23 +96,30 @@ export default function PerformancePage() {
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthYear.month);
   const [selectedYear, setSelectedYear] = useState(defaultMonthYear.year);
   const [selectionMode, setSelectionMode] = useState<'range' | 'month'>('range');
+  const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
+  const [dataSource, setDataSource] = useState<'all' | 'calls' | 'roleplays'>('all');
 
   const years = [selectedYear - 2, selectedYear - 1, selectedYear, selectedYear + 1].filter((y) => y >= 2020 && y <= 2030);
 
   useEffect(() => {
     fetchPerformance();
-  }, [range, selectedMonth, selectedYear, selectionMode]);
+  }, [range, selectedMonth, selectedYear, selectionMode, dataSource]);
 
   const fetchPerformance = async () => {
     try {
       setLoading(true);
       setError(null);
       let url = `/api/performance`;
+      const params: string[] = [];
       if (selectionMode === 'month') {
-        url += `?month=${selectedYear}-${selectedMonth}`;
+        params.push(`month=${selectedYear}-${selectedMonth}`);
       } else {
-        url += `?range=${range}`;
+        params.push(`range=${range}`);
       }
+      if (dataSource !== 'all') {
+        params.push(`source=${dataSource}`);
+      }
+      url += `?${params.join('&')}`;
       const response = await fetch(url);
       if (!response.ok) {
         throw new Error('Failed to fetch performance data');
@@ -156,13 +167,6 @@ export default function PerformancePage() {
     if (score >= 60) return 'text-blue-500';
     if (score >= 40) return 'text-orange-500';
     return 'text-red-500';
-  };
-
-  const getScoreBg = (score: number) => {
-    if (score >= 80) return 'bg-green-500/20 border-green-500/50';
-    if (score >= 60) return 'bg-blue-500/20 border-blue-500/50';
-    if (score >= 40) return 'bg-orange-500/20 border-orange-500/50';
-    return 'bg-red-500/20 border-red-500/50';
   };
 
   if (loading) {
@@ -293,171 +297,214 @@ export default function PerformancePage() {
         </div>
       </div>
 
-      {/* ═══ SALES CALLS SECTION ═══ */}
-      <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" /> Overall Performance – Sales Calls</CardTitle>
-          <CardDescription>Based on {performance.period}. Data: analysed sales calls only.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Overall Score</p>
-              <p className={`text-4xl font-bold ${getScoreColor(performance.salesCallsSummary?.averageOverall ?? performance.averageOverall)}`}>
-                {performance.salesCallsSummary?.averageOverall ?? performance.averageOverall}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">Total Calls Analysed: {performance.salesCallsSummary?.totalCalls ?? performance.totalCalls}</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Best Category</p>
-              <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category}>
-                {performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category ?? '—'}
-              </p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
-              <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category}>
-                {performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category ?? '—'}
-              </p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
-              <div className="flex items-center justify-center gap-1 mt-2">
-                {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
-                {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
-                {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
-            </div>
-          </div>
+      {/* Data source toggle */}
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-muted-foreground">Data source:</span>
+        <div className="inline-flex rounded-lg overflow-hidden border border-white/10">
+          {(['all', 'calls', 'roleplays'] as const).map((src) => (
+            <button
+              key={src}
+              className={`px-4 py-1.5 text-xs font-medium transition-colors ${dataSource === src
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted/30 hover:bg-muted/50 text-muted-foreground'
+                }`}
+              onClick={() => setDataSource(src)}
+            >
+              {src === 'all' ? 'All' : src === 'calls' ? 'Sales Calls' : 'Roleplays'}
+            </button>
+          ))}
+        </div>
+      </div>
 
-          {/* Sales Calls Trend Chart */}
-          <div>
-            <h4 className="text-sm font-medium text-muted-foreground mb-3">Sales Calls – Weekly Trend</h4>
-            <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
-              <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
-                <span>{callMaxScore}</span>
-                <span>{Math.round(callMaxScore * 0.75)}</span>
-                <span>{Math.round(callMaxScore * 0.5)}</span>
-                <span>{Math.round(callMaxScore * 0.25)}</span>
-                <span>0</span>
+      {/* ═══ SALES CALLS SECTION ═══ */}
+      {(dataSource === 'all' || dataSource === 'calls') && (
+        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" /> Overall Performance – Sales Calls</CardTitle>
+            <CardDescription>Based on {performance.period}. Data: analysed sales calls only.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Overall Score</p>
+                <p className={`text-4xl font-bold ${getScoreColor(performance.salesCallsSummary?.averageOverall ?? performance.averageOverall)}`}>
+                  {performance.salesCallsSummary?.averageOverall ?? performance.averageOverall}
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">Total Calls Analysed: {performance.salesCallsSummary?.totalCalls ?? performance.totalCalls}</p>
               </div>
-              <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
-                <div className="absolute inset-0 flex flex-col justify-between">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <div key={i} className="border-t border-border/30" />
-                  ))}
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Best Category</p>
+                <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category}>
+                  {performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category ?? '—'}
+                </p>
+                {(performance.salesCallsSummary?.bestCategoryScore ?? performance.strengths[0]?.averageScore) != null && (
+                  <p className={`text-lg font-semibold mt-1 ${getScoreColor((performance.salesCallsSummary?.bestCategoryScore ?? performance.strengths[0]?.averageScore) as number)}`}>
+                    {performance.salesCallsSummary?.bestCategoryScore ?? performance.strengths[0]?.averageScore}
+                  </p>
+                )}
+              </div>
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
+                <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category}>
+                  {performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category ?? '—'}
+                </p>
+                {(performance.salesCallsSummary?.improvementOpportunityScore ?? performance.weaknesses[0]?.averageScore) != null && (
+                  <p className={`text-lg font-semibold mt-1 ${getScoreColor((performance.salesCallsSummary?.improvementOpportunityScore ?? performance.weaknesses[0]?.averageScore) as number)}`}>
+                    {performance.salesCallsSummary?.improvementOpportunityScore ?? performance.weaknesses[0]?.averageScore}
+                  </p>
+                )}
+              </div>
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
+                <div className="flex items-center justify-center gap-1 mt-2">
+                  {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
+                  {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
+                  {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
                 </div>
-                <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
-                  {callData.map((data, index) => {
-                    const height = callMaxScore > 0 ? (data.score / callMaxScore) * 100 : 0;
-                    return (
-                      <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
-                        <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
-                          <div
-                            className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
-                              data.score >= 60 ? 'bg-blue-500' :
-                                data.score >= 40 ? 'bg-orange-500' :
-                                  data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
-                              }`}
-                            style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
-                            title={`Week ${data.week}: ${data.score} (${data.count} calls)`}
-                          />
+                <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
+              </div>
+            </div>
+
+            {/* Sales Calls Trend Chart */}
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-3">Sales Calls – Weekly Trend</h4>
+              <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
+                <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
+                  <span>{callMaxScore}</span>
+                  <span>{Math.round(callMaxScore * 0.75)}</span>
+                  <span>{Math.round(callMaxScore * 0.5)}</span>
+                  <span>{Math.round(callMaxScore * 0.25)}</span>
+                  <span>0</span>
+                </div>
+                <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
+                  <div className="absolute inset-0 flex flex-col justify-between">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div key={i} className="border-t border-border/30" />
+                    ))}
+                  </div>
+                  <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
+                    {callData.map((data, index) => {
+                      const height = callMaxScore > 0 ? (data.score / callMaxScore) * 100 : 0;
+                      return (
+                        <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
+                          <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
+                            <div
+                              className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
+                                data.score >= 60 ? 'bg-blue-500' :
+                                  data.score >= 40 ? 'bg-orange-500' :
+                                    data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
+                                }`}
+                              style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
+                              title={`Week ${data.week}: ${data.score} (${data.count} calls)`}
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground text-center">
+                            <div className="font-medium">{data.score || '–'}</div>
+                            <div className="text-[10px]">{data.week}</div>
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground text-center">
-                          <div className="font-medium">{data.score || '–'}</div>
-                          <div className="text-[10px]">{data.week}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* ═══ ROLEPLAYS SECTION ═══ */}
-      <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" /> Overall Performance – Roleplays</CardTitle>
-          <CardDescription>Based on {performance.period}. Data: roleplay sessions only.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Average Roleplay Score</p>
-              <p className={`text-4xl font-bold ${getScoreColor(performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0)}`}>
-                {performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">Total Roleplays: {performance.roleplaysSummary?.totalRoleplays ?? performance.totalRoleplays}</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Best Category</p>
-              <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.bestCategory ?? '—'}</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
-              <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.improvementOpportunity ?? '—'}</p>
-            </div>
-            <div className="text-center p-4 rounded-lg bg-muted/30">
-              <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
-              <div className="flex items-center justify-center gap-1 mt-2">
-                {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
-                {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
-                {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
+      {(dataSource === 'all' || dataSource === 'roleplays') && (
+        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" /> Overall Performance – Roleplays</CardTitle>
+            <CardDescription>Based on {performance.period}. Data: roleplay sessions only.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Average Roleplay Score</p>
+                <p className={`text-4xl font-bold ${getScoreColor(performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0)}`}>
+                  {performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0}
+                </p>
+                <p className="text-xs text-muted-foreground mt-2">Total Roleplays: {performance.roleplaysSummary?.totalRoleplays ?? performance.totalRoleplays}</p>
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Best Category</p>
+                <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.bestCategory ?? '—'}</p>
+                {performance.roleplaysSummary?.bestCategoryScore != null && (
+                  <p className={`text-lg font-semibold mt-1 ${getScoreColor(performance.roleplaysSummary.bestCategoryScore)}`}>
+                    {performance.roleplaysSummary.bestCategoryScore}
+                  </p>
+                )}
+              </div>
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
+                <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.improvementOpportunity ?? '—'}</p>
+                {performance.roleplaysSummary?.improvementOpportunityScore != null && (
+                  <p className={`text-lg font-semibold mt-1 ${getScoreColor(performance.roleplaysSummary.improvementOpportunityScore)}`}>
+                    {performance.roleplaysSummary.improvementOpportunityScore}
+                  </p>
+                )}
+              </div>
+              <div className="text-center p-4 rounded-lg bg-muted/30">
+                <p className="text-sm text-muted-foreground mb-2">Performance Trend</p>
+                <div className="flex items-center justify-center gap-1 mt-2">
+                  {performance.trend === 'improving' && <><TrendingUp className="h-4 w-4 text-green-500" /><span className="text-xs text-green-500">Improving</span></>}
+                  {performance.trend === 'declining' && <><TrendingDown className="h-4 w-4 text-red-500" /><span className="text-xs text-red-500">Declining</span></>}
+                  {performance.trend === 'neutral' && <><Minus className="h-4 w-4 text-muted-foreground" /><span className="text-xs text-muted-foreground">Stable</span></>}
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">Last 12 weeks</p>
+              </div>
             </div>
-          </div>
 
-          {/* Roleplays Trend Chart */}
-          <div>
-            <h4 className="text-sm font-medium text-muted-foreground mb-3">Roleplays – Weekly Trend</h4>
-            <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
-              <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
-                <span>{roleplayMaxScore}</span>
-                <span>{Math.round(roleplayMaxScore * 0.75)}</span>
-                <span>{Math.round(roleplayMaxScore * 0.5)}</span>
-                <span>{Math.round(roleplayMaxScore * 0.25)}</span>
-                <span>0</span>
-              </div>
-              <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
-                <div className="absolute inset-0 flex flex-col justify-between">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <div key={i} className="border-t border-border/30" />
-                  ))}
+            {/* Roleplays Trend Chart */}
+            <div>
+              <h4 className="text-sm font-medium text-muted-foreground mb-3">Roleplays – Weekly Trend</h4>
+              <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
+                <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
+                  <span>{roleplayMaxScore}</span>
+                  <span>{Math.round(roleplayMaxScore * 0.75)}</span>
+                  <span>{Math.round(roleplayMaxScore * 0.5)}</span>
+                  <span>{Math.round(roleplayMaxScore * 0.25)}</span>
+                  <span>0</span>
                 </div>
-                <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
-                  {roleplayData.map((data, index) => {
-                    const height = roleplayMaxScore > 0 ? (data.score / roleplayMaxScore) * 100 : 0;
-                    return (
-                      <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
-                        <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
-                          <div
-                            className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
-                              data.score >= 60 ? 'bg-blue-500' :
-                                data.score >= 40 ? 'bg-orange-500' :
-                                  data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
-                              }`}
-                            style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
-                            title={`Week ${data.week}: ${data.score} (${data.count} roleplays)`}
-                          />
+                <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
+                  <div className="absolute inset-0 flex flex-col justify-between">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div key={i} className="border-t border-border/30" />
+                    ))}
+                  </div>
+                  <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
+                    {roleplayData.map((data, index) => {
+                      const height = roleplayMaxScore > 0 ? (data.score / roleplayMaxScore) * 100 : 0;
+                      return (
+                        <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
+                          <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
+                            <div
+                              className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
+                                data.score >= 60 ? 'bg-blue-500' :
+                                  data.score >= 40 ? 'bg-orange-500' :
+                                    data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
+                                }`}
+                              style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
+                              title={`Week ${data.week}: ${data.score} (${data.count} roleplays)`}
+                            />
+                          </div>
+                          <div className="text-xs text-muted-foreground text-center">
+                            <div className="font-medium">{data.score || '–'}</div>
+                            <div className="text-[10px]">{data.week}</div>
+                          </div>
                         </div>
-                        <div className="text-xs text-muted-foreground text-center">
-                          <div className="font-medium">{data.score || '–'}</div>
-                          <div className="text-[10px]">{data.week}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Sales Skill Breakdown (10 categories from API) */}
       {performance.skillCategories.length > 0 && (
@@ -467,33 +514,95 @@ export default function PerformancePage() {
             <CardDescription>Average score and trend per category (from analyses). Sales categories defined in Knowledge Doc: Sales Call Scoring Framework.</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {performance.skillCategories.map((skill, idx) => (
-                <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-white/5 border border-white/10">
-                  <p className="font-medium">{skill.category}</p>
-                  <div className="flex items-center gap-3">
-                    {typeof skill.trend === 'number' && skill.trend !== 0 && (
-                      <span className={`text-xs flex items-center gap-0.5 ${skill.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                        {skill.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        {skill.trend > 0 ? '+' : ''}{skill.trend}
-                      </span>
+            <div className="space-y-1">
+              {performance.skillCategories.map((skill, idx) => {
+                const isExpanded = expandedCategories.has(idx);
+                const toggleExpand = () => {
+                  setExpandedCategories(prev => {
+                    const next = new Set(prev);
+                    if (next.has(idx)) next.delete(idx); else next.add(idx);
+                    return next;
+                  });
+                };
+                return (
+                  <div key={idx} className="rounded-lg bg-white/5 border border-white/10 overflow-hidden">
+                    <button
+                      onClick={toggleExpand}
+                      className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors text-left"
+                    >
+                      <p className="font-medium">{skill.category}</p>
+                      <div className="flex items-center gap-3">
+                        {typeof skill.trend === 'number' && skill.trend !== 0 && (
+                          <span className={`text-xs flex items-center gap-0.5 ${skill.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                            {skill.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                            {skill.trend > 0 ? '+' : ''}{skill.trend}
+                          </span>
+                        )}
+                        <div className="w-32 bg-muted h-2 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${skill.averageScore >= 80 ? 'bg-green-500' :
+                              skill.averageScore >= 60 ? 'bg-blue-500' :
+                                skill.averageScore >= 40 ? 'bg-orange-500' :
+                                  'bg-red-500'
+                              }`}
+                            style={{ width: `${skill.averageScore}%` }}
+                          />
+                        </div>
+                        <span className={`text-lg font-bold w-12 text-right ${getScoreColor(skill.averageScore)}`}>
+                          {skill.averageScore}
+                        </span>
+                        {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                      </div>
+                    </button>
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-1 space-y-3 border-t border-white/10">
+                        {/* Trend sparkline */}
+                        {skill.trendData && skill.trendData.length > 1 && (
+                          <div>
+                            <p className="text-xs font-semibold text-muted-foreground mb-1">Trend Over Time</p>
+                            <svg viewBox={`0 0 ${(skill.trendData.length - 1) * 20} 30`} className="w-full h-8" preserveAspectRatio="none">
+                              <polyline
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                className="text-blue-500"
+                                points={skill.trendData.map((v, i) => `${i * 20},${30 - (v / 10) * 30}`).join(' ')}
+                              />
+                            </svg>
+                          </div>
+                        )}
+                        {skill.strengths && skill.strengths.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-green-500 mb-1">Strengths</p>
+                            <ul className="text-sm text-muted-foreground space-y-0.5">
+                              {skill.strengths.map((s, i) => <li key={i}>• {s}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {skill.weaknesses && skill.weaknesses.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-red-500 mb-1">Weaknesses</p>
+                            <ul className="text-sm text-muted-foreground space-y-0.5">
+                              {skill.weaknesses.map((w, i) => <li key={i}>• {w}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {skill.actionPoints && skill.actionPoints.length > 0 && (
+                          <div>
+                            <p className="text-xs font-semibold text-blue-500 mb-1">Action Points to Improve</p>
+                            <ul className="text-sm text-muted-foreground space-y-0.5">
+                              {skill.actionPoints.map((a, i) => <li key={i}>→ {a}</li>)}
+                            </ul>
+                          </div>
+                        )}
+                        {(!skill.strengths || skill.strengths.length === 0) && (!skill.weaknesses || skill.weaknesses.length === 0) && (!skill.actionPoints || skill.actionPoints.length === 0) && (
+                          <p className="text-sm text-muted-foreground italic">Not enough data yet for a detailed breakdown.</p>
+                        )}
+                      </div>
                     )}
-                    <div className="w-32 bg-muted h-2 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${skill.averageScore >= 80 ? 'bg-green-500' :
-                          skill.averageScore >= 60 ? 'bg-blue-500' :
-                            skill.averageScore >= 40 ? 'bg-orange-500' :
-                              'bg-red-500'
-                          }`}
-                        style={{ width: `${skill.averageScore}%` }}
-                      />
-                    </div>
-                    <span className={`text-lg font-bold w-12 text-right ${getScoreColor(skill.averageScore)}`}>
-                      {skill.averageScore}
-                    </span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -538,7 +647,7 @@ export default function PerformancePage() {
                   <tbody>
                     {Object.entries(performance.byDifficulty).map(([k, v]) => (
                       <tr key={k} className="border-b border-border/20">
-                        <td className="py-1.5 capitalize">{k}</td>
+                        <td className="py-1.5">{DIFFICULTY_LABELS[k] ?? k}</td>
                         <td className="py-1.5 text-right">{v.count}</td>
                         <td className={`py-1.5 text-right font-medium ${getScoreColor(v.averageScore)}`}>{v.averageScore}</td>
                       </tr>
@@ -584,12 +693,25 @@ export default function PerformancePage() {
               <h4 className="text-sm font-semibold mb-2">Most Common Objections</h4>
               <div className="space-y-2">
                 {performance.objectionInsights.topObjections.map((obj, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white/5 border border-white/10">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm">&ldquo;{obj.text}&rdquo;</span>
-                      <Badge variant="outline" className="text-xs">{obj.pillar}</Badge>
+                  <div key={idx} className="p-3 rounded-lg bg-white/5 border border-white/10 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">&ldquo;{obj.text}&rdquo;</span>
+                        <Badge variant="outline" className="text-xs">{obj.pillar}</Badge>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {obj.handlingQuality != null && (
+                          <span className={`text-xs font-medium ${getScoreColor(obj.handlingQuality * 10)}`}>Quality: {obj.handlingQuality}/10</span>
+                        )}
+                        <span className="text-sm font-medium">{obj.count}×</span>
+                      </div>
                     </div>
-                    <span className="text-sm font-medium">{obj.count}×</span>
+                    {obj.rootCause && (
+                      <p className="text-xs text-muted-foreground"><span className="font-medium">Root Cause:</span> {obj.rootCause}</p>
+                    )}
+                    {obj.preventionOpportunity && (
+                      <p className="text-xs text-muted-foreground"><span className="font-medium">Prevention:</span> {obj.preventionOpportunity}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -616,6 +738,23 @@ export default function PerformancePage() {
               <p className="text-sm text-muted-foreground bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
                 💡 {performance.objectionInsights.guidance}
               </p>
+            )}
+
+            {/* Prioritised Improvement Actions */}
+            {performance.objectionInsights.improvementActions && performance.objectionInsights.improvementActions.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold mb-2">Prioritised Improvement Actions</h4>
+                <div className="space-y-2">
+                  {performance.objectionInsights.improvementActions.map((action, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 space-y-1">
+                      <p className="text-sm font-medium">{action.problem}</p>
+                      <p className="text-xs text-muted-foreground"><span className="font-medium">Do differently:</span> {action.whatToDoDifferently}</p>
+                      <p className="text-xs text-muted-foreground"><span className="font-medium">When:</span> {action.whenToApply}</p>
+                      <p className="text-xs text-muted-foreground"><span className="font-medium">Why:</span> {action.whyItMatters}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -655,23 +794,6 @@ export default function PerformancePage() {
                   </div>
                 ))}
               </div>
-            ) : performance.totalAnalyses > 0 ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                  <p className="font-medium">Value</p>
-                  <Badge variant="default" className="text-lg px-3 py-1">
-                    {performance.averageValue}
-                  </Badge>
-                </div>
-                {performance.averageTrust > 0 && (
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                    <p className="font-medium">Trust</p>
-                    <Badge variant="default" className="text-lg px-3 py-1">
-                      {performance.averageTrust}
-                    </Badge>
-                  </div>
-                )}
-              </div>
             ) : (
               <p className="text-sm text-muted-foreground">Complete calls or roleplays to see your strengths</p>
             )}
@@ -694,23 +816,6 @@ export default function PerformancePage() {
                     </Badge>
                   </div>
                 ))}
-              </div>
-            ) : performance.totalAnalyses > 0 ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                  <p className="font-medium">Logistics</p>
-                  <Badge variant="destructive" className="text-lg px-3 py-1">
-                    {performance.averageLogistics}
-                  </Badge>
-                </div>
-                {performance.averageFit < performance.averageValue && (
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <p className="font-medium">Fit</p>
-                    <Badge variant="destructive" className="text-lg px-3 py-1">
-                      {performance.averageFit}
-                    </Badge>
-                  </div>
-                )}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">Complete calls or roleplays to identify focus areas</p>

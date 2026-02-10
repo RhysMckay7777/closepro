@@ -100,10 +100,10 @@ export async function POST(
     // Detect conversation stages for completion tracking
     const stagesCompleted = {
       opening: messages.length >= 2,
-      discovery: (analysisResult.categoryScores as any)?.discovery_diagnosis > 3,
-      offer: (analysisResult.categoryScores as any)?.value_offer_positioning > 3,
+      discovery: (analysisResult.categoryScores as any)?.discovery > 3,
+      offer: (analysisResult.categoryScores as any)?.value > 3,
       objections: (analysisResult.objections?.length || 0) > 0,
-      close: (analysisResult.categoryScores as any)?.closing_commitment > 3,
+      close: (analysisResult.categoryScores as any)?.closing > 3,
     };
     const isIncomplete = !stagesCompleted.opening || !stagesCompleted.discovery || !stagesCompleted.offer;
 

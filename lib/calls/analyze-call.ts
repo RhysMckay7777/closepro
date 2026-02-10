@@ -78,22 +78,42 @@ export async function analyzeCallAsync(
       }
     }
 
-    await db
-      .insert(callAnalysis)
-      .values({
-        callId,
-        overallScore: analysisResult.overallScore,
-        valueScore: null,
-        trustScore: null,
-        fitScore: null,
-        logisticsScore: null,
-        skillScores: JSON.stringify(analysisResult.categoryScores),
-        objectionDetails: JSON.stringify(analysisResult.objections ?? []),
-        prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
-        prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
-        coachingRecommendations: JSON.stringify(enhancedRecommendations),
-        timestampedFeedback: JSON.stringify(analysisResult.timestampedFeedback),
-      });
+    const insertValues = {
+      callId,
+      overallScore: analysisResult.overallScore,
+      valueScore: null,
+      trustScore: null,
+      fitScore: null,
+      logisticsScore: null,
+      skillScores: JSON.stringify(analysisResult.categoryScores),
+      objectionDetails: JSON.stringify(analysisResult.objections ?? []),
+      prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
+      prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
+      coachingRecommendations: JSON.stringify(enhancedRecommendations),
+      timestampedFeedback: JSON.stringify(analysisResult.timestampedFeedback),
+      outcomeDiagnostic: analysisResult.outcomeDiagnostic ?? null,
+      categoryFeedback: analysisResult.categoryFeedbackDetailed ? JSON.stringify(analysisResult.categoryFeedbackDetailed) : null,
+      momentCoaching: analysisResult.momentCoaching ? JSON.stringify(analysisResult.momentCoaching) : null,
+      priorityFixes: analysisResult.enhancedPriorityFixes ? JSON.stringify(analysisResult.enhancedPriorityFixes) : null,
+    };
+
+    try {
+      await db.insert(callAnalysis).values(insertValues);
+    } catch (insertErr) {
+      if (isMissingColumnError(insertErr)) {
+        // Auto-migrate: add Prompt 3 columns if they don't exist yet
+        console.log('[analyze-call] Missing columns detected — running auto-migration for Prompt 3 columns…');
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS category_feedback TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS moment_coaching TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS priority_fixes TEXT`);
+        console.log('[analyze-call] Auto-migration complete. Retrying insert…');
+        // Retry with all columns now present
+        await db.insert(callAnalysis).values(insertValues);
+      } else {
+        throw insertErr;
+      }
+    }
 
     let callRow: { analysisIntent: string | null } | null = null;
     try {
@@ -137,7 +157,7 @@ export async function analyzeCallAsync(
         if (outcome!.cashCollected !== undefined) updatePayload.cashCollected = outcome!.cashCollected;
         if (outcome!.revenueGenerated !== undefined) updatePayload.revenueGenerated = outcome!.revenueGenerated;
         if (outcome!.reasonForOutcome?.trim()) updatePayload.reasonForOutcome = outcome!.reasonForOutcome.trim();
-        await db.update(salesCalls).set(updatePayload as Parameters<typeof db.update>[1]).where(eq(salesCalls.id, callId));
+        await db.update(salesCalls).set(updatePayload as any).where(eq(salesCalls.id, callId));
       } catch (err) {
         if (isMissingColumnError(err)) await setCallStatusCompleted(callId);
         else throw err;

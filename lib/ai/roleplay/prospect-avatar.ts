@@ -6,28 +6,74 @@ const FIRST_NAMES = [
   'Ryan', 'Nicole', 'Jordan', 'Rachel', 'Taylor', 'Amanda', 'Morgan', 'Jessica', 'Casey', 'Lauren',
   'Sam', 'Katie', 'Jamie', 'Megan', 'Riley', 'Ashley', 'Quinn', 'Brooke', 'Reese', 'Hayley',
 ];
+
+const MALE_FIRST_NAMES = [
+  'James', 'David', 'Michael', 'Robert', 'Daniel',
+  'Thomas', 'William', 'Richard', 'Joseph', 'Marcus',
+  'Alex', 'Jordan', 'Sam', 'Chris', 'Ryan',
+  'Nathan', 'Ben', 'Luke', 'Adam', 'Jack',
+];
+
+const FEMALE_FIRST_NAMES = [
+  'Maria', 'Sarah', 'Emma', 'Rachel', 'Sophie',
+  'Jessica', 'Laura', 'Hannah', 'Charlotte', 'Olivia',
+  'Alex', 'Jordan', 'Sam', 'Chris', 'Morgan',
+  'Taylor', 'Nicole', 'Katie', 'Amy', 'Lisa',
+];
+
 const LAST_NAMES = [
   'Chen', 'Williams', 'Martinez', 'Kim', 'Brown', 'Garcia', 'Johnson', 'Lee', 'Davis', 'Patel',
   'Thompson', 'Rodriguez', 'Wilson', 'Nguyen', 'Anderson', 'Taylor', 'Moore', 'Jackson', 'White', 'Harris',
 ];
 
+export type ProspectGender = 'male' | 'female' | 'any';
+
+/**
+ * Infer prospect gender from the offer's whoItsFor field.
+ * Returns 'male', 'female', or 'any' (default).
+ */
+export function inferGenderFromOffer(whoItsFor?: string | null): ProspectGender {
+  if (!whoItsFor) return 'any';
+  const lower = whoItsFor.toLowerCase();
+
+  const maleSignals = ['men', 'male', 'fathers', 'dads', 'boys',
+    'husbands', 'gentlemen', 'bros', "men's", 'him', 'his'];
+  if (maleSignals.some(s => lower.includes(s))) return 'male';
+
+  const femaleSignals = ['women', 'female', 'mothers', 'mums', 'moms',
+    'girls', 'wives', 'ladies', "women's", 'her', 'she'];
+  if (femaleSignals.some(s => lower.includes(s))) return 'female';
+
+  return 'any';
+}
+
+function getFirstNamesForGender(gender: ProspectGender): string[] {
+  switch (gender) {
+    case 'male': return MALE_FIRST_NAMES;
+    case 'female': return FEMALE_FIRST_NAMES;
+    default: return FIRST_NAMES;
+  }
+}
+
 /**
  * Returns a random realistic prospect name (e.g. "Maria Chen").
  * Pass a Set to avoid duplicates when generating multiple names in one go.
+ * Pass gender to filter by male/female/any.
  */
-export function generateRandomProspectName(usedNames?: Set<string>): string {
+export function generateRandomProspectName(usedNames?: Set<string>, gender: ProspectGender = 'any'): string {
+  const firstNames = getFirstNamesForGender(gender);
   let name: string;
   do {
-    const first = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+    const first = firstNames[Math.floor(Math.random() * firstNames.length)];
     const last = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
     name = `${first} ${last}`;
-  } while (usedNames?.has(name) && usedNames.size < FIRST_NAMES.length * LAST_NAMES.length);
+  } while (usedNames?.has(name) && usedNames.size < firstNames.length * LAST_NAMES.length);
   usedNames?.add(name);
   return name;
 }
 
 export type AuthorityLevel = 'advisee' | 'peer' | 'advisor';
-export type DifficultyTier = 'easy' | 'realistic' | 'hard' | 'elite' | 'near_impossible';
+export type DifficultyTier = 'easy' | 'realistic' | 'hard' | 'elite';
 
 export interface ProspectDifficultyProfile {
   // Layer A: Persuasion Difficulty (40 points)
@@ -110,10 +156,8 @@ export function calculateDifficultyIndex(
     tier = 'realistic';
   } else if (index >= 30) {
     tier = 'hard';
-  } else if (index >= 25) {
-    tier = 'elite';
   } else {
-    tier = 'near_impossible';
+    tier = 'elite';
   }
 
   return { index, tier };
@@ -247,7 +291,7 @@ const CHARACTER_ARCHETYPES = {
   hard: [
     { role: 'skeptical business owner', context: 'has been burned before, questions everything and needs proof' },
     { role: 'busy executive', context: 'overwhelmed with options and competing priorities, hard to get attention' },
-    { role: 'price-sensitive buyer', context: 'interested but budget-conscious, needs strong ROI justification' },
+    { role: 'budget-conscious professional', context: 'interested but watching every dollar, needs strong ROI justification' },
     { role: 'experienced professional', context: 'set in their ways, resistant to change unless benefits are clear' },
     { role: 'time-poor decision maker', context: 'wants results but struggles to find time to commit or evaluate' },
   ],
@@ -256,8 +300,6 @@ const CHARACTER_ARCHETYPES = {
     { role: 'seasoned executive', context: 'has seen many pitches, high standards and requires exceptional value' },
     { role: 'sophisticated buyer', context: 'evaluates multiple alternatives, needs compelling differentiation' },
     { role: 'authority figure', context: 'makes decisions for others, requires extensive validation and trust' },
-  ],
-  near_impossible: [
     { role: 'hostile prospect', context: 'disengaged or negative, multiple blockers and low perceived need' },
     { role: 'wrong timing prospect', context: 'no budget, timeline far out, or decision by committee required' },
   ],
@@ -268,18 +310,33 @@ const CHARACTER_ARCHETYPES = {
  * Creates realistic, person-focused descriptions like "Busy dad George trying to figure out his business".
  */
 export function getDefaultBioForDifficulty(
-  tier: DifficultyTier | 'realistic' | 'hard' | 'elite' | 'easy',
-  prospectName?: string
+  tier: DifficultyTier | 'realistic' | 'hard' | 'elite' | 'easy' | 'near_impossible',
+  prospectName?: string,
+  offerContext?: {
+    offerCategory?: string;
+    whoItsFor?: string;
+    coreProblems?: string;
+    offerName?: string;
+  }
 ): string {
-  const key = tier as DifficultyTier;
+  // Map near_impossible → elite for backward compat
+  const key = (tier === 'near_impossible' ? 'elite' : tier) as DifficultyTier;
   const archetypes = CHARACTER_ARCHETYPES[key] ?? CHARACTER_ARCHETYPES.realistic;
   const archetype = archetypes[randomInt(0, archetypes.length - 1)];
 
   // Extract first name from prospect name if provided
   const firstName = prospectName?.split(' ')[0] || 'They';
 
-  // Generate character-driven bio
-  return `${archetype.role.charAt(0).toUpperCase() + archetype.role.slice(1)} ${firstName} ${archetype.context}.`;
+  // Generate character-driven bio, enriched with offer context when available
+  let bio = `${archetype.role.charAt(0).toUpperCase() + archetype.role.slice(1)} ${firstName} ${archetype.context}.`;
+
+  if (offerContext?.whoItsFor) {
+    bio += ` Matches ICP: ${offerContext.whoItsFor.slice(0, 120)}.`;
+  } else if (offerContext?.offerCategory) {
+    bio += ` Industry: ${offerContext.offerCategory.replace(/_/g, ' ')}.`;
+  }
+
+  return bio;
 }
 
 /**
@@ -443,15 +500,7 @@ export function generateBehaviourProfile(
         responseSpeed: 'normal',
       };
 
-    case 'near_impossible':
-      return {
-        objectionFrequency: 'high',
-        objectionIntensity: 'high',
-        answerDepth: 'shallow',
-        openness: 'closed',
-        willingnessToBeChallenged: 'low',
-        responseSpeed: 'slow',
-      };
+    // near_impossible removed — elite is now the hardest tier
 
     default:
       return {

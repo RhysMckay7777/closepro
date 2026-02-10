@@ -298,20 +298,26 @@ export const callAnalysis = pgTable('call_analysis', {
   logisticsDetails: text('logistics_details'),
 
   // Skill scores (10 categories) - stored as JSON: { categoryId: score } per agreed framework
-  skillScores: text('skill_scores'), // JSON: { authority_leadership: 7, structure_framework: 8, ... }
+  skillScores: text('skill_scores'), // JSON: { authority: 7, structure: 8, ... }
 
   // Objection breakdown (pillar classification only) - JSON array of { objection, pillar, handling }
   objectionDetails: text('objection_details'),
 
   // Prospect difficulty (from AI analysis, for call list and reporting)
   prospectDifficulty: integer('prospect_difficulty'), // 0-50
-  prospectDifficultyTier: text('prospect_difficulty_tier'), // easy | realistic | hard | elite | near_impossible
+  prospectDifficultyTier: text('prospect_difficulty_tier'), // easy | realistic | hard | elite
 
   // AI coaching recommendations
   coachingRecommendations: text('coaching_recommendations'), // JSON array of recommendations
 
   // Timestamped feedback
   timestampedFeedback: text('timestamped_feedback'), // JSON array of { timestamp, type, message, transcriptSegment }
+
+  // Connor's 7-section analysis data (Prompt 3)
+  outcomeDiagnostic: text('outcome_diagnostic'), // Narrative paragraph explaining call outcome
+  categoryFeedback: text('category_feedback'), // JSON: per-category { whyThisScore, whatWasDoneWell, whatWasMissing, howItAffectedOutcome }
+  momentCoaching: text('moment_coaching'), // JSON array of { timestamp, whatHappened, whatShouldHaveHappened, affectedCategory, whyItMatters }
+  priorityFixes: text('priority_fixes'), // JSON array of { problem, whatToDoDifferently, whenToApply, whyItMatters }
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -404,7 +410,7 @@ export const prospectAvatars = pgTable('prospect_avatars', {
   executionResistance: integer('execution_resistance').notNull().default(5), // 0-10 (ability to proceed: money, time, effort, authority)
   // Calculated totals
   difficultyIndex: integer('difficulty_index').notNull(), // 0-50 (calculated: Layer A + Layer B)
-  difficultyTier: text('difficulty_tier').notNull(), // 'easy', 'realistic', 'hard', 'elite', 'near_impossible'
+  difficultyTier: text('difficulty_tier').notNull(), // 'easy', 'realistic', 'hard', 'elite'
 
   // Prospect Profile Details
   avatarUrl: text('avatar_url'), // Optional: NanoBanana or other human-style portrait URL

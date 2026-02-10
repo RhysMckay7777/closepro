@@ -202,11 +202,11 @@ export default function RoleplayPage() {
               <p className="text-2xl font-bold">
                 {sessions.filter(s => s.overallScore !== null).length > 0
                   ? Math.round(
-                      sessions
-                        .filter(s => s.overallScore !== null)
-                        .reduce((sum, s) => sum + (s.overallScore || 0), 0) /
-                        sessions.filter(s => s.overallScore !== null).length
-                    )
+                    sessions
+                      .filter(s => s.overallScore !== null)
+                      .reduce((sum, s) => sum + (s.overallScore || 0), 0) /
+                    sessions.filter(s => s.overallScore !== null).length
+                  )
                   : 'N/A'}
               </p>
             </div>
@@ -246,7 +246,7 @@ export default function RoleplayPage() {
                   <TableHead>Prospect Name</TableHead>
                   <TableHead>Offer Type</TableHead>
                   <TableHead>Prospect Difficulty</TableHead>
-                  <TableHead>Overall Score</TableHead>
+                  <TableHead>Score</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

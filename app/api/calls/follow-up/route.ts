@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, users, organizations, userOrganizations } from '@/db/schema';
+import { salesCalls, paymentPlanInstalments, users, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 
 /**
@@ -23,34 +23,41 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
     const {
-      originalCallId,
       followUpDate,
+      offerId,
+      offerType,
+      prospectName,
       outcome,
       reasonForOutcome,
+      objections,
       cashCollected,
       revenueGenerated,
-      depositTaken,
       commissionRatePct,
+      // Payment plan fields
+      paymentType, // 'paid_in_full' | 'payment_plan'
+      numberOfInstalments,
+      monthlyAmount,
     } = body;
 
-    if (!originalCallId || !outcome || !reasonForOutcome) {
+    if (!offerId || !outcome) {
       return NextResponse.json(
-        { error: 'Missing required fields: originalCallId, outcome, reasonForOutcome' },
+        { error: 'Missing required fields: offerId, outcome' },
         { status: 400 }
       );
     }
 
-    // Get the original call to inherit offer info
-    const originalCall = await db
-      .select()
-      .from(salesCalls)
-      .where(eq(salesCalls.id, originalCallId))
-      .limit(1);
-
-    if (!originalCall[0]) {
+    if (!prospectName || (typeof prospectName === 'string' && !prospectName.trim())) {
       return NextResponse.json(
-        { error: 'Original call not found' },
-        { status: 404 }
+        { error: 'Missing required field: prospectName' },
+        { status: 400 }
+      );
+    }
+
+    const validOutcomes = ['closed', 'lost', 'no_show', 'further_follow_up'] as const;
+    if (!validOutcomes.includes(outcome)) {
+      return NextResponse.json(
+        { error: `Invalid outcome. Must be one of: ${validOutcomes.join(', ')}` },
+        { status: 400 }
       );
     }
 
@@ -75,7 +82,7 @@ export async function POST(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, session.user.id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found' },
@@ -85,16 +92,33 @@ export async function POST(request: NextRequest) {
       organizationId = firstOrg[0].organizationId;
     }
 
-    // Map outcome to result
+    // Map outcome to result enum
     const resultMap: Record<string, string> = {
-      sale_made: 'closed',
+      closed: 'closed',
       lost: 'lost',
-      did_not_attend: 'no_show',
+      no_show: 'no_show',
+      further_follow_up: 'follow_up',
     };
-
     const result = resultMap[outcome] || 'follow_up';
 
-    // Create follow-up record; callDate and analysisIntent so it feeds figures in the correct month
+    const callDate = followUpDate ? new Date(followUpDate) : new Date();
+    if (isNaN(callDate.getTime())) {
+      return NextResponse.json(
+        { error: 'Invalid follow-up date' },
+        { status: 400 }
+      );
+    }
+
+    // Determine effective commission rate
+    const userCommissionPct = (user[0] as any).commissionRatePct ?? null;
+    const effectiveCommissionPct = typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100
+      ? Math.round(commissionRatePct)
+      : userCommissionPct;
+
+    // Build notes from reasonForOutcome + objections
+    const combinedReason = [reasonForOutcome, objections].filter(Boolean).join('\n\nObjections: ') || null;
+
+    // Create follow-up record
     const [followUpCall] = await db
       .insert(salesCalls)
       .values({
@@ -103,21 +127,65 @@ export async function POST(request: NextRequest) {
         fileName: `follow-up-${followUpDate}`,
         fileUrl: '',
         status: 'completed',
-        offerId: originalCall[0].offerId,
-        offerType: originalCall[0].offerType,
+        offerId,
+        offerType: offerType as any,
         callType: 'follow_up' as any,
         result: result as any,
-        originalCallId,
-        reasonForOutcome: reasonForOutcome || null,
-        callDate: new Date(followUpDate),
+        prospectName: typeof prospectName === 'string' ? prospectName.trim().slice(0, 500) : null,
+        reasonForOutcome: combinedReason,
+        callDate,
         analysisIntent: 'update_figures',
-        cashCollected: cashCollected || null,
-        revenueGenerated: revenueGenerated || null,
-        depositTaken: depositTaken || false,
-        commissionRatePct: typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100 ? Math.round(commissionRatePct) : null,
-        completedAt: new Date(followUpDate),
+        cashCollected: cashCollected != null ? Number(cashCollected) : null,
+        revenueGenerated: revenueGenerated != null ? Number(revenueGenerated) : null,
+        commissionRatePct: effectiveCommissionPct,
+        completedAt: callDate,
       })
       .returning();
+
+    console.log('[Follow-Up] Created follow-up call:', {
+      callId: followUpCall.id,
+      result,
+      cashCollected,
+      revenueGenerated,
+      commissionRatePct: effectiveCommissionPct,
+      paymentType,
+    });
+
+    // Create payment plan instalments if applicable (same logic as manual call log)
+    if (result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
+      const numInstalments = Number(numberOfInstalments);
+      const monthlyAmountCents = Math.round(Number(monthlyAmount) * 100);
+
+      if (numInstalments > 0 && monthlyAmountCents > 0) {
+        const instalmentValues = [];
+
+        for (let i = 0; i < numInstalments; i++) {
+          const dueDate = new Date(callDate);
+          dueDate.setMonth(dueDate.getMonth() + i);
+
+          const commissionAmount = effectiveCommissionPct
+            ? Math.round(monthlyAmountCents * (effectiveCommissionPct / 100))
+            : null;
+
+          instalmentValues.push({
+            salesCallId: followUpCall.id,
+            dueDate,
+            amountCents: monthlyAmountCents,
+            commissionRatePct: effectiveCommissionPct,
+            commissionAmountCents: commissionAmount,
+          });
+        }
+
+        await db.insert(paymentPlanInstalments).values(instalmentValues);
+
+        console.log('[Follow-Up] Created payment plan instalments:', {
+          callId: followUpCall.id,
+          count: numInstalments,
+          monthlyAmountCents,
+          commissionRatePct: effectiveCommissionPct,
+        });
+      }
+    }
 
     return NextResponse.json({
       call: followUpCall,

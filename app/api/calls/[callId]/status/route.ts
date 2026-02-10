@@ -126,6 +126,9 @@ export async function GET(
           skillScores: categoryScores,
           coachingRecommendations: safeParse(row.coachingRecommendations, []),
           timestampedFeedback: safeParse(row.timestampedFeedback, []),
+          categoryFeedback: safeParse(row.categoryFeedback, null),
+          momentCoaching: safeParse(row.momentCoaching, []),
+          priorityFixes: safeParse(row.priorityFixes, []),
         };
       }
       return NextResponse.json({
@@ -161,6 +164,9 @@ export async function GET(
           skillScores: categoryScores,
           coachingRecommendations: safeParse(row.coachingRecommendations, []),
           timestampedFeedback: safeParse(row.timestampedFeedback, []),
+          categoryFeedback: safeParse(row.categoryFeedback, null),
+          momentCoaching: safeParse(row.momentCoaching, []),
+          priorityFixes: safeParse(row.priorityFixes, []),
         };
       }
       return NextResponse.json({
@@ -191,6 +197,9 @@ export async function GET(
           skillScores: categoryScores,
           coachingRecommendations: safeParse(row.coachingRecommendations, []),
           timestampedFeedback: safeParse(row.timestampedFeedback, []),
+          categoryFeedback: safeParse(row.categoryFeedback, null),
+          momentCoaching: safeParse(row.momentCoaching, []),
+          priorityFixes: safeParse(row.priorityFixes, []),
         };
         return NextResponse.json({
           status: 'completed',

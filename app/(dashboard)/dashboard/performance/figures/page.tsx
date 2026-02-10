@@ -62,7 +62,38 @@ export default function FiguresPage() {
   const [error, setError] = useState<string | null>(null);
   const [figures, setFigures] = useState<FiguresData | null>(null);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingCsv, setExportingCsv] = useState(false);
   const commissionTableRef = useRef<HTMLDivElement>(null);
+
+  const exportCSV = useCallback(() => {
+    if (!figures?.salesList?.length) return;
+    setExportingCsv(true);
+    try {
+      const headers = ['Date', 'Offer', 'Prospect Name', 'Cash Collected', 'Revenue Generated', 'Commission %', 'Commission Earned'];
+      const rows = figures.salesList.map((row) => [
+        row.date,
+        `"${(row.offerName || '').replace(/"/g, '""')}"`,
+        `"${(row.prospectName || '').replace(/"/g, '""')}"`,
+        (row.cashCollected / 100).toFixed(2),
+        (row.revenueGenerated / 100).toFixed(2),
+        `${row.commissionPct}%`,
+        (row.commissionAmount / 100).toFixed(2),
+      ]);
+      const csv = [headers, ...rows].map((r) => r.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const monthLabel = MONTHS[Number(month) - 1];
+      a.href = url;
+      a.download = `Commission_${monthLabel}_${year}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export error', err);
+    } finally {
+      setExportingCsv(false);
+    }
+  }, [figures, month, year]);
 
   const fetchFigures = useCallback(async () => {
     const monthParam = toMonthParam(month, year);
@@ -275,7 +306,7 @@ export default function FiguresPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">${(figures.cashCollected / 100).toLocaleString()}</p>
+                <p className="text-3xl font-bold">£{(figures.cashCollected / 100).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground mt-1">Amount actually collected (cents stored)</p>
               </CardContent>
             </Card>
@@ -287,7 +318,7 @@ export default function FiguresPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                <p className="text-3xl font-bold">${(figures.revenueGenerated / 100).toLocaleString()}</p>
+                <p className="text-3xl font-bold">£{(figures.revenueGenerated / 100).toLocaleString()}</p>
                 <p className="text-xs text-muted-foreground mt-1">Total value of deals (incl. payment plans)</p>
               </CardContent>
             </Card>
@@ -303,64 +334,69 @@ export default function FiguresPage() {
           </div>
 
           {/* Visual divider before Commission */}
-          <div className="border-t border-border/50 my-6" aria-hidden />
-
-          {/* Commission section: Total Commission (Month) */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Commission rate</CardTitle>
-                <p className="text-xs text-muted-foreground">Your default commission % (set in profile if available)</p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold">{figures.commissionRatePct != null ? `${figures.commissionRatePct}%` : '0%'}</p>
-              </CardContent>
-            </Card>
-            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-semibold">Total Commission (Month)</CardTitle>
-                <p className="text-xs text-muted-foreground">Sum of commission on sales (revenue × commission % per deal)</p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold">${((figures.totalCommission ?? 0) / 100).toLocaleString()}</p>
-              </CardContent>
-            </Card>
+          <div className="pt-8 pb-4" aria-hidden>
+            <hr className="border-t-2 border-border" />
           </div>
+
+          {/* Commission section: Total Commission (This Month) */}
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader className="pb-2">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5 text-primary" />
+                <CardTitle className="text-sm font-semibold">Total Commission</CardTitle>
+              </div>
+              <p className="text-xs text-muted-foreground">{MONTHS[Number(month) - 1]} {year}</p>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold">£{((figures.totalCommission ?? 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            </CardContent>
+          </Card>
 
           {/* Commission table: Date, Offer, Prospect Name, Cash Collected, Revenue, Commission %, Commission Amount – exportable as PDF */}
           {figures.salesList && figures.salesList.length > 0 && (
             <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl" id="commission-table" ref={commissionTableRef}>
               <CardHeader className="pb-2 flex flex-row items-center justify-between gap-4">
                 <div>
-                  <CardTitle className="text-sm font-semibold">Total Commission (Month)</CardTitle>
-                  <p className="text-xs text-muted-foreground">Date, Offer, Prospect Name, Cash Collected, Revenue, Commission %, Commission Amount. Commission rate is per deal.</p>
+                  <CardTitle className="text-sm font-semibold">Commission Schedule</CardTitle>
+                  <p className="text-xs text-muted-foreground">Per-deal breakdown for {MONTHS[Number(month) - 1]} {year}</p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={exportingPdf}
-                  onClick={async () => {
-                    if (!commissionTableRef.current) return;
-                    setExportingPdf(true);
-                    try {
-                      const html2canvas = (await import('html2canvas')).default;
-                      const { jsPDF } = await import('jspdf');
-                      const canvas = await html2canvas(commissionTableRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-                      const imgData = canvas.toDataURL('image/png');
-                      const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] });
-                      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
-                      const monthLabel = MONTHS[Number(month) - 1];
-                      pdf.save(`Commission_${monthLabel}_${year}.pdf`);
-                    } catch (err) {
-                      console.error('PDF export error', err);
-                    } finally {
-                      setExportingPdf(false);
-                    }
-                  }}
-                >
-                  {exportingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}
-                  Export PDF
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={exportingCsv}
+                    onClick={exportCSV}
+                  >
+                    {exportingCsv ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}
+                    Export CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={exportingPdf}
+                    onClick={async () => {
+                      if (!commissionTableRef.current) return;
+                      setExportingPdf(true);
+                      try {
+                        const html2canvas = (await import('html2canvas')).default;
+                        const { jsPDF } = await import('jspdf');
+                        const canvas = await html2canvas(commissionTableRef.current, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
+                        const imgData = canvas.toDataURL('image/png');
+                        const pdf = new jsPDF({ orientation: 'landscape', unit: 'px', format: [canvas.width, canvas.height] });
+                        pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+                        const monthLabel = MONTHS[Number(month) - 1];
+                        pdf.save(`Commission_${monthLabel}_${year}.pdf`);
+                      } catch (err) {
+                        console.error('PDF export error', err);
+                      } finally {
+                        setExportingPdf(false);
+                      }
+                    }}
+                  >
+                    {exportingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileDown className="h-4 w-4 mr-2" />}
+                    Export PDF
+                  </Button>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -369,11 +405,11 @@ export default function FiguresPage() {
                       <tr className="border-b text-left text-muted-foreground">
                         <th className="py-2 pr-4">Date</th>
                         <th className="py-2 pr-4">Offer</th>
-                        <th className="py-2 pr-4">Prospect</th>
-                        <th className="py-2 pr-4 text-right">Cash</th>
-                        <th className="py-2 pr-4 text-right">Revenue</th>
+                        <th className="py-2 pr-4">Prospect Name</th>
+                        <th className="py-2 pr-4 text-right">Cash Collected</th>
+                        <th className="py-2 pr-4 text-right">Revenue Generated</th>
                         <th className="py-2 pr-4 text-right">Commission %</th>
-                        <th className="py-2 text-right">Commission $</th>
+                        <th className="py-2 text-right">Commission Earned</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -382,10 +418,10 @@ export default function FiguresPage() {
                           <td className="py-2 pr-4">{row.date}</td>
                           <td className="py-2 pr-4">{row.offerName}</td>
                           <td className="py-2 pr-4">{row.prospectName || '—'}</td>
-                          <td className="py-2 pr-4 text-right">${(row.cashCollected / 100).toLocaleString()}</td>
-                          <td className="py-2 pr-4 text-right">${(row.revenueGenerated / 100).toLocaleString()}</td>
+                          <td className="py-2 pr-4 text-right">£{(row.cashCollected / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="py-2 pr-4 text-right">£{(row.revenueGenerated / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">{row.commissionPct}%</td>
-                          <td className="py-2 text-right">${(row.commissionAmount / 100).toLocaleString()}</td>
+                          <td className="py-2 text-right">£{(row.commissionAmount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -399,7 +435,7 @@ export default function FiguresPage() {
           <Alert className="border-primary/30 bg-primary/5">
             <AlertCircle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Cash collected &amp; revenue:</strong> These come from each call&apos;s outcome. Open a completed call → <strong>Edit outcome</strong> → set Result, Cash collected ($), and Revenue generated ($). The AI may fill these from the transcript; if not, add them there so this page updates.
+              <strong>Cash collected &amp; revenue:</strong> These come from each call&apos;s outcome. Open a completed call → <strong>Edit outcome</strong> → set Result, Cash collected (£), and Revenue generated (£). The AI may fill these from the transcript; if not, add them there so this page updates.
             </AlertDescription>
           </Alert>
 

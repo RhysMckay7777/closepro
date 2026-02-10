@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, TrendingUp, Target, Users, Package, AlertTriangle, Wrench } from 'lucide-react';
+import { ArrowLeft, TrendingUp, AlertTriangle, Wrench } from 'lucide-react';
 import Link from 'next/link';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { StageChips } from '@/components/roleplay/StageChips';
@@ -27,18 +27,10 @@ import {
 interface Analysis {
   id: string;
   overallScore: number;
-  valueScore: number;
-  trustScore: number;
-  fitScore: number;
-  logisticsScore: number;
-  valueDetails: string;
-  trustDetails: string;
-  fitDetails: string;
-  logisticsDetails: string;
   skillScores: string;
   coachingRecommendations: string;
   timestampedFeedback: string;
-  // New fields from Section 6
+  // Fields from Section 6
   isIncomplete?: boolean;
   stagesCompleted?: string;
   categoryFeedback?: string;
@@ -188,12 +180,7 @@ export default function RoleplayResultsPage() {
     return 'text-red-500';
   };
 
-  const getScoreBg = (score: number) => {
-    if (score >= 80) return 'bg-green-500/20 border-green-500/50';
-    if (score >= 60) return 'bg-blue-500/20 border-blue-500/50';
-    if (score >= 40) return 'bg-orange-500/20 border-orange-500/50';
-    return 'bg-red-500/20 border-red-500/50';
-  };
+
 
   if (loading) {
     return (
@@ -276,10 +263,7 @@ export default function RoleplayResultsPage() {
     return fallback;
   };
 
-  const valueDetails = safeParse(analysis.valueDetails, {});
-  const trustDetails = safeParse(analysis.trustDetails, {});
-  const fitDetails = safeParse(analysis.fitDetails, {});
-  const logisticsDetails = safeParse(analysis.logisticsDetails, {});
+
   const recommendations = safeParse(analysis.coachingRecommendations, []);
   // skillScores can be array (e.g. [{ category, subSkills }]) or object; normalize to list of { categoryName, skills: [name, score][] }
   const rawSkillScores = safeParse(analysis.skillScores, []);
@@ -300,34 +284,7 @@ export default function RoleplayResultsPage() {
       })
       : [];
 
-  // Generate diagnostic insight
-  const getDiagnosticInsight = () => {
-    if (!analysis) return null;
 
-    const scores = {
-      value: analysis.valueScore,
-      trust: analysis.trustScore,
-      fit: analysis.fitScore,
-      logistics: analysis.logisticsScore,
-    };
-
-    const lowest = Math.min(scores.value, scores.trust, scores.fit, scores.logistics);
-    const lowestPillar = Object.entries(scores).find(([, score]) => score === lowest)?.[0];
-
-    if (lowestPillar === 'value') {
-      return 'This sale was lost in Value, not the Close. Focus on building stronger value before presenting.';
-    } else if (lowestPillar === 'trust') {
-      return 'This sale was lost in Trust, not the Close. Build more credibility and rapport.';
-    } else if (lowestPillar === 'fit') {
-      return 'This sale was lost in Discovery, not the Close. Better qualification and fit assessment needed.';
-    } else if (lowestPillar === 'logistics') {
-      return 'This sale was lost in Logistics, not the Close. Address time, money, and commitment concerns earlier.';
-    }
-
-    return 'Review all four pillars to identify improvement areas.';
-  };
-
-  const diagnosticInsight = getDiagnosticInsight();
 
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -408,11 +365,7 @@ export default function RoleplayResultsPage() {
           <div>
             <h2 className="text-lg sm:text-xl font-semibold mb-2">Overall Score</h2>
             <p className="text-sm sm:text-base text-muted-foreground">Your performance in this roleplay</p>
-            {diagnosticInsight && (
-              <p className="text-sm text-orange-500 font-medium mt-2">
-                💡 {diagnosticInsight}
-              </p>
-            )}
+
           </div>
           <div className="flex items-center gap-3">
             <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysis.overallScore)}`}>
@@ -549,144 +502,7 @@ export default function RoleplayResultsPage() {
         <ObjectionAnalysis items={objectionItems} />
       )}
 
-      {/* Four Pillars */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <Card className={`p-4 sm:p-6 border-2 ${getScoreBg(analysis.valueScore)}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Target className="h-5 w-5" />
-              <h3 className="font-semibold">Value</h3>
-            </div>
-            <span className={`text-2xl font-bold ${getScoreColor(analysis.valueScore)}`}>
-              {analysis.valueScore}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {valueDetails.strengths?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Strengths:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {valueDetails.strengths.slice(0, 2).map((s: string, i: number) => (
-                    <li key={i}>• {s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {valueDetails.weaknesses?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Areas to Improve:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {valueDetails.weaknesses.slice(0, 2).map((w: string, i: number) => (
-                    <li key={i}>• {w}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </Card>
 
-        <Card className={`p-4 sm:p-6 border-2 ${getScoreBg(analysis.trustScore)}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              <h3 className="font-semibold">Trust</h3>
-            </div>
-            <span className={`text-2xl font-bold ${getScoreColor(analysis.trustScore)}`}>
-              {analysis.trustScore}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {trustDetails.strengths?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Strengths:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {trustDetails.strengths.slice(0, 2).map((s: string, i: number) => (
-                    <li key={i}>• {s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {trustDetails.weaknesses?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Areas to Improve:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {trustDetails.weaknesses.slice(0, 2).map((w: string, i: number) => (
-                    <li key={i}>• {w}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card className={`p-4 sm:p-6 border-2 ${getScoreBg(analysis.fitScore)}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              <h3 className="font-semibold">Fit</h3>
-            </div>
-            <span className={`text-2xl font-bold ${getScoreColor(analysis.fitScore)}`}>
-              {analysis.fitScore}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {fitDetails.strengths?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Strengths:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {fitDetails.strengths.slice(0, 2).map((s: string, i: number) => (
-                    <li key={i}>• {s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {fitDetails.weaknesses?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Areas to Improve:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {fitDetails.weaknesses.slice(0, 2).map((w: string, i: number) => (
-                    <li key={i}>• {w}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </Card>
-
-        <Card className={`p-4 sm:p-6 border-2 ${getScoreBg(analysis.logisticsScore)}`}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5" />
-              <h3 className="font-semibold">Logistics</h3>
-            </div>
-            <span className={`text-2xl font-bold ${getScoreColor(analysis.logisticsScore)}`}>
-              {analysis.logisticsScore}
-            </span>
-          </div>
-          <div className="space-y-2">
-            {logisticsDetails.strengths?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Strengths:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {logisticsDetails.strengths.slice(0, 2).map((s: string, i: number) => (
-                    <li key={i}>• {s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {logisticsDetails.weaknesses?.length > 0 && (
-              <div>
-                <p className="text-sm font-medium mb-1">Areas to Improve:</p>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  {logisticsDetails.weaknesses.slice(0, 2).map((w: string, i: number) => (
-                    <li key={i}>• {w}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </Card>
-      </div>
 
       {/* Skill Scores Breakdown */}
       {skillScoresList.length > 0 && (

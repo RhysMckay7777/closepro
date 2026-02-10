@@ -139,7 +139,8 @@ export async function generateImageWithGemini(
  */
 export function buildGeminiAvatarPrompt(
     name?: string,
-    context?: string | null
+    context?: string | null,
+    gender?: 'male' | 'female' | 'any' | null
 ): string {
     const parts = [
         'Generate a REAL photograph — a professional headshot photo taken with a DSLR camera.',
@@ -150,6 +151,12 @@ export function buildGeminiAvatarPrompt(
         'Do NOT generate any cartoon, anime, illustration, drawing, sketch, CGI, 3D render, vector art, or any non-photographic style whatsoever.',
         'The output MUST be indistinguishable from a real photograph taken by a professional photographer.',
     ];
+
+    if (gender === 'male') {
+        parts.push('The person is male.');
+    } else if (gender === 'female') {
+        parts.push('The person is female.');
+    }
 
     if (name?.trim()) {
         const seed = name.toLowerCase();

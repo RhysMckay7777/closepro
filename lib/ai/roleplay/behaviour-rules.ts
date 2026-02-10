@@ -98,20 +98,7 @@ export function initializeBehaviourState(
       };
       break;
 
-    case 'near_impossible':
-      baseState = {
-        objectionFrequency: 'high',
-        objectionIntensity: 'high',
-        answerDepth: 'shallow',
-        openness: 'closed',
-        willingnessToBeChallenged: 'low',
-        responseSpeed: 'slow',
-        currentResistance: 9,
-        engagement: 2,
-        trustLevel: 1,
-        valuePerception: 1,
-      };
-      break;
+    // near_impossible removed — elite is now the hardest tier
 
     default:
       baseState = {
@@ -431,7 +418,6 @@ export function getOpeningLine(context: OpeningLineContext): string {
       templateKey = 'hard';
       break;
     case 'elite':
-    case 'near_impossible':
       templateKey = 'elite';
       break;
   }
@@ -496,16 +482,7 @@ You are a high-authority prospect who sees themselves as superior. You:
 - Have little patience for sales tactics
 - Need to see unique value for someone at your level
 `;
-    case 'near_impossible':
-      return `
-You are an extremely difficult prospect. You:
-- Are actively hostile or disengaged
-- Give one-word answers when possible
-- Constantly challenge and interrupt
-- Have fundamental blockers (no budget, wrong timing, etc.)
-- May try to end the call early
-- Only the most exceptional sales approach has any chance
-`;
+    // near_impossible removed — elite is now the hardest tier
     default:
       return getBehaviourInstructions('realistic');
   }

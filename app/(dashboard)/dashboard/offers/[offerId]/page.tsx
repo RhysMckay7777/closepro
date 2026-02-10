@@ -139,6 +139,22 @@ export default function OfferDetailsPage() {
     }
   };
 
+  const triggerAvatarGeneration = async (prospects: Prospect[]) => {
+    const needsAvatar = prospects.filter(p => !p.avatarUrl);
+    if (needsAvatar.length === 0) return;
+    await Promise.allSettled(
+      needsAvatar.map(async (prospect) => {
+        try {
+          await fetch(`/api/prospect-avatars/${prospect.id}/generate-avatar`, {
+            method: 'POST',
+          });
+        } catch (err) {
+          console.error(`Failed to generate avatar for ${prospect.name}:`, err);
+        }
+      })
+    );
+  };
+
   const generateProspects = async () => {
     setGenerating(true);
     try {
@@ -154,9 +170,12 @@ export default function OfferDetailsPage() {
       }
 
       const data = await response.json();
-      setProspects(data.prospects || []);
+      const newProspects: Prospect[] = data.prospects || [];
+      setProspects(newProspects);
       // Start polling for avatar images (generated in background)
       startAvatarPolling();
+      // Safety net: explicitly trigger avatar generation for each prospect
+      triggerAvatarGeneration(newProspects);
     } catch (error: any) {
       console.error('Error generating prospects:', error);
       toastError(error.message || 'Failed to generate prospects');
@@ -183,9 +202,12 @@ export default function OfferDetailsPage() {
       }
 
       const data = await response.json();
-      setProspects(data.prospects || []);
+      const newProspects: Prospect[] = data.prospects || [];
+      setProspects(newProspects);
       // Start polling for avatar images (generated in background)
       startAvatarPolling();
+      // Safety net: explicitly trigger avatar generation for each prospect
+      triggerAvatarGeneration(newProspects);
     } catch (error: any) {
       console.error('Error regenerating prospects:', error);
       toastError(error.message || 'Failed to regenerate prospects');
@@ -200,7 +222,6 @@ export default function OfferDetailsPage() {
       realistic: 'bg-blue-500/20 text-blue-600 border-blue-500/50',
       hard: 'bg-orange-500/20 text-orange-600 border-orange-500/50',
       elite: 'bg-red-500/20 text-red-600 border-red-500/50',
-      near_impossible: 'bg-purple-500/20 text-purple-600 border-purple-500/50',
     };
     return colors[tier] || 'bg-gray-500/20 text-gray-600 border-gray-500/50';
   };
@@ -216,12 +237,12 @@ export default function OfferDetailsPage() {
 
   const getModeLabel = (tier: string) => {
     const labels: Record<string, string> = {
-      easy: 'Easy Mode',
-      realistic: 'Intermediate Mode',
-      hard: 'Hard Mode',
-      elite: 'Expert Mode',
+      easy: 'Easy',
+      realistic: 'Realistic',
+      hard: 'Hard',
+      elite: 'Elite',
     };
-    return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)} Mode`;
+    return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
   };
 
   const getCardAccentClasses = (tier: string) => {
@@ -244,15 +265,7 @@ export default function OfferDetailsPage() {
     return classes[tier] ?? 'bg-muted-foreground';
   };
 
-  const getCallTypeTag = (tier: string) => {
-    const tags: Record<string, string> = {
-      easy: 'Discovery',
-      realistic: 'Objection Handling',
-      hard: 'Full Call',
-      elite: 'Full Call',
-    };
-    return tags[tier] ?? 'Full Call';
-  };
+
 
   const getShortTitle = (p: Prospect) => {
     if (!p.positionDescription) return getModeLabel(p.difficultyTier);
@@ -498,11 +511,7 @@ export default function OfferDetailsPage() {
                     <div className={`size-28 rounded-full bg-gradient-to-br ${getProspectPlaceholderColor(prospect.name)} flex items-center justify-center shadow-lg ${resolveProspectAvatarUrl(prospect.id, prospect.name, prospect.avatarUrl) ? 'hidden' : ''}`}>
                       <span className="text-3xl font-bold text-white">{getProspectInitials(prospect.name)}</span>
                     </div>
-                    <div className="absolute bottom-2 left-2">
-                      <Badge variant="secondary" className="text-xs font-medium shadow-sm">
-                        {getCallTypeTag(prospect.difficultyTier)}
-                      </Badge>
-                    </div>
+
                   </div>
                   <div className="p-4 flex-1 flex flex-col">
                     <h3 className="font-bold text-lg mb-0.5">{prospect.name}</h3>

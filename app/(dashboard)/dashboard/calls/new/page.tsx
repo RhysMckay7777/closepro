@@ -55,13 +55,15 @@ export default function NewCallPage() {
     notes: '',
   });
 
-  // Follow-up: list of recent calls for dropdown
-  const [followUpCalls, setFollowUpCalls] = useState<Array<{ id: string; prospectName: string; offerName: string; createdAt: string }>>([]);
+  // Follow-up form state
   const [followUpForm, setFollowUpForm] = useState({
-    originalCallId: '',
     followUpDate: new Date().toISOString().split('T')[0],
+    offerId: '',
+    offerType: '',
+    prospectName: '',
     outcome: '',
     reasonForOutcome: '',
+    objections: '',
     cashCollected: '',
     revenueGenerated: '',
     commissionRatePct: '',
@@ -69,7 +71,6 @@ export default function NewCallPage() {
     paymentType: 'paid_in_full' as 'paid_in_full' | 'payment_plan',
     numberOfInstalments: '',
     monthlyAmount: '',
-    nextFollowUpDate: '',
   });
 
   // Upload & Analyse (merged: transcript text, transcript file, or audio file)
@@ -94,14 +95,7 @@ export default function NewCallPage() {
     fetchOffers();
   }, []);
 
-  useEffect(() => {
-    if (activeTab === 'follow-up') {
-      fetch('/api/calls?forFollowUp=true')
-        .then((r) => r.ok ? r.json() : { calls: [] })
-        .then((data) => setFollowUpCalls(data.calls || []))
-        .catch(() => setFollowUpCalls([]));
-    }
-  }, [activeTab]);
+
 
   const fetchOffers = async () => {
     try {
@@ -117,8 +111,17 @@ export default function NewCallPage() {
 
   const handleManualSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!manualForm.offerId || !manualForm.result || !manualForm.reasonForOutcome) {
-      toastError('Please fill in all required fields');
+    if (!manualForm.offerId || !manualForm.result) {
+      toastError('Please select an offer and result');
+      return;
+    }
+    if (!manualForm.prospectName.trim()) {
+      toastError('Prospect name is required');
+      return;
+    }
+    // reasonForOutcome required for non-closed results
+    if (manualForm.result !== 'closed' && !manualForm.reasonForOutcome.trim()) {
+      toastError('Please provide a reason / details for this outcome');
       return;
     }
 
@@ -161,6 +164,10 @@ export default function NewCallPage() {
       toastError('Please select an offer');
       return;
     }
+    if (!noShowForm.prospectName.trim()) {
+      toastError('Prospect name is required');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -187,8 +194,17 @@ export default function NewCallPage() {
 
   const handleFollowUpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!followUpForm.originalCallId || !followUpForm.outcome || !followUpForm.reasonForOutcome) {
-      toastError('Please fill in all required fields');
+    if (!followUpForm.offerId || !followUpForm.outcome) {
+      toastError('Please select an offer and outcome');
+      return;
+    }
+    if (!followUpForm.prospectName.trim()) {
+      toastError('Prospect name is required');
+      return;
+    }
+    // reasonForOutcome required for lost / further_follow_up
+    if (['lost', 'further_follow_up'].includes(followUpForm.outcome) && !followUpForm.reasonForOutcome.trim()) {
+      toastError('Please explain why the deal was not closed');
       return;
     }
 
@@ -199,6 +215,7 @@ export default function NewCallPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...followUpForm,
+          prospectName: followUpForm.prospectName.trim(),
           cashCollected: followUpForm.cashCollected ? parseInt(followUpForm.cashCollected) * 100 : null,
           revenueGenerated: followUpForm.revenueGenerated ? parseInt(followUpForm.revenueGenerated) * 100 : null,
           commissionRatePct: followUpForm.commissionRatePct ? parseFloat(followUpForm.commissionRatePct) : undefined,
@@ -521,7 +538,7 @@ export default function NewCallPage() {
                   <div className="space-y-2">
                     <Label htmlFor="manual-prospect" className="flex items-center gap-2 text-muted-foreground">
                       <User className="h-3.5 w-3.5" />
-                      Prospect name (optional)
+                      Prospect name *
                     </Label>
                     <Input
                       id="manual-prospect"
@@ -529,50 +546,87 @@ export default function NewCallPage() {
                       onChange={(e) => setManualForm({ ...manualForm, prospectName: e.target.value })}
                       placeholder="e.g. James, Busy Dad"
                       className="bg-background"
+                      required
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="manual-result">Result *</Label>
-                    <Select
-                      value={manualForm.result}
-                      onValueChange={(value) => setManualForm({ ...manualForm, result: value })}
-                      required
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select result" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="closed">Closed</SelectItem>
-                        <SelectItem value="lost">Lost</SelectItem>
-                        <SelectItem value="deposit">Deposit</SelectItem>
-                        <SelectItem value="follow_up">Follow-up</SelectItem>
-                        <SelectItem value="unqualified">Unqualified</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <p className="text-xs text-muted-foreground self-end pb-2">
-                    Qualified if result ≠ Unqualified. Only &quot;Unqualified&quot; marks the call as not qualified.
-                  </p>
+                <div className="space-y-2">
+                  <Label htmlFor="manual-result">Result *</Label>
+                  <Select
+                    value={manualForm.result}
+                    onValueChange={(value) => setManualForm({ ...manualForm, result: value, reasonForOutcome: '' })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select result" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="closed">Closed</SelectItem>
+                      <SelectItem value="lost">Lost</SelectItem>
+                      <SelectItem value="deposit">Deposit</SelectItem>
+                      <SelectItem value="follow_up">Follow-up</SelectItem>
+                      <SelectItem value="unqualified">Unqualified</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="manual-reason">Why did the prospect buy or not buy? What objections were raised? *</Label>
-                  <Textarea
-                    id="manual-reason"
-                    value={manualForm.reasonForOutcome}
-                    onChange={(e) => setManualForm({ ...manualForm, reasonForOutcome: e.target.value })}
-                    placeholder="e.g. Prospect agreed to program; payment plan. Objections: timing, partner approval."
-                    rows={3}
-                    required
-                  />
-                </div>
+                {manualForm.result === 'lost' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-reason">Why did this deal not close? *</Label>
+                    <Textarea
+                      id="manual-reason"
+                      value={manualForm.reasonForOutcome}
+                      onChange={(e) => setManualForm({ ...manualForm, reasonForOutcome: e.target.value })}
+                      placeholder="Describe the objections raised and how you handled them"
+                      rows={3}
+                      required
+                    />
+                  </div>
+                )}
+                {manualForm.result === 'deposit' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-reason">Deposit details *</Label>
+                    <Textarea
+                      id="manual-reason"
+                      value={manualForm.reasonForOutcome}
+                      onChange={(e) => setManualForm({ ...manualForm, reasonForOutcome: e.target.value })}
+                      placeholder="Enter deposit amount and terms"
+                      rows={3}
+                      required
+                    />
+                  </div>
+                )}
+                {manualForm.result === 'follow_up' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-reason">Why not closed yet? *</Label>
+                    <Textarea
+                      id="manual-reason"
+                      value={manualForm.reasonForOutcome}
+                      onChange={(e) => setManualForm({ ...manualForm, reasonForOutcome: e.target.value })}
+                      placeholder="What objections were raised? What needs to happen next?"
+                      rows={3}
+                      required
+                    />
+                  </div>
+                )}
+                {manualForm.result === 'unqualified' && (
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-reason">Why was this call unqualified? *</Label>
+                    <Textarea
+                      id="manual-reason"
+                      value={manualForm.reasonForOutcome}
+                      onChange={(e) => setManualForm({ ...manualForm, reasonForOutcome: e.target.value })}
+                      placeholder="Explain why this prospect was not qualified"
+                      rows={3}
+                      required
+                    />
+                  </div>
+                )}
 
                 {manualForm.result === 'closed' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="manual-cash">Cash Collected (£)</Label>
                         <Input
@@ -589,6 +643,19 @@ export default function NewCallPage() {
                           type="number"
                           value={manualForm.revenueGenerated}
                           onChange={(e) => setManualForm({ ...manualForm, revenueGenerated: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="manual-commission">Commission Rate (%)</Label>
+                        <Input
+                          id="manual-commission"
+                          type="number"
+                          min={0}
+                          max={100}
+                          step={0.5}
+                          value={manualForm.commissionRatePct}
+                          onChange={(e) => setManualForm({ ...manualForm, commissionRatePct: e.target.value })}
+                          placeholder="e.g. 10"
                         />
                       </div>
                       <div className="space-y-2">
@@ -707,12 +774,13 @@ export default function NewCallPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="no-show-prospect">Prospect name (optional)</Label>
+                  <Label htmlFor="no-show-prospect">Prospect name *</Label>
                   <Input
                     id="no-show-prospect"
                     value={noShowForm.prospectName}
                     onChange={(e) => setNoShowForm({ ...noShowForm, prospectName: e.target.value })}
                     placeholder="e.g. John Smith"
+                    required
                   />
                 </div>
 
@@ -775,31 +843,11 @@ export default function NewCallPage() {
             <CardHeader>
               <CardTitle>Log Follow-Up</CardTitle>
               <CardDescription>
-                Record a follow-up call that happened after an original call
+                Record a follow-up call to a prospect
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleFollowUpSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="follow-up-original">Original call (Prospect – Offer) *</Label>
-                  <Select
-                    value={followUpForm.originalCallId}
-                    onValueChange={(value) => setFollowUpForm({ ...followUpForm, originalCallId: value })}
-                    required
-                  >
-                    <SelectTrigger id="follow-up-original">
-                      <SelectValue placeholder="Select original call" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {followUpCalls.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.prospectName ? `${c.prospectName} – ${c.offerName}` : c.offerName || c.id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="follow-up-date">Follow-Up Date *</Label>
@@ -812,46 +860,86 @@ export default function NewCallPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="follow-up-outcome">Outcome *</Label>
+                    <Label htmlFor="follow-up-offer">Offer *</Label>
                     <Select
-                      value={followUpForm.outcome}
-                      onValueChange={(value) => setFollowUpForm({ ...followUpForm, outcome: value })}
+                      value={followUpForm.offerId}
+                      onValueChange={(value) => {
+                        const offer = offers.find((o) => o.id === value);
+                        setFollowUpForm({
+                          ...followUpForm,
+                          offerId: value,
+                          offerType: offer?.offerCategory || '',
+                        });
+                      }}
                       required
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select outcome" />
+                        <SelectValue placeholder="Select an offer" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="closed">Closed</SelectItem>
-                        <SelectItem value="lost">Lost</SelectItem>
-                        <SelectItem value="no_show">No-Show</SelectItem>
-                        <SelectItem value="further_follow_up">Further Follow-up</SelectItem>
+                        {offers.map((offer) => (
+                          <SelectItem key={offer.id} value={offer.id}>
+                            {offer.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="follow-up-reason">Why did the prospect buy or not buy? What objections were raised? *</Label>
-                  <Textarea
-                    id="follow-up-reason"
-                    value={followUpForm.reasonForOutcome}
-                    onChange={(e) => setFollowUpForm({ ...followUpForm, reasonForOutcome: e.target.value })}
-                    placeholder="e.g. Prospect closed; payment plan. Objections: timing."
-                    rows={3}
+                  <Label htmlFor="follow-up-prospect">Prospect name *</Label>
+                  <Input
+                    id="follow-up-prospect"
+                    value={followUpForm.prospectName}
+                    onChange={(e) => setFollowUpForm({ ...followUpForm, prospectName: e.target.value })}
+                    placeholder="e.g. James Smith"
                     required
                   />
                 </div>
 
-                {followUpForm.outcome === 'further_follow_up' && (
-                  <div className="space-y-2">
-                    <Label htmlFor="next-follow-up-date">Next Follow-Up Date</Label>
-                    <Input
-                      id="next-follow-up-date"
-                      type="date"
-                      value={followUpForm.nextFollowUpDate}
-                      onChange={(e) => setFollowUpForm({ ...followUpForm, nextFollowUpDate: e.target.value })}
-                    />
+                <div className="space-y-2">
+                  <Label htmlFor="follow-up-outcome">Outcome *</Label>
+                  <Select
+                    value={followUpForm.outcome}
+                    onValueChange={(value) => setFollowUpForm({ ...followUpForm, outcome: value, reasonForOutcome: '', objections: '' })}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select outcome" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="closed">Closed</SelectItem>
+                      <SelectItem value="lost">Lost</SelectItem>
+                      <SelectItem value="no_show">No-Show</SelectItem>
+                      <SelectItem value="further_follow_up">Further Follow-up</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {(followUpForm.outcome === 'lost' || followUpForm.outcome === 'further_follow_up') && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="follow-up-reason">Why not closed? *</Label>
+                      <Textarea
+                        id="follow-up-reason"
+                        value={followUpForm.reasonForOutcome}
+                        onChange={(e) => setFollowUpForm({ ...followUpForm, reasonForOutcome: e.target.value })}
+                        placeholder="Explain why the deal was not closed"
+                        rows={3}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="follow-up-objections">Objections raised</Label>
+                      <Textarea
+                        id="follow-up-objections"
+                        value={followUpForm.objections}
+                        onChange={(e) => setFollowUpForm({ ...followUpForm, objections: e.target.value })}
+                        placeholder="List any objections the prospect raised"
+                        rows={3}
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -877,7 +965,7 @@ export default function NewCallPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="follow-up-commission">Commission rate (%)</Label>
+                        <Label htmlFor="follow-up-commission">Commission Rate (%)</Label>
                         <Input
                           id="follow-up-commission"
                           type="number"

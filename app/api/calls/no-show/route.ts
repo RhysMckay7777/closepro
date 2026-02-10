@@ -39,6 +39,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!prospectName || (typeof prospectName === 'string' && !prospectName.trim())) {
+      return NextResponse.json(
+        { error: 'Missing required field: prospectName' },
+        { status: 400 }
+      );
+    }
+
     // Get user's organization
     const user = await db
       .select()
@@ -60,7 +67,7 @@ export async function POST(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, session.user.id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found' },

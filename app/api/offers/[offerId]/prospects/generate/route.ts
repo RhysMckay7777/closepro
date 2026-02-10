@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName } from '@/lib/ai/roleplay/prospect-avatar';
+import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName, inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
 export const maxDuration = 120;
@@ -99,11 +99,17 @@ export async function POST(
     const difficulties: Array<'easy' | 'realistic' | 'hard' | 'elite'> = ['easy', 'realistic', 'hard', 'elite'];
     const generatedProspects = [];
     const usedNames = new Set<string>();
+    const prospectGender = inferGenderFromOffer(offer[0].whoItsFor);
 
     for (const difficulty of difficulties) {
       const prospectProfile = generateRandomProspectInBand(difficulty);
-      const name = generateRandomProspectName(usedNames);
-      const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier, name);
+      const name = generateRandomProspectName(usedNames, prospectGender);
+      const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier, name, {
+        offerCategory: offer[0].offerCategory ?? undefined,
+        whoItsFor: offer[0].whoItsFor ?? undefined,
+        coreProblems: offer[0].coreProblems ?? undefined,
+        offerName: offer[0].name ?? undefined,
+      });
 
       const [newProspect] = await db
         .insert(prospectAvatars)
@@ -161,7 +167,7 @@ export async function POST(
             console.log(`[prospects/generate after()] Generating image for: ${prospect.name}...`);
             try {
               const { url } = await generateImageWithGemini({
-                prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription),
+                prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription, prospectGender),
               });
               if (url) {
                 await db

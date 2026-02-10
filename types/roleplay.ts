@@ -1,6 +1,6 @@
 // Roleplay Types - Section 6 Frontend
 
-export type DifficultyLevel = 'easy' | 'realistic' | 'hard' | 'elite' | 'near_impossible';
+export type DifficultyLevel = 'easy' | 'realistic' | 'hard' | 'elite';
 
 export interface RoleplaySessionListItem {
     id: string;
@@ -141,7 +141,7 @@ export function getDifficultyColor(tier: DifficultyLevel | string | null | undef
         case 'realistic': return 'bg-blue-500/20 text-blue-700 border-blue-500/50';
         case 'hard': return 'bg-orange-500/20 text-orange-700 border-orange-500/50';
         case 'elite': return 'bg-red-500/20 text-red-700 border-red-500/50';
-        case 'near_impossible': return 'bg-purple-500/20 text-purple-700 border-purple-500/50';
+        // near_impossible removed — falls through to default for legacy data
         default: return 'bg-gray-500/20 text-gray-700 border-gray-500/50';
     }
 }

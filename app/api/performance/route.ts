@@ -111,10 +111,6 @@ export async function GET(request: NextRequest) {
         id: callAnalysis.id,
         callId: salesCalls.id,
         overallScore: callAnalysis.overallScore,
-        valueScore: callAnalysis.valueScore,
-        trustScore: callAnalysis.trustScore,
-        fitScore: callAnalysis.fitScore,
-        logisticsScore: callAnalysis.logisticsScore,
         skillScores: callAnalysis.skillScores,
         objectionDetails: callAnalysis.objectionDetails,
         createdAt: salesCalls.createdAt,
@@ -154,10 +150,6 @@ export async function GET(request: NextRequest) {
         id: roleplayAnalysis.id,
         sessionId: roleplaySessions.id,
         overallScore: roleplayAnalysis.overallScore,
-        valueScore: roleplayAnalysis.valueScore,
-        trustScore: roleplayAnalysis.trustScore,
-        fitScore: roleplayAnalysis.fitScore,
-        logisticsScore: roleplayAnalysis.logisticsScore,
         skillScores: roleplayAnalysis.skillScores,
         objectionAnalysis: roleplayAnalysis.objectionAnalysis,
         createdAt: roleplaySessions.createdAt,
@@ -212,18 +204,7 @@ export async function GET(request: NextRequest) {
     const averageRoleplayScore = roleplayOnly.length > 0
       ? Math.round(roleplayOnly.reduce((sum, a) => sum + (a.overallScore || 0), 0) / roleplayOnly.length)
       : 0;
-    const averageValue = totalAnalyses > 0
-      ? Math.round(allAnalyses.reduce((sum, a) => sum + (a.valueScore || 0), 0) / totalAnalyses)
-      : 0;
-    const averageTrust = totalAnalyses > 0
-      ? Math.round(allAnalyses.reduce((sum, a) => sum + (a.trustScore || 0), 0) / totalAnalyses)
-      : 0;
-    const averageFit = totalAnalyses > 0
-      ? Math.round(allAnalyses.reduce((sum, a) => sum + (a.fitScore || 0), 0) / totalAnalyses)
-      : 0;
-    const averageLogistics = totalAnalyses > 0
-      ? Math.round(allAnalyses.reduce((sum, a) => sum + (a.logisticsScore || 0), 0) / totalAnalyses)
-      : 0;
+
 
     // Calculate trend (compare first half vs second half)
     let trend: 'improving' | 'declining' | 'neutral' = 'neutral';
@@ -395,16 +376,6 @@ export async function GET(request: NextRequest) {
     if (skillCategories.length > 0) {
       strengths = skillCategories.slice(0, 3);
       weaknesses = skillCategories.slice(-3).reverse();
-    } else if (totalAnalyses > 0) {
-      const pillarScores = [
-        { category: 'Value', averageScore: averageValue },
-        { category: 'Trust', averageScore: averageTrust },
-        { category: 'Fit', averageScore: averageFit },
-        { category: 'Logistics', averageScore: averageLogistics },
-      ].sort((a, b) => b.averageScore - a.averageScore);
-
-      strengths = pillarScores.slice(0, 2).filter(p => p.averageScore > 0);
-      weaknesses = pillarScores.slice(-2).reverse().filter(p => p.averageScore > 0);
     }
 
     // By offer type (offer category)
@@ -580,14 +551,18 @@ export async function GET(request: NextRequest) {
       totalCalls: callAnalyses.length,
       averageOverall: callOnly.length > 0 ? Math.round(callOnly.reduce((s, a) => s + (a.overallScore ?? 0), 0) / callOnly.length) : 0,
       bestCategory: skillCategories.length > 0 ? skillCategories[0].category : null,
+      bestCategoryScore: skillCategories.length > 0 ? skillCategories[0].averageScore : null,
       improvementOpportunity: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].category : null,
+      improvementOpportunityScore: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].averageScore : null,
       trend,
     };
     const roleplaysSummary = {
       totalRoleplays: roleplayAnalyses.length,
       averageRoleplayScore: roleplayOnlyForSummary.length > 0 ? Math.round(roleplayOnlyForSummary.reduce((s, a) => s + (a.overallScore ?? 0), 0) / roleplayOnlyForSummary.length) : 0,
       bestCategory: skillCategories.length > 0 ? skillCategories[0].category : null,
+      bestCategoryScore: skillCategories.length > 0 ? skillCategories[0].averageScore : null,
       improvementOpportunity: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].category : null,
+      improvementOpportunityScore: skillCategories.length > 0 ? skillCategories[skillCategories.length - 1].averageScore : null,
       trend,
     };
 
@@ -599,10 +574,6 @@ export async function GET(request: NextRequest) {
       totalRoleplays: roleplayAnalyses.length,
       averageOverall,
       averageRoleplayScore,
-      averageValue,
-      averageTrust,
-      averageFit,
-      averageLogistics,
       trend,
       salesCallsSummary,
       roleplaysSummary,
