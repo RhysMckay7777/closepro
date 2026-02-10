@@ -10,9 +10,10 @@ import { SCORING_CATEGORIES, CATEGORY_LABELS, type ScoringCategoryId } from '@/l
 const VALID_IDS = new Set<string>(SCORING_CATEGORIES);
 const DISPLAY_NAMES: Record<string, string> = { ...CATEGORY_LABELS };
 
-/** Map legacy / alternate category IDs to the 10 canonical IDs. */
+/** Map legacy / alternate category IDs to the 10 canonical IDs.
+ *  Every key that has ever appeared in skillScores JSON must be here. */
 const OLD_TO_NEW: Record<string, ScoringCategoryId> = {
-  // Exact matches (already canonical)
+  // Exact canonical IDs
   authority: 'authority',
   structure: 'structure',
   communication: 'communication',
@@ -23,11 +24,19 @@ const OLD_TO_NEW: Record<string, ScoringCategoryId> = {
   adaptation: 'adaptation',
   objection_handling: 'objection_handling',
   closing: 'closing',
-  // Old / AI-generated aliases
-  trust_safety_ethics: 'trust',
+  // Old compound snake_case IDs (v1 AI format)
+  authority_leadership: 'authority',
+  structure_framework: 'structure',
   communication_storytelling: 'communication',
-  emotional_intelligence: 'adaptation',
-  tonality_delivery: 'communication',
+  discovery_diagnosis: 'discovery',
+  gap_urgency: 'gap',
+  value_offer_positioning: 'value',
+  trust_safety_ethics: 'trust',
+  adaptation_calibration: 'adaptation',
+  closing_commitment: 'closing',
+  // Other old / AI-generated aliases
+  emotional_intelligence: 'trust',
+  tonality_delivery: 'adaptation',
   rapport_building: 'trust',
   needs_analysis: 'discovery',
   pain_point_discovery: 'discovery',
@@ -42,10 +51,15 @@ const OLD_TO_NEW: Record<string, ScoringCategoryId> = {
 };
 
 function resolveCategory(raw: string): ScoringCategoryId | null {
-  // Normalize: lowercase, replace any non-alphanumeric sequences with '_', trim underscores
-  const lower = raw.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-  if (VALID_IDS.has(lower)) return lower as ScoringCategoryId;
+  // 1. Try exact match first (preserves underscores)
+  if (OLD_TO_NEW[raw]) return OLD_TO_NEW[raw];
+  // 2. Try lowercase with underscores preserved
+  const lower = raw.toLowerCase().trim();
   if (OLD_TO_NEW[lower]) return OLD_TO_NEW[lower];
+  // 3. Try normalizing spaces/hyphens to underscores (for display-name-style keys)
+  const normalized = lower.replace(/[\s\-&/,]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+  if (VALID_IDS.has(normalized)) return normalized as ScoringCategoryId;
+  if (OLD_TO_NEW[normalized]) return OLD_TO_NEW[normalized];
   return null;
 }
 
@@ -362,6 +376,7 @@ export async function GET(request: NextRequest) {
         : undefined;
     const { start: startDate, end: endDate, label: periodLabel } = getRangeDates(rangeParam);
     const sourceParam = searchParams.get('source'); // 'calls' | 'roleplays' | null (all)
+    console.log('[Performance API] Params:', { monthParam, rangeParam, sourceParam, startDate: startDate.toISOString(), endDate: endDate.toISOString(), periodLabel });
 
     const userId = session.user.id;
 
@@ -589,8 +604,13 @@ export async function GET(request: NextRequest) {
     const processObjections = (objections: any[], source: string) => {
       for (const obj of objections) {
         const text = obj.objection || obj.text || 'Unknown';
-        const pillar = obj.pillar || obj.classification || 'Unknown';
-        const handling = typeof obj.handling === 'number' ? obj.handling : (typeof obj.handlingQuality === 'number' ? obj.handlingQuality : (typeof obj.score === 'number' ? obj.score : null));
+        const pillar = obj.pillar || obj.classification || obj.objectionType || 'Unknown';
+        // Extract numeric handling: call analysis has handlingQuality (0-10), roleplay has wasHandledWell (boolean)
+        let handling: number | null = null;
+        if (typeof obj.handlingQuality === 'number') handling = obj.handlingQuality;
+        else if (typeof obj.handling === 'number') handling = obj.handling;
+        else if (typeof obj.score === 'number') handling = obj.score;
+        else if (typeof obj.wasHandledWell === 'boolean') handling = obj.wasHandledWell ? 7 : 3; // convert boolean to approx score
         const key = text.toLowerCase().trim();
 
         if (!objectionAgg[key]) {
@@ -608,6 +628,10 @@ export async function GET(request: NextRequest) {
         // Carry through the most recent non-null rootCause, preventionOpportunity
         if (obj.rootCause) objectionAgg[key].rootCause = obj.rootCause;
         if (obj.preventionOpportunity) objectionAgg[key].preventionOpportunity = obj.preventionOpportunity;
+        // Also check roleplay's howCouldBeHandledBetter as a form of prevention/improvement
+        if (!objectionAgg[key].preventionOpportunity && obj.howCouldBeHandledBetter) {
+          objectionAgg[key].preventionOpportunity = obj.howCouldBeHandledBetter;
+        }
         if (handling != null) {
           objectionAgg[key].handlingQualityTotal += handling;
           objectionAgg[key].handlingQualityCount += 1;
@@ -622,6 +646,18 @@ export async function GET(request: NextRequest) {
     callAnalyses.forEach(a => processObjections(parseObjections(a.objectionData), 'call'));
     roleplayAnalyses.forEach(a => processObjections(parseObjections(a.objectionData), 'roleplay'));
 
+    // Fallback root cause by pillar (for older data without rootCause)
+    const PILLAR_FALLBACK_ROOT_CAUSE: Record<string, string> = {
+      value: 'Value not established strongly enough before pricing discussion',
+      Value: 'Value not established strongly enough before pricing discussion',
+      trust: 'Insufficient rapport or credibility built earlier in the conversation',
+      Trust: 'Insufficient rapport or credibility built earlier in the conversation',
+      fit: 'Prospect\'s specific situation not fully explored during discovery',
+      Fit: 'Prospect\'s specific situation not fully explored during discovery',
+      logistics: 'Practical concerns not proactively addressed during the pitch',
+      Logistics: 'Practical concerns not proactively addressed during the pitch',
+    };
+
     // Build top objections with enriched fields
     const topObjections = Object.entries(objectionAgg)
       .sort((a, b) => b[1].count - a[1].count)
@@ -630,7 +666,7 @@ export async function GET(request: NextRequest) {
         text,
         count: data.count,
         pillar: data.pillar,
-        rootCause: data.rootCause ?? undefined,
+        rootCause: data.rootCause ?? PILLAR_FALLBACK_ROOT_CAUSE[data.pillar] ?? undefined,
         preventionOpportunity: data.preventionOpportunity ?? undefined,
         handlingQuality: data.handlingQualityCount > 0
           ? Math.round((data.handlingQualityTotal / data.handlingQualityCount) * 10) / 10
@@ -652,19 +688,21 @@ export async function GET(request: NextRequest) {
     }
 
     // FIX P9: Aggregate priorityFixes into improvementActions
+    // Call analysis uses: { problem, whatToDoDifferently, whenToApply, whyItMatters }
+    // Roleplay uses: { whatWentWrong, whyItMattered, whatToDoDifferently, category }
     const improvementActions: Array<{ problem: string; whatToDoDifferently: string; whenToApply: string; whyItMatters: string }> = [];
     const seenProblems = new Set<string>();
     for (const analysis of allAnalyses) {
       const fixes = parseObjections(analysis.priorityFixesData); // reuse generic JSON array parser
       for (const fix of fixes) {
-        if (fix.problem && !seenProblems.has(fix.problem)) {
-          seenProblems.add(fix.problem);
-          improvementActions.push({
-            problem: fix.problem,
-            whatToDoDifferently: fix.whatToDoDifferently || fix.whatToDo || '',
-            whenToApply: fix.whenToApply || '',
-            whyItMatters: fix.whyItMatters || '',
-          });
+        // Normalize field names across call/roleplay formats
+        const problem = fix.problem || fix.whatWentWrong || '';
+        const whatToDo = fix.whatToDoDifferently || fix.whatToDo || '';
+        const whenToApply = fix.whenToApply || (fix.category ? `During ${fix.category}` : '');
+        const whyItMatters = fix.whyItMatters || fix.whyItMattered || '';
+        if (problem && !seenProblems.has(problem)) {
+          seenProblems.add(problem);
+          improvementActions.push({ problem, whatToDoDifferently: whatToDo, whenToApply, whyItMatters });
           if (improvementActions.length >= 5) break;
         }
       }

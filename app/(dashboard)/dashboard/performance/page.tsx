@@ -121,11 +121,13 @@ export default function PerformancePage() {
         params.push(`source=${dataSource}`);
       }
       url += `?${params.join('&')}`;
-      const response = await fetch(url);
+      console.log('[Performance] Fetching:', url, { selectionMode, range, selectedMonth, selectedYear, dataSource });
+      const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to fetch performance data');
       }
       const data = await response.json();
+      console.log('[Performance] Response period:', data.period, 'totalAnalyses:', data.totalAnalyses);
       setPerformance(data);
     } catch (error) {
       console.error('Error fetching performance:', error);
