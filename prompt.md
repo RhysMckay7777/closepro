@@ -1,135 +1,38 @@
-ADD DELETE BUTTON TO CALLS LIST + FIGURES CLEANUP
+BUG: PAYMENT PLAN SHOWS 1 ROW INSTEAD OF 3 ON FIGURES PAGE
 
-FEATURE 1: Delete Call from Calls List Page
+The user created a Closed call for "bob" with "Mixed Wealth Closing Mastery" 
+and set Payment Plan with 3 instalments. But the Commission Schedule on the 
+Figures page only shows 1 row with "(instalment)" instead of 3 separate rows.
 
-On the calls list page (app/(dashboard)/dashboard/calls/page.tsx),
-add a delete button/icon to each row in the calls table.
+EXPECTED: 3 rows — one per instalment, each with its own date, cash collected, 
+revenue generated, and commission earned.
 
-Implementation:
+DEBUG STEPS:
 
-1. Add a trash icon button at the end of each row:
+1. Check the database first:
+   - Query the instalments/commission table for this call
+   - Are 3 instalment records actually stored? Or did only 1 get saved?
+   - Print the actual DB rows
 
-   import { Trash2 } from 'lucide-react';
+2. If 3 records exist in DB but only 1 shows:
+   - The Figures page query is grouping/deduplicating by callId
+   - Fix: query should return individual instalment rows, not group by callId
+   - Each instalment row should show its own instalment date (not the call date)
+   - Each row should show its own cash collected and revenue amount
 
-   // In each table row, add a final cell:
-   <td>
-     <Button
-       variant="ghost"
-       size="sm"
-       onClick={() => handleDeleteCall(call.id)}
-       className="text-destructive hover:text-destructive"
-     >
-       <Trash2 className="h-4 w-4" />
-     </Button>
-   </td>
+3. If only 1 record exists in DB:
+   - The confirm/save endpoint is only saving 1 instalment instead of all 3
+   - Fix: loop through ALL instalments from the form and insert each one
+   - Check app/api/calls/[callId]/confirm/route.ts or wherever payment plans 
+     are saved
 
-2. Add the delete handler:
-
-   const handleDeleteCall = async (callId: string) => {
-     if (!confirm('Are you sure you want to delete this call? This cannot be undone.')) {
-       return;
-     }
-     try {
-       const res = await fetch(`/api/calls/${callId}`, {
-         method: 'DELETE',
-       });
-       if (!res.ok) throw new Error('Failed to delete');
-       // Remove from local state to update UI immediately
-       setCalls(prev => prev.filter(c => c.id !== callId));
-       toast.success('Call deleted');
-     } catch (err) {
-       toast.error('Failed to delete call');
-     }
-   };
-
-3. Add the "Actions" column header to the table:
-
-   <th>Actions</th>
-
-FEATURE 2: DELETE API Route
-
-Create or update app/api/calls/[callId]/route.ts to handle 
-DELETE requests:
-
-   export async function DELETE(
-     request: NextRequest,
-     { params }: { params: { callId: string } }
-   ) {
-     const session = await auth();
-     if (!session?.user?.id) {
-       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-     }
-
-     const { callId } = params;
-
-     // Verify the call belongs to this user
-     const call = await db.query.salesCalls.findFirst({
-       where: and(
-         eq(salesCalls.id, callId),
-         eq(salesCalls.userId, session.user.id)
-       ),
-     });
-
-     if (!call) {
-       return NextResponse.json({ error: 'Call not found' }, { status: 404 });
-     }
-
-     // Delete related data first (foreign key constraints)
-     try {
-       // Delete payment plan instalments
-       await db.delete(paymentPlanInstalments)
-         .where(eq(paymentPlanInstalments.salesCallId, callId));
-     } catch { /* table may not exist */ }
-
-     try {
-       // Delete call analysis
-       await db.delete(callAnalysis)
-         .where(eq(callAnalysis.salesCallId, callId));
-     } catch { /* may not exist */ }
-
-     // Delete the call itself
-     await db.delete(salesCalls)
-       .where(eq(salesCalls.id, callId));
-
-     return NextResponse.json({ success: true });
-   }
-
-   Import whatever schema tables are needed:
-   import { salesCalls, callAnalysis, paymentPlanInstalments } from '@/db/schema';
-   import { eq, and } from 'drizzle-orm';
-
-IMPORTANT: Delete must cascade — remove instalments and 
-analysis BEFORE deleting the parent salesCalls row, otherwise 
-foreign key constraints will fail.
-
-ALSO: Add a delete button on the call detail/analysis page too.
-On app/(dashboard)/dashboard/calls/[callId]/page.tsx, add a 
-delete button in the header area (next to the "Edit details" 
-link):
-
-   <Button
-     variant="destructive"
-     size="sm"
-     onClick={async () => {
-       if (!confirm('Delete this call and all its data?')) return;
-       const res = await fetch(`/api/calls/${callId}`, { method: 'DELETE' });
-       if (res.ok) {
-         router.push('/dashboard/calls');
-         toast.success('Call deleted');
-       } else {
-         toast.error('Failed to delete');
-       }
-     }}
-   >
-     <Trash2 className="h-4 w-4 mr-2" />
-     Delete Call
-   </Button>
-
-BUILD AND DEPLOY.
+4. The date column should show the instalment due date, not the call date
+   Label each row with "(instalment 1 of 3)", "(instalment 2 of 3)", etc.
 
 VERIFY:
-1. Calls list → each row has a trash icon
-2. Click trash → "Are you sure?" confirmation dialog
-3. Click confirm → call removed from list immediately
-4. Figures page no longer shows that call's data
-5. Call detail page also has a "Delete Call" button
+- Create a Closed call with 3 payment plan instalments of £1,000 each
+- Figures page shows 3 separate rows for that call
+- Each row has its own date, cash, revenue, commission
+- Total commission across 3 rows = correct total
+
+npm run build must pass.

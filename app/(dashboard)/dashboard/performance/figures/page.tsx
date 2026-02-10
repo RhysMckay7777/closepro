@@ -19,7 +19,8 @@ interface SalesListItem {
   commissionPct: number;
   commissionAmount: number;
   isInstalment?: boolean;
-  instalmentLabel?: string;
+  instalmentNumber?: number;
+  totalInstalments?: number;
 }
 
 interface FiguresData {
@@ -433,8 +434,10 @@ export default function FiguresPage() {
                         <tr key={`${row.callId}-${idx}`} className="border-b border-border/50">
                           <td className="py-2 pr-4">
                             {row.date}
-                            {row.isInstalment && (
-                              <span className="ml-2 text-xs text-muted-foreground">(instalment)</span>
+                            {row.isInstalment && row.instalmentNumber && row.totalInstalments && (
+                              <span className="ml-2 text-xs text-muted-foreground">
+                                (instalment {row.instalmentNumber} of {row.totalInstalments})
+                              </span>
                             )}
                           </td>
                           <td className="py-2 pr-4">{row.offerName}</td>

@@ -227,7 +227,8 @@ export async function GET(request: NextRequest) {
       commissionPct: number;
       commissionAmount: number;
       isInstalment?: boolean;
-      instalmentLabel?: string;
+      instalmentNumber?: number;
+      totalInstalments?: number;
     }> = salesRows.map((r) => {
       const rev = r.revenueGenerated ?? 0;
       const pct = r.commissionRatePct ?? userCommissionPct ?? 0;
@@ -243,9 +244,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // Fetch payment plan instalments whose dueDate falls in this month.
-    // Instalment entries REPLACE the parent salesCalls row in the commission table
-    // to avoid double-counting commission (parent has full deal, instalments have monthly).
+    // Fetch ALL payment plan instalments for the user's calls.
+    // Show all instalments from a sale when the SALE DATE falls in the selected month.
+    // This gives the full commission picture for deals closed this month.
     const callIdsWithInstalments = new Set<string>();
     try {
       const instalmentRows = await db
@@ -258,18 +259,35 @@ export async function GET(request: NextRequest) {
           prospectName: salesCalls.prospectName,
           offerId: salesCalls.offerId,
           offerName: offers.name,
+          callDate: salesCalls.callDate,
+          callCreatedAt: salesCalls.createdAt,
         })
         .from(paymentPlanInstalments)
         .innerJoin(salesCalls, eq(paymentPlanInstalments.salesCallId, salesCalls.id))
         .leftJoin(offers, eq(salesCalls.offerId, offers.id))
         .where(eq(salesCalls.userId, userId));
 
+      // Group instalments by their parent call
+      const byCall = new Map<string, typeof instalmentRows>();
       for (const inst of instalmentRows) {
-        // Track all call IDs that have instalments (for exclusion from base salesList)
         callIdsWithInstalments.add(inst.salesCallId);
+        const arr = byCall.get(inst.salesCallId) ?? [];
+        arr.push(inst);
+        byCall.set(inst.salesCallId, arr);
+      }
 
-        const d = new Date(inst.dueDate);
-        if (d >= start && d <= end) {
+      // For each call with instalments, show ALL instalments if the sale date is in this month
+      for (const [, insts] of byCall) {
+        const first = insts[0];
+        const saleDate = first.callDate ? new Date(first.callDate) : new Date(first.callCreatedAt);
+        if (saleDate < start || saleDate > end) continue;
+
+        // Sort by dueDate ascending for numbering
+        insts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+
+        for (let i = 0; i < insts.length; i++) {
+          const inst = insts[i];
+          const d = new Date(inst.dueDate);
           const pct = inst.commissionRatePct ?? userCommissionPct ?? 0;
           const commAmt = inst.commissionAmountCents ?? Math.round(inst.amountCents * (pct / 100));
           salesList.push({
@@ -282,7 +300,8 @@ export async function GET(request: NextRequest) {
             commissionPct: pct,
             commissionAmount: commAmt,
             isInstalment: true,
-            instalmentLabel: 'Payment Plan Instalment',
+            instalmentNumber: i + 1,
+            totalInstalments: insts.length,
           });
         }
       }
