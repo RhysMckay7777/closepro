@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, PoundSterling, AlertCircle, FileDown } from 'lucide-react';
+import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, PoundSterling, AlertCircle, FileDown, Trash2 } from 'lucide-react';
+import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -17,6 +18,8 @@ interface SalesListItem {
   revenueGenerated: number;
   commissionPct: number;
   commissionAmount: number;
+  isInstalment?: boolean;
+  instalmentLabel?: string;
 }
 
 interface FiguresData {
@@ -118,6 +121,18 @@ export default function FiguresPage() {
   useEffect(() => {
     fetchFigures();
   }, [fetchFigures]);
+
+  const handleDeleteCall = async (callId: string) => {
+    if (!confirm('Delete this call and all its data? This cannot be undone.')) return;
+    try {
+      const res = await fetch(`/api/calls/${callId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+      toastSuccess('Call deleted');
+      fetchFigures(); // Refresh figures to reflect deletion
+    } catch {
+      toastError('Failed to delete call');
+    }
+  };
 
   const years = [year - 2, year - 1, year, year + 1, year + 2].filter((y) => y >= 2020 && y <= 2030);
 
@@ -409,19 +424,35 @@ export default function FiguresPage() {
                         <th className="py-2 pr-4 text-right">Cash Collected</th>
                         <th className="py-2 pr-4 text-right">Revenue Generated</th>
                         <th className="py-2 pr-4 text-right">Commission %</th>
-                        <th className="py-2 text-right">Commission Earned</th>
+                        <th className="py-2 pr-4 text-right">Commission Earned</th>
+                        <th className="py-2 w-[40px]"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {figures.salesList.map((row) => (
-                        <tr key={row.callId} className="border-b border-border/50">
-                          <td className="py-2 pr-4">{row.date}</td>
+                      {figures.salesList.map((row, idx) => (
+                        <tr key={`${row.callId}-${idx}`} className="border-b border-border/50">
+                          <td className="py-2 pr-4">
+                            {row.date}
+                            {row.isInstalment && (
+                              <span className="ml-2 text-xs text-muted-foreground">(instalment)</span>
+                            )}
+                          </td>
                           <td className="py-2 pr-4">{row.offerName}</td>
                           <td className="py-2 pr-4">{row.prospectName || 'Unknown'}</td>
                           <td className="py-2 pr-4 text-right">£{(row.cashCollected / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">£{(row.revenueGenerated / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">{row.commissionPct}%</td>
-                          <td className="py-2 text-right">£{(row.commissionAmount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="py-2 pr-4 text-right">£{(row.commissionAmount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="py-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => handleDeleteCall(row.callId)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
