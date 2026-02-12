@@ -97,6 +97,8 @@ export async function GET(
           revenueGenerated: salesCalls.revenueGenerated,
           reasonForOutcome: salesCalls.reasonForOutcome,
           reasonTag: salesCalls.reasonTag,
+          addToSalesFigures: salesCalls.addToSalesFigures,
+          extractedDetails: salesCalls.extractedDetails,
         })
         .from(salesCalls)
         .leftJoin(offers, eq(salesCalls.offerId, offers.id))

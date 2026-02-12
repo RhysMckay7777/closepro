@@ -9,7 +9,7 @@ import type { ConfirmFormContext } from '@/lib/ai/analysis';
 
 export const maxDuration = 120;
 
-const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit', 'follow_up', 'payment_plan'] as const;
+const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit', 'follow_up', 'payment_plan', 'follow_up_result'] as const;
 
 /**
  * POST - Confirm call details and trigger AI analysis.
@@ -70,11 +70,11 @@ export async function POST(
       revenueGenerated,
       commissionRatePct,
       reasonForOutcome,
-      reasonTag,
       callType,
       paymentType,
       numberOfInstalments,
       monthlyAmount,
+      addToSalesFigures,
     } = body;
 
     // Validate required fields
@@ -89,12 +89,13 @@ export async function POST(
     }
 
     // Build update payload
+    const effectiveCallType = callType || 'closing_call';
     const updatePayload: Record<string, unknown> = {
       offerId: offerId.trim(),
       prospectName: prospectName.trim().slice(0, 500),
       result,
       qualified: result !== 'unqualified',
-      callType: callType || 'closing_call',
+      callType: effectiveCallType,
     };
 
     // Only set status to 'analyzing' for first confirmation
@@ -107,20 +108,63 @@ export async function POST(
       const d = new Date(callDateRaw);
       if (!isNaN(d.getTime())) updatePayload.callDate = d;
     }
-    if (typeof cashCollected === 'number' && cashCollected >= 0) {
-      updatePayload.cashCollected = Math.round(cashCollected);
+
+    // addToSalesFigures: force false for roleplay, otherwise use provided value
+    if (effectiveCallType === 'roleplay') {
+      updatePayload.addToSalesFigures = false;
+    } else if (typeof addToSalesFigures === 'boolean') {
+      updatePayload.addToSalesFigures = addToSalesFigures;
     }
-    if (typeof revenueGenerated === 'number' && revenueGenerated >= 0) {
-      updatePayload.revenueGenerated = Math.round(revenueGenerated);
-    }
-    if (typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100) {
-      updatePayload.commissionRatePct = Math.round(commissionRatePct);
-    }
-    if (typeof reasonForOutcome === 'string' && reasonForOutcome.trim()) {
-      updatePayload.reasonForOutcome = reasonForOutcome.trim().slice(0, 2000);
-    }
-    if (typeof reasonTag === 'string' && reasonTag.trim()) {
-      updatePayload.reasonTag = reasonTag.trim().slice(0, 200);
+
+    // Result-specific field handling
+    if (result === 'closed') {
+      // Closed: save all financial fields, clear reason
+      if (typeof cashCollected === 'number' && cashCollected >= 0) {
+        updatePayload.cashCollected = Math.round(cashCollected);
+      }
+      if (typeof revenueGenerated === 'number' && revenueGenerated >= 0) {
+        updatePayload.revenueGenerated = Math.round(revenueGenerated);
+      }
+      if (typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100) {
+        updatePayload.commissionRatePct = Math.round(commissionRatePct);
+      }
+      updatePayload.reasonForOutcome = null;
+    } else if (result === 'deposit') {
+      // Deposit: save financial fields + reason, clear payment plan fields
+      if (typeof cashCollected === 'number' && cashCollected >= 0) {
+        updatePayload.cashCollected = Math.round(cashCollected);
+      }
+      if (typeof revenueGenerated === 'number' && revenueGenerated >= 0) {
+        updatePayload.revenueGenerated = Math.round(revenueGenerated);
+      }
+      if (typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100) {
+        updatePayload.commissionRatePct = Math.round(commissionRatePct);
+      }
+      if (typeof reasonForOutcome === 'string' && reasonForOutcome.trim()) {
+        updatePayload.reasonForOutcome = reasonForOutcome.trim().slice(0, 2000);
+      }
+    } else if (result === 'lost' || result === 'follow_up_result' || result === 'unqualified') {
+      // Lost/Follow-up/Unqualified: clear financial fields, save reason only
+      updatePayload.cashCollected = null;
+      updatePayload.revenueGenerated = null;
+      updatePayload.commissionRatePct = null;
+      if (typeof reasonForOutcome === 'string' && reasonForOutcome.trim()) {
+        updatePayload.reasonForOutcome = reasonForOutcome.trim().slice(0, 2000);
+      }
+    } else {
+      // Other results (no_show, payment_plan legacy, follow_up legacy): save what's provided
+      if (typeof cashCollected === 'number' && cashCollected >= 0) {
+        updatePayload.cashCollected = Math.round(cashCollected);
+      }
+      if (typeof revenueGenerated === 'number' && revenueGenerated >= 0) {
+        updatePayload.revenueGenerated = Math.round(revenueGenerated);
+      }
+      if (typeof commissionRatePct === 'number' && commissionRatePct >= 0 && commissionRatePct <= 100) {
+        updatePayload.commissionRatePct = Math.round(commissionRatePct);
+      }
+      if (typeof reasonForOutcome === 'string' && reasonForOutcome.trim()) {
+        updatePayload.reasonForOutcome = reasonForOutcome.trim().slice(0, 2000);
+      }
     }
 
     // Save confirmed details
@@ -219,11 +263,10 @@ export async function POST(
       callDate: callDateRaw ? new Date(callDateRaw).toISOString() : undefined,
       offerName,
       prospectName: prospectName?.trim(),
-      callType: callType || 'closing_call',
+      callType: effectiveCallType,
       result,
       cashCollected: typeof cashCollected === 'number' ? Math.round(cashCollected) : undefined,
       revenueGenerated: typeof revenueGenerated === 'number' ? Math.round(revenueGenerated) : undefined,
-      reasonTag: typeof reasonTag === 'string' ? reasonTag.trim() : undefined,
       reasonForOutcome: typeof reasonForOutcome === 'string' ? reasonForOutcome.trim() : undefined,
     };
 

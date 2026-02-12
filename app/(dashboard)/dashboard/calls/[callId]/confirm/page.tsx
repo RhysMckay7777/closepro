@@ -8,7 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, ArrowLeft, Calendar, Briefcase, User, FileText } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2, ArrowLeft, Calendar, Briefcase, User, FileText, Info } from 'lucide-react';
 import Link from 'next/link';
 import { toastError, toastSuccess } from '@/lib/toast';
 
@@ -28,6 +29,7 @@ export default function ConfirmCallDetailsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [hasExtractedFields, setHasExtractedFields] = useState(false);
 
   const [form, setForm] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -38,20 +40,34 @@ export default function ConfirmCallDetailsPage() {
     revenueGenerated: '',
     commissionRatePct: '',
     reasonForOutcome: '',
-    reasonTag: '',
     callType: 'closing_call',
     paymentType: 'paid_in_full' as 'paid_in_full' | 'payment_plan',
     numberOfInstalments: '',
     monthlyAmount: '',
+    addToSalesFigures: true,
   });
 
   useEffect(() => {
     if (!callId) return;
-    fetchCall();
-    fetchOffers();
+    // Fetch offers first so we can do offer matching with extracted details
+    fetchOffersAndCall();
   }, [callId]);
 
-  const fetchCall = async () => {
+  const fetchOffersAndCall = async () => {
+    // Fetch offers first
+    let loadedOffers: Offer[] = [];
+    try {
+      const response = await fetch('/api/offers');
+      if (response.ok) {
+        const data = await response.json();
+        loadedOffers = data.offers || [];
+        setOffers(loadedOffers);
+      }
+    } catch (error) {
+      console.error('Error fetching offers:', error);
+    }
+
+    // Now fetch call (needs offers for extraction matching)
     try {
       const response = await fetch(`/api/calls/${callId}/status`);
       if (!response.ok) {
@@ -66,26 +82,54 @@ export default function ConfirmCallDetailsPage() {
 
       setCall(data.call);
 
-      // Pre-fill form from existing call data
+      // Parse extracted details (AI auto-populated from transcript)
+      let extracted: Record<string, any> = {};
+      if (data.call?.extractedDetails) {
+        try {
+          extracted = JSON.parse(data.call.extractedDetails);
+        } catch { /* ignore bad JSON */ }
+      }
+
+      // Offer matching: try to match AI-extracted offer name to a real offer ID
+      let matchedOfferId = '';
+      if (extracted.offerName && loadedOffers.length > 0) {
+        matchedOfferId = matchOfferByName(extracted.offerName, loadedOffers);
+      }
+
+      // Pre-fill form from existing call data, then extracted details as fallback
       if (data.call) {
         const c = data.call;
+        const usedExtracted = !isAlreadyConfirmed && Object.values(extracted).some((v) => v !== null && v !== undefined);
+        if (usedExtracted) setHasExtractedFields(true);
+
         setForm((prev) => ({
           ...prev,
-          prospectName: c.prospectName || '',
+          prospectName: c.prospectName || extracted.prospectName || '',
           date: c.callDate
             ? new Date(c.callDate).toISOString().split('T')[0]
-            : new Date().toISOString().split('T')[0],
-          offerId: c.offerId || '',
-          result: c.result || '',
-          callType: c.callType || 'closing_call',
-          reasonForOutcome: c.reasonForOutcome || '',
-          reasonTag: c.reasonTag || '',
-          cashCollected: c.cashCollected ? (c.cashCollected / 100).toString() : '',
-          revenueGenerated: c.revenueGenerated ? (c.revenueGenerated / 100).toString() : '',
+            : extracted.callDate
+              ? extracted.callDate.split('T')[0]
+              : new Date().toISOString().split('T')[0],
+          offerId: c.offerId || matchedOfferId || '',
+          result: c.result || extracted.result || '',
+          callType: c.callType || extracted.callType || 'closing_call',
+          reasonForOutcome: c.reasonForOutcome || extracted.reasonForResult || '',
+          cashCollected: c.cashCollected
+            ? (c.cashCollected / 100).toString()
+            : extracted.cashCollected != null ? extracted.cashCollected.toString() : '',
+          revenueGenerated: c.revenueGenerated
+            ? (c.revenueGenerated / 100).toString()
+            : extracted.revenueGenerated != null ? extracted.revenueGenerated.toString() : '',
           commissionRatePct: c.commissionRatePct?.toString() || '',
-          paymentType: c.paymentType === 'payment_plan' ? 'payment_plan' : 'paid_in_full',
-          numberOfInstalments: c.numberOfInstalments ? c.numberOfInstalments.toString() : '',
-          monthlyAmount: c.monthlyAmount ? c.monthlyAmount.toString() : '',
+          paymentType: c.paymentType === 'payment_plan' ? 'payment_plan'
+            : extracted.paymentType === 'payment_plan' ? 'payment_plan' : 'paid_in_full',
+          numberOfInstalments: c.numberOfInstalments
+            ? c.numberOfInstalments.toString()
+            : extracted.numberOfInstalments != null ? extracted.numberOfInstalments.toString() : '',
+          monthlyAmount: c.monthlyAmount
+            ? c.monthlyAmount.toString()
+            : extracted.monthlyAmount != null ? extracted.monthlyAmount.toString() : '',
+          addToSalesFigures: c.addToSalesFigures !== false,
         }));
       }
     } catch (err) {
@@ -96,17 +140,25 @@ export default function ConfirmCallDetailsPage() {
     }
   };
 
-  const fetchOffers = async () => {
-    try {
-      const response = await fetch('/api/offers');
-      if (response.ok) {
-        const data = await response.json();
-        setOffers(data.offers || []);
-      }
-    } catch (error) {
-      console.error('Error fetching offers:', error);
-    }
-  };
+  /**
+   * Match an AI-extracted offer name to a real offer ID.
+   * Priority: exact match > case-insensitive > partial match.
+   */
+  function matchOfferByName(aiName: string, offerList: Offer[]): string {
+    const lower = aiName.toLowerCase().trim();
+    // Exact match
+    const exact = offerList.find((o) => o.name === aiName);
+    if (exact) return exact.id;
+    // Case-insensitive
+    const ci = offerList.find((o) => o.name.toLowerCase() === lower);
+    if (ci) return ci.id;
+    // Partial: AI name includes offer name or vice versa
+    const partial = offerList.find(
+      (o) => lower.includes(o.name.toLowerCase()) || o.name.toLowerCase().includes(lower)
+    );
+    if (partial) return partial.id;
+    return '';
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,7 +176,7 @@ export default function ConfirmCallDetailsPage() {
       toastError('Please select a call result');
       return;
     }
-    if (['lost', 'deposit', 'payment_plan'].includes(form.result) && !form.reasonForOutcome.trim()) {
+    if (['lost', 'deposit', 'follow_up_result', 'unqualified'].includes(form.result) && !form.reasonForOutcome.trim()) {
       toastError('Please provide a reason for the outcome');
       return;
     }
@@ -142,11 +194,13 @@ export default function ConfirmCallDetailsPage() {
       if (form.reasonForOutcome.trim()) {
         payload.reasonForOutcome = form.reasonForOutcome.trim();
       }
-      if (form.reasonTag.trim()) {
-        payload.reasonTag = form.reasonTag.trim();
+
+      // Add to sales figures toggle
+      if (form.callType === 'closing_call' || form.callType === 'follow_up') {
+        payload.addToSalesFigures = form.addToSalesFigures;
       }
 
-      if (form.result === 'closed' || form.result === 'deposit' || form.result === 'payment_plan') {
+      if (form.result === 'closed' || form.result === 'deposit') {
         if (form.cashCollected) {
           payload.cashCollected = Math.round(parseFloat(form.cashCollected) * 100);
         }
@@ -156,15 +210,10 @@ export default function ConfirmCallDetailsPage() {
         if (form.commissionRatePct) {
           payload.commissionRatePct = parseFloat(form.commissionRatePct);
         }
-        // Payment plan fields for closed + payment_plan type, or payment_plan result
-        if (form.result === 'closed' || form.result === 'payment_plan') {
-          if (form.result === 'payment_plan') {
-            payload.paymentType = 'payment_plan';
-          } else {
-            payload.paymentType = form.paymentType;
-          }
-          const showInstalments = form.result === 'payment_plan' || form.paymentType === 'payment_plan';
-          if (showInstalments) {
+        // Payment plan fields only for closed result
+        if (form.result === 'closed') {
+          payload.paymentType = form.paymentType;
+          if (form.paymentType === 'payment_plan') {
             if (form.numberOfInstalments) {
               payload.numberOfInstalments = parseInt(form.numberOfInstalments);
             }
@@ -268,12 +317,24 @@ export default function ConfirmCallDetailsPage() {
         </Card>
       )}
 
+      {/* AI Auto-Populate Banner */}
+      {hasExtractedFields && !isEditMode && (
+        <Alert className="border-blue-500/30 bg-blue-500/5">
+          <Info className="h-4 w-4 text-blue-500" />
+          <AlertDescription>
+            Fields have been auto-populated from the transcript. Please review and edit before logging.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Confirm Form */}
       <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
         <CardHeader>
           <CardTitle className="font-serif">Call Details</CardTitle>
           <CardDescription>
-            These fields have been pre-filled by AI where possible. Please review and correct them.
+            {hasExtractedFields && !isEditMode
+              ? 'These fields have been pre-filled by AI from the transcript. Please review and correct them.'
+              : 'Fill in the call details below.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -362,7 +423,7 @@ export default function ConfirmCallDetailsPage() {
               <Label htmlFor="confirm-result">Call Result *</Label>
               <Select
                 value={form.result}
-                onValueChange={(value) => setForm({ ...form, result: value, reasonForOutcome: '', reasonTag: '' })}
+                onValueChange={(value) => setForm({ ...form, result: value, reasonForOutcome: '' })}
                 required
               >
                 <SelectTrigger>
@@ -371,90 +432,19 @@ export default function ConfirmCallDetailsPage() {
                 <SelectContent>
                   <SelectItem value="closed">Closed</SelectItem>
                   <SelectItem value="deposit">Deposit</SelectItem>
-                  <SelectItem value="payment_plan">Payment Plan</SelectItem>
                   <SelectItem value="lost">Lost</SelectItem>
+                  <SelectItem value="follow_up_result">Follow-up</SelectItem>
+                  <SelectItem value="unqualified">Unqualified</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Reason Tag (for lost/deposit/payment_plan) */}
-            {['lost', 'deposit', 'payment_plan'].includes(form.result) && (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-reason-tag">Reason Tag</Label>
-                <Select
-                  value={form.reasonTag}
-                  onValueChange={(value) => setForm({ ...form, reasonTag: value })}
-                >
-                  <SelectTrigger id="confirm-reason-tag">
-                    <SelectValue placeholder="Select a reason (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="No money">No money</SelectItem>
-                    <SelectItem value="Spouse">Spouse</SelectItem>
-                    <SelectItem value="Not the decision maker">Not the decision maker</SelectItem>
-                    <SelectItem value="Timing">Timing</SelectItem>
-                    <SelectItem value="Not convinced">Not convinced</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-                {form.reasonTag === 'Other' && (
-                  <Input
-                    placeholder="Enter custom reason"
-                    value=""
-                    onChange={(e) => setForm({ ...form, reasonTag: e.target.value })}
-                    className="mt-2"
-                  />
-                )}
-              </div>
-            )}
+            {/* Conditional fields based on result */}
 
-            {/* Conditional reason fields */}
-            {form.result === 'lost' && (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-reason">
-                  Why did this deal not close? What objections were raised and how were they handled? *
-                </Label>
-                <Textarea
-                  id="confirm-reason"
-                  value={form.reasonForOutcome}
-                  onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
-                  placeholder="Describe the objections raised and how you handled them"
-                  rows={3}
-                  required
-                />
-              </div>
-            )}
-            {form.result === 'deposit' && (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-reason">Deposit details *</Label>
-                <Textarea
-                  id="confirm-reason"
-                  value={form.reasonForOutcome}
-                  onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
-                  placeholder="Enter deposit amount and terms"
-                  rows={3}
-                  required
-                />
-              </div>
-            )}
-            {form.result === 'payment_plan' && (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-reason">Payment plan details *</Label>
-                <Textarea
-                  id="confirm-reason"
-                  value={form.reasonForOutcome}
-                  onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
-                  placeholder="Describe the payment plan terms and what was agreed"
-                  rows={3}
-                  required
-                />
-              </div>
-            )}
-
-            {/* Financial fields (Closed, Deposit, or Payment Plan) */}
-            {(form.result === 'closed' || form.result === 'deposit' || form.result === 'payment_plan') && (
+            {/* CLOSED: Financial fields + Payment Type */}
+            {form.result === 'closed' && (
               <div className="space-y-4">
-                <div className={`grid grid-cols-1 md:grid-cols-2 ${form.result === 'closed' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="confirm-cash">Cash Collected (&pound;)</Label>
                     <Input
@@ -486,28 +476,26 @@ export default function ConfirmCallDetailsPage() {
                       placeholder="e.g. 10"
                     />
                   </div>
-                  {form.result === 'closed' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="confirm-payment-type">Payment Type</Label>
-                      <Select
-                        value={form.paymentType}
-                        onValueChange={(value: 'paid_in_full' | 'payment_plan') =>
-                          setForm({ ...form, paymentType: value })
-                        }
-                      >
-                        <SelectTrigger id="confirm-payment-type">
-                          <SelectValue placeholder="Select payment type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="paid_in_full">Paid in Full</SelectItem>
-                          <SelectItem value="payment_plan">Payment Plan</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-payment-type">Payment Type</Label>
+                    <Select
+                      value={form.paymentType}
+                      onValueChange={(value: 'paid_in_full' | 'payment_plan') =>
+                        setForm({ ...form, paymentType: value })
+                      }
+                    >
+                      <SelectTrigger id="confirm-payment-type">
+                        <SelectValue placeholder="Select payment type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="paid_in_full">Paid in Full</SelectItem>
+                        <SelectItem value="payment_plan">Payment Plan</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                {/* Instalment fields: show for payment_plan result, or closed+payment_plan type */}
-                {(form.result === 'payment_plan' || (form.result === 'closed' && form.paymentType === 'payment_plan')) && (
+                {/* Instalment fields for payment plan */}
+                {form.paymentType === 'payment_plan' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="confirm-instalments">Number of Instalments</Label>
@@ -536,6 +524,123 @@ export default function ConfirmCallDetailsPage() {
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* DEPOSIT: Financial fields + reason textarea */}
+            {form.result === 'deposit' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-cash">Cash Collected (&pound;)</Label>
+                    <Input
+                      id="confirm-cash"
+                      type="number"
+                      value={form.cashCollected}
+                      onChange={(e) => setForm({ ...form, cashCollected: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-revenue">Revenue Generated (&pound;)</Label>
+                    <Input
+                      id="confirm-revenue"
+                      type="number"
+                      value={form.revenueGenerated}
+                      onChange={(e) => setForm({ ...form, revenueGenerated: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirm-commission">Commission Rate (%)</Label>
+                    <Input
+                      id="confirm-commission"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={form.commissionRatePct}
+                      onChange={(e) => setForm({ ...form, commissionRatePct: e.target.value })}
+                      placeholder="e.g. 10"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="confirm-reason">Deposit Details *</Label>
+                  <Textarea
+                    id="confirm-reason"
+                    value={form.reasonForOutcome}
+                    onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
+                    placeholder="Enter deposit amount and reason deposit was taken and sale wasn't made."
+                    rows={3}
+                    required
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* LOST: Reason textarea only */}
+            {form.result === 'lost' && (
+              <div className="space-y-2">
+                <Label htmlFor="confirm-reason">Reason *</Label>
+                <Textarea
+                  id="confirm-reason"
+                  value={form.reasonForOutcome}
+                  onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
+                  placeholder="Why did this deal not close? What objections were raised?"
+                  rows={3}
+                  required
+                />
+              </div>
+            )}
+
+            {/* FOLLOW-UP: Reason textarea only */}
+            {form.result === 'follow_up_result' && (
+              <div className="space-y-2">
+                <Label htmlFor="confirm-reason">Reason *</Label>
+                <Textarea
+                  id="confirm-reason"
+                  value={form.reasonForOutcome}
+                  onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
+                  placeholder="Why was this a follow-up and not a sale?"
+                  rows={3}
+                  required
+                />
+              </div>
+            )}
+
+            {/* UNQUALIFIED: Reason textarea only */}
+            {form.result === 'unqualified' && (
+              <div className="space-y-2">
+                <Label htmlFor="confirm-reason">Reason *</Label>
+                <Textarea
+                  id="confirm-reason"
+                  value={form.reasonForOutcome}
+                  onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
+                  placeholder="Why was this call unqualified?"
+                  rows={3}
+                  required
+                />
+              </div>
+            )}
+
+            {/* Add to Sales Figures toggle (only for closing/follow_up call types, not roleplay) */}
+            {(form.callType === 'closing_call' || form.callType === 'follow_up') && (
+              <div className="flex items-center justify-between rounded-lg border p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="confirm-sales-figures" className="text-sm font-medium">Add to Sales Figures</Label>
+                  <p className="text-xs text-muted-foreground">
+                    When off, this call will be logged and analyzed but won&apos;t count toward performance figures or commission.
+                  </p>
+                </div>
+                <button
+                  id="confirm-sales-figures"
+                  type="button"
+                  role="switch"
+                  aria-checked={form.addToSalesFigures}
+                  onClick={() => setForm({ ...form, addToSalesFigures: !form.addToSalesFigures })}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${form.addToSalesFigures ? 'bg-primary' : 'bg-muted'}`}
+                >
+                  <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${form.addToSalesFigures ? 'translate-x-5' : 'translate-x-0'}`} />
+                </button>
               </div>
             )}
 

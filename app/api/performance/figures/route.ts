@@ -122,6 +122,10 @@ export async function GET(request: NextRequest) {
           and(
             eq(salesCalls.userId, userId),
             or(
+              eq(salesCalls.addToSalesFigures, true),
+              isNull(salesCalls.addToSalesFigures)
+            ),
+            or(
               eq(salesCalls.status, 'manual'),
               and(
                 eq(salesCalls.status, 'completed'),
@@ -153,6 +157,7 @@ export async function GET(request: NextRequest) {
           SELECT call_date, created_at, original_call_id, result, qualified, cash_collected, revenue_generated
           FROM sales_calls
           WHERE user_id = ${userId}
+          AND (add_to_sales_figures = true OR add_to_sales_figures IS NULL)
           AND (status = 'manual' OR (status = 'completed' AND (analysis_intent = 'update_figures' OR analysis_intent = 'analysis_only' OR analysis_intent IS NULL)))
         `);
         const rawRows = Array.isArray(raw) ? raw : (raw as { rows?: typeof raw })?.rows ?? [];

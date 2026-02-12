@@ -14,6 +14,7 @@ import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyCont
 import { EmptyCallsIllustration } from '@/components/illustrations';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 interface Call {
   id: string;
@@ -69,11 +70,10 @@ export default function CallsPage() {
     }
   };
 
-  const handleDeleteCall = async (e: React.MouseEvent, callId: string) => {
-    e.stopPropagation(); // Prevent row click navigation
-    if (!confirm('Are you sure you want to delete this call? This cannot be undone.')) {
-      return;
-    }
+  const [deletingCallId, setDeletingCallId] = useState<string | null>(null);
+
+  const handleDeleteCall = async (callId: string) => {
+    setDeletingCallId(callId);
     try {
       const res = await fetch(`/api/calls/${callId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete');
@@ -81,6 +81,8 @@ export default function CallsPage() {
       toastSuccess('Call deleted');
     } catch {
       toastError('Failed to delete call');
+    } finally {
+      setDeletingCallId(null);
     }
   };
 
@@ -100,7 +102,9 @@ export default function CallsPage() {
       lost: 'Lost',
       unqualified: 'Unqualified',
       follow_up: 'Follow-Up',
+      follow_up_result: 'Follow-Up',
       deposit: 'Deposit',
+      payment_plan: 'Payment Plan',
     };
     return labels[result] || result;
   };
@@ -112,6 +116,7 @@ export default function CallsPage() {
       case 'lost':
         return 'destructive';
       case 'deposit':
+      case 'payment_plan':
         return 'secondary';
       default:
         return 'outline';
@@ -259,9 +264,10 @@ export default function CallsPage() {
               <SelectItem value="all">All Results</SelectItem>
               <SelectItem value="closed">Closed</SelectItem>
               <SelectItem value="lost">Lost</SelectItem>
-              <SelectItem value="no_show">No-Show</SelectItem>
-              <SelectItem value="unqualified">Unqualified</SelectItem>
               <SelectItem value="deposit">Deposit</SelectItem>
+              <SelectItem value="follow_up_result">Follow-Up</SelectItem>
+              <SelectItem value="unqualified">Unqualified</SelectItem>
+              <SelectItem value="no_show">No-Show</SelectItem>
             </SelectContent>
           </Select>
           <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
@@ -398,14 +404,40 @@ export default function CallsPage() {
                             )}
                           </TableCell>
                           <TableCell>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => handleDeleteCall(e, call.id)}
-                              className="text-muted-foreground hover:text-destructive"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-muted-foreground hover:text-destructive"
+                                  disabled={deletingCallId === call.id}
+                                >
+                                  {deletingCallId === call.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Call</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete this call? This will also remove it from your figures and commission calculations.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteCall(call.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </TableCell>
                         </TableRow>
                       ))}

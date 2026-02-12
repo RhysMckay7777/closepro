@@ -6,6 +6,8 @@ import { salesCalls, users, userOrganizations } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { canPerformAction, incrementUsage } from '@/lib/subscription';
 import { shouldBypassSubscription } from '@/lib/dev-mode';
+import { extractCallDetails } from '@/lib/ai/extract-call-details';
+import { offers } from '@/db/schema';
 // analyzeCallAsync is no longer called here — analysis happens after user confirms details
 import { extractTextFromTranscriptFile, isAllowedTranscriptFile } from '@/lib/calls/extract-transcript-text';
 
@@ -238,6 +240,9 @@ export async function POST(request: NextRequest) {
       await incrementUsage(organizationId, 'calls');
     }
 
+    // Non-blocking: extract call details from transcript for auto-populating confirm form
+    runTranscriptExtraction(callId, session.user.id, trimmedTranscript).catch(() => {});
+
     console.log('[transcript-route] ✅ Complete — callId:', callId, 'status: pending_confirmation');
     // No analysis here — user must confirm details first on the confirm page.
     return NextResponse.json({
@@ -256,5 +261,35 @@ export async function POST(request: NextRequest) {
       { error: userMessage },
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Non-blocking: run AI extraction on transcript text and save to extractedDetails column.
+ * If anything fails, we just log and move on — the confirm page will show empty fields.
+ */
+async function runTranscriptExtraction(callId: string, userId: string, transcript: string): Promise<void> {
+  try {
+    // Fetch user's offer names for matching
+    const userOffers = await db
+      .select({ name: offers.name })
+      .from(offers)
+      .where(eq(offers.userId, userId));
+    const offerNames = userOffers.map((o) => o.name);
+
+    const extracted = await extractCallDetails(transcript, offerNames);
+
+    // Only save if at least one field was populated
+    const hasValue = Object.values(extracted).some((v) => v !== null);
+    if (!hasValue) return;
+
+    await db
+      .update(salesCalls)
+      .set({ extractedDetails: JSON.stringify(extracted) } as any)
+      .where(eq(salesCalls.id, callId));
+
+    console.log('[transcript-route] Extraction saved for call:', callId);
+  } catch (err) {
+    console.error('[transcript-route] Extraction failed (non-critical):', err);
   }
 }

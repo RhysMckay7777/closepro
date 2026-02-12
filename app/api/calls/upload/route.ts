@@ -7,6 +7,8 @@ import { eq, and } from 'drizzle-orm';
 import { canPerformAction, incrementUsage } from '@/lib/subscription';
 import { transcribeAudioFile } from '@/lib/ai/transcription';
 import { shouldBypassSubscription } from '@/lib/dev-mode';
+import { extractCallDetails } from '@/lib/ai/extract-call-details';
+import { offers } from '@/db/schema';
 // analyzeCallAsync is no longer called here — analysis happens after user confirms details
 
 export const maxDuration = 120; // Allow up to 2 minutes for transcription (large files / slow Deepgram)
@@ -116,6 +118,9 @@ export async function POST(request: NextRequest) {
       try {
         await transcribeOnly(call.id, null, fileName, fileUrl);
 
+        // Non-blocking: extract call details from transcript for auto-populating confirm form
+        runExtraction(call.id, session.user.id, organizationId).catch(() => {});
+
         return NextResponse.json({
           callId: call.id,
           status: 'pending_confirmation',
@@ -201,6 +206,9 @@ export async function POST(request: NextRequest) {
     try {
       await transcribeOnly(call.id, audioBuffer, file.name);
 
+      // Non-blocking: extract call details from transcript for auto-populating confirm form
+      runExtraction(call.id, session.user.id, organizationId).catch(() => {});
+
       return NextResponse.json({
         callId: call.id,
         status: 'pending_confirmation',
@@ -258,4 +266,42 @@ async function transcribeOnly(
       status: 'pending_confirmation',
     })
     .where(eq(salesCalls.id, callId));
+}
+
+/**
+ * Non-blocking: fetch transcript + user's offers, run AI extraction, save to extractedDetails column.
+ * If anything fails, we just log and move on — the confirm page will show empty fields (same as before).
+ */
+async function runExtraction(callId: string, userId: string, organizationId: string): Promise<void> {
+  try {
+    // Fetch transcript
+    const [callRow] = await db
+      .select({ transcript: salesCalls.transcript })
+      .from(salesCalls)
+      .where(eq(salesCalls.id, callId))
+      .limit(1);
+    if (!callRow?.transcript) return;
+
+    // Fetch user's offer names for matching
+    const userOffers = await db
+      .select({ name: offers.name })
+      .from(offers)
+      .where(eq(offers.userId, userId));
+    const offerNames = userOffers.map((o) => o.name);
+
+    const extracted = await extractCallDetails(callRow.transcript, offerNames);
+
+    // Only save if at least one field was populated
+    const hasValue = Object.values(extracted).some((v) => v !== null);
+    if (!hasValue) return;
+
+    await db
+      .update(salesCalls)
+      .set({ extractedDetails: JSON.stringify(extracted) })
+      .where(eq(salesCalls.id, callId));
+
+    console.log('[upload-route] Extraction saved for call:', callId);
+  } catch (err) {
+    console.error('[upload-route] Extraction failed (non-critical):', err);
+  }
 }

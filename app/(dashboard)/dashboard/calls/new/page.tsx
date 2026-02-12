@@ -76,7 +76,6 @@ export default function NewCallPage() {
   // Upload & Analyse (merged: transcript text, transcript file, or audio file)
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [transcriptText, setTranscriptText] = useState('');
-  const [addToFigures, setAddToFigures] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [transcriptSubmitting, setTranscriptSubmitting] = useState(false);
   const [uploadStep, setUploadStep] = useState<'idle' | 'uploading' | 'transcribing' | 'analysing' | 'complete' | 'error'>('idle');
@@ -280,7 +279,6 @@ export default function NewCallPage() {
             fileUrl: blob.url,
             fileName: file!.name,
             fileSize: file!.size,
-            addToFigures,
           }),
         });
 
@@ -316,7 +314,7 @@ export default function NewCallPage() {
         if (isTranscript && file) {
           const formData = new FormData();
           formData.append('file', file);
-          formData.append('metadata', JSON.stringify({ addToFigures }));
+          formData.append('metadata', JSON.stringify({}));
           response = await fetch('/api/calls/transcript', {
             method: 'POST',
             body: formData,
@@ -327,7 +325,6 @@ export default function NewCallPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               transcript: transcriptText.trim(),
-              addToFigures,
             }),
           });
         }
@@ -430,16 +427,6 @@ export default function NewCallPage() {
                     rows={10}
                     className="font-mono text-sm"
                   />
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="upload-add-to-figures"
-                    checked={addToFigures}
-                    onCheckedChange={(checked) => setAddToFigures(checked === true)}
-                  />
-                  <Label htmlFor="upload-add-to-figures" className="font-normal cursor-pointer">
-                    Add to sales figures (include outcome in Performance → Figures)
-                  </Label>
                 </div>
                 {/* Progress stepper — shown during upload */}
                 {uploading && uploadStep !== 'idle' && (

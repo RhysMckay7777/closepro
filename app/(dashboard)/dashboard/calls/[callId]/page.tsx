@@ -11,6 +11,7 @@ import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { getCategoryLabel } from '@/lib/ai/scoring-framework';
 import { CallSnapshotBar, ProspectDifficultyPanel, OutcomeDiagnostic, PhaseAnalysisTabs, ActionPointCards, SalesFiguresPanel } from '@/components/call-review';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 export default function CallDetailPage() {
   const params = useParams();
@@ -22,6 +23,7 @@ export default function CallDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!callId) return;
@@ -138,25 +140,51 @@ export default function CallDetailPage() {
             {call.fileName}
           </p>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-muted-foreground hover:text-destructive self-start mt-6"
-          onClick={async () => {
-            if (!confirm('Delete this call and all its data? This cannot be undone.')) return;
-            try {
-              const res = await fetch(`/api/calls/${callId}`, { method: 'DELETE' });
-              if (!res.ok) throw new Error('Failed to delete');
-              toastSuccess('Call deleted');
-              router.push('/dashboard/calls');
-            } catch {
-              toastError('Failed to delete call');
-            }
-          }}
-        >
-          <Trash2 className="h-4 w-4 mr-2" />
-          Delete
-        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-destructive self-start mt-6"
+              disabled={deleting}
+            >
+              {deleting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4 mr-2" />
+              )}
+              Delete
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Call</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete this call? This will also remove it from your figures and commission calculations.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    const res = await fetch(`/api/calls/${callId}`, { method: 'DELETE' });
+                    if (!res.ok) throw new Error('Failed to delete');
+                    toastSuccess('Call deleted');
+                    router.push('/dashboard/calls');
+                  } catch {
+                    toastError('Failed to delete call');
+                    setDeleting(false);
+                  }
+                }}
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* Processing State */}

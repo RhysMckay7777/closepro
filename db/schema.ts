@@ -13,7 +13,7 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'paused'
 ]);
 export const callTypeEnum = pgEnum('call_type', ['closing_call', 'follow_up', 'no_show', 'roleplay']);
-export const callResultEnum = pgEnum('call_result', ['no_show', 'closed', 'lost', 'unqualified', 'follow_up', 'deposit', 'payment_plan']);
+export const callResultEnum = pgEnum('call_result', ['no_show', 'closed', 'lost', 'unqualified', 'follow_up', 'deposit', 'payment_plan', 'follow_up_result']);
 export const offerCategoryEnum = pgEnum('offer_category', ['b2c_health', 'b2c_relationships', 'b2c_wealth', 'mixed_wealth', 'b2b_services']);
 export const customerStageEnum = pgEnum('customer_stage', ['aspiring', 'current', 'mixed']);
 export const caseStudyStrengthEnum = pgEnum('case_study_strength', ['none', 'weak', 'moderate', 'strong']);
@@ -274,6 +274,8 @@ export const salesCalls = pgTable('sales_calls', {
   callDate: timestamp('call_date'), // For manual backdating; figures use this for month attribution when set
   prospectName: text('prospect_name'), // Prospect name (no-show, manual, transcript)
   commissionRatePct: integer('commission_rate_pct'), // Per-call commission % override (0-100)
+  addToSalesFigures: boolean('add_to_sales_figures').notNull().default(true), // Whether to include in performance figures
+  extractedDetails: text('extracted_details'), // JSON from AI extraction of transcript (auto-populate confirm form)
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

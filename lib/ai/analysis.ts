@@ -252,7 +252,6 @@ export interface ConfirmFormContext {
   result?: string;
   cashCollected?: number; // cents
   revenueGenerated?: number; // cents
-  reasonTag?: string;
   reasonForOutcome?: string;
 }
 
@@ -488,7 +487,6 @@ ${confirmFormContext.callType ? `Call Type: ${confirmFormContext.callType}` : ''
 ${confirmFormContext.result ? `Outcome: ${confirmFormContext.result}` : ''}
 ${confirmFormContext.cashCollected !== undefined ? `Cash Collected: £${(confirmFormContext.cashCollected / 100).toFixed(2)}` : ''}
 ${confirmFormContext.revenueGenerated !== undefined ? `Revenue Generated: £${(confirmFormContext.revenueGenerated / 100).toFixed(2)}` : ''}
-${confirmFormContext.reasonTag ? `Reason Tag: ${confirmFormContext.reasonTag}` : ''}
 ${confirmFormContext.reasonForOutcome ? `Reason for Outcome: ${confirmFormContext.reasonForOutcome}` : ''}
 ══════════════════════════════════════════
 These values are confirmed by the user. Your analysis must be consistent with them.

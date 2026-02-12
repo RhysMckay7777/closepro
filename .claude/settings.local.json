@@ -4,7 +4,8 @@
       "Bash(npm run build:*)",
       "Bash(npx next build:*)",
       "Bash(cd:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npx drizzle-kit push:*)"
     ]
   }
 }
