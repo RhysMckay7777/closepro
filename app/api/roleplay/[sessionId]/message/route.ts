@@ -209,13 +209,15 @@ export async function POST(
       ? sessionMetadata.behaviourState
       : initializeBehaviourState(prospectAvatar.difficulty, funnelContext);
 
-    // Create roleplay context
+    // Create roleplay context (includes replay phase/context if this is a phase replay session)
     const roleplayContext: RoleplayContext = {
       offer: offerProfile,
       prospectAvatar,
       funnelContext,
       conversationHistory,
       behaviourState,
+      replayPhase: roleplay[0].replayPhase ?? undefined,
+      replayContext: roleplay[0].replayContext ?? undefined,
     };
 
     // Generate prospect response

@@ -135,12 +135,12 @@ export default function NewCallPage() {
           ...manualForm,
           callType: 'closing_call',
           prospectName: manualForm.prospectName.trim() || undefined,
-          cashCollected: manualForm.cashCollected ? parseInt(manualForm.cashCollected) * 100 : null,
-          revenueGenerated: manualForm.revenueGenerated ? parseInt(manualForm.revenueGenerated) * 100 : null,
+          cashCollected: manualForm.cashCollected ? Math.round(parseFloat(manualForm.cashCollected) * 100) : null,
+          revenueGenerated: manualForm.revenueGenerated ? Math.round(parseFloat(manualForm.revenueGenerated) * 100) : null,
           commissionRatePct: manualForm.commissionRatePct ? parseFloat(manualForm.commissionRatePct) : undefined,
           paymentType: manualForm.paymentType,
           numberOfInstalments: manualForm.numberOfInstalments ? parseInt(manualForm.numberOfInstalments) : undefined,
-          monthlyAmount: manualForm.monthlyAmount ? parseInt(manualForm.monthlyAmount) * 100 : undefined,
+          monthlyAmount: manualForm.monthlyAmount ? parseFloat(manualForm.monthlyAmount) : undefined,
         }),
       });
 
@@ -217,12 +217,12 @@ export default function NewCallPage() {
         body: JSON.stringify({
           ...followUpForm,
           prospectName: followUpForm.prospectName.trim(),
-          cashCollected: followUpForm.cashCollected ? parseInt(followUpForm.cashCollected) * 100 : null,
-          revenueGenerated: followUpForm.revenueGenerated ? parseInt(followUpForm.revenueGenerated) * 100 : null,
+          cashCollected: followUpForm.cashCollected ? Math.round(parseFloat(followUpForm.cashCollected) * 100) : null,
+          revenueGenerated: followUpForm.revenueGenerated ? Math.round(parseFloat(followUpForm.revenueGenerated) * 100) : null,
           commissionRatePct: followUpForm.commissionRatePct ? parseFloat(followUpForm.commissionRatePct) : undefined,
           paymentType: followUpForm.paymentType,
           numberOfInstalments: followUpForm.numberOfInstalments ? parseInt(followUpForm.numberOfInstalments) : undefined,
-          monthlyAmount: followUpForm.monthlyAmount ? parseInt(followUpForm.monthlyAmount) * 100 : undefined,
+          monthlyAmount: followUpForm.monthlyAmount ? parseFloat(followUpForm.monthlyAmount) : undefined,
         }),
       });
 

@@ -34,6 +34,8 @@ export interface RoleplayContext {
   funnelContext: FunnelContext;
   conversationHistory: RoleplayMessage[];
   behaviourState: BehaviourState;
+  replayPhase?: string;
+  replayContext?: string;
 }
 
 /**
@@ -222,7 +224,110 @@ ${getCondensedExamples(3)}
 
 Use these as reference for HOW prospects actually talk — their word choice, sentence length, emotional expression, and objection style.
 
-Respond as this prospect would, given your current state, execution resistance level, and the rep's message.`;
+Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}`;
+}
+
+/**
+ * Build phase-specific prompt addition for replay sessions
+ */
+function buildPhaseReplayPrompt(phase?: string, contextJson?: string): string {
+  if (!phase) return '';
+
+  let ctx: any = {};
+  if (contextJson) {
+    try {
+      ctx = JSON.parse(contextJson);
+    } catch {
+      // ignore parse errors
+    }
+  }
+
+  const feedbackSummary = ctx.originalFeedback?.summary || 'No previous feedback available.';
+  const whatLimitedImpact = ctx.originalFeedback?.whatLimitedImpact || 'Not specified.';
+
+  switch (phase) {
+    case 'intro':
+      return `
+
+PHASE PRACTICE MODE: This session focuses on the INTRODUCTION phase.
+Start as a prospect being contacted. Be slightly guarded initially.
+The closer needs to practice: establishing authority, frame control, tone.
+Their previous attempt feedback: ${feedbackSummary}
+What limited their impact: ${whatLimitedImpact}
+After 2-3 minutes of intro practice, naturally signal you're ready to move on.
+Do NOT extend into deep discovery or pitch — keep it focused on intro skills.`;
+
+    case 'discovery':
+      return `
+
+PHASE PRACTICE MODE: This session focuses on the DISCOVERY phase.
+Start as if intro is done — you have surface interest but haven't shared deep pain.
+The closer needs to practice: depth of questioning, emotional leverage, gap creation.
+Their previous attempt feedback: ${feedbackSummary}
+What limited their impact: ${whatLimitedImpact}
+Allow 5-7 minutes. Reward good questions with deeper answers. Stay surface-level if questions are shallow. Do NOT jump to pitch.`;
+
+    case 'pitch':
+      return `
+
+PHASE PRACTICE MODE: This session focuses on the PITCH phase.
+Start as a prospect who has shared problems and is ready to hear a solution.
+Briefly summarize your situation when asked, then let them pitch.
+The closer needs to practice: structure, personalization, outcome framing.
+Their previous attempt feedback: ${feedbackSummary}
+What limited their impact: ${whatLimitedImpact}
+Allow 3-5 minutes. React authentically to the pitch.`;
+
+    case 'close':
+      return `
+
+PHASE PRACTICE MODE: This session focuses on the CLOSE phase.
+Start as a prospect who has heard the pitch and sees value but hasn't committed.
+You're interested but have natural hesitation about making a decision.
+The closer needs to practice: assumptive close, leadership, handling silence.
+Their previous attempt feedback: ${feedbackSummary}
+What limited their impact: ${whatLimitedImpact}
+Allow 3-5 minutes. Commit if they handle the close well.`;
+
+    case 'objection': {
+      const objection = ctx.originalObjection;
+      const quote = objection?.quote || 'I need to think about it.';
+      const objType = objection?.type || 'general';
+      const whySurfaced = objection?.whySurfaced || 'Not specified.';
+      const howHandled = objection?.howHandled || 'Not specified.';
+
+      return `
+
+PHASE PRACTICE MODE: This session focuses on handling a specific objection.
+After 1-2 exchanges of rapport, raise this objection: "${quote}"
+Objection type: ${objType}.
+Why this surfaces: ${whySurfaced}
+How they previously handled it: ${howHandled}
+Be realistic — maintain the objection if they fumble, yield if they handle it well.
+After the objection is resolved (or failed), you may raise it once more with a different angle to test consistency.`;
+    }
+
+    case 'skill': {
+      const skill = ctx.skill || 'General sales skills';
+      const actionPoint = ctx.originalActionPoint;
+      const whyItsCostingYou = actionPoint?.whyItsCostingYou || 'Not specified.';
+      const whatToDoInstead = actionPoint?.whatToDoInstead || 'Not specified.';
+      const microDrill = actionPoint?.microDrill || 'Not specified.';
+
+      return `
+
+PHASE PRACTICE MODE: This session focuses on a specific skill.
+The closer needs to work on: ${skill}
+Why it matters: ${whyItsCostingYou}
+What they should practice: ${whatToDoInstead}
+Training drill: ${microDrill}
+Create natural conversation moments that specifically test this skill.
+The call should proceed normally but you should create 2-3 opportunities where this skill is needed.`;
+    }
+
+    default:
+      return '';
+  }
 }
 
 /**

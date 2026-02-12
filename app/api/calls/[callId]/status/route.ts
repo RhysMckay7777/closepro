@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, users, roleplaySessions, offers } from '@/db/schema';
+import { salesCalls, users, roleplaySessions, offers, paymentPlanInstalments } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { analyzeCall } from '@/lib/ai/analysis';
 import { callAnalysis } from '@/db/schema';
@@ -12,6 +12,29 @@ function safeParse<T>(val: unknown, fallback: T): T {
   if (val === null || val === undefined) return fallback;
   if (typeof val !== 'string') return val as T;
   try { return JSON.parse(val) as T; } catch { return fallback; }
+}
+
+/** Build analysis object from a DB row, parsing all JSON columns (v1 + v2) */
+function buildAnalysisFromRow(row: Record<string, unknown>): Record<string, unknown> {
+  const skillScoresRaw = safeParse(row.skillScores, null);
+  const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
+  const objections = safeParse(row.objectionDetails, []);
+  return {
+    ...row,
+    categoryScores,
+    objections,
+    skillScores: categoryScores,
+    coachingRecommendations: safeParse(row.coachingRecommendations, []),
+    timestampedFeedback: safeParse(row.timestampedFeedback, []),
+    categoryFeedback: safeParse(row.categoryFeedback, null),
+    momentCoaching: safeParse(row.momentCoaching, []),
+    priorityFixes: safeParse(row.priorityFixes, []),
+    // v2 columns
+    phaseScores: safeParse(row.phaseScores, null),
+    phaseAnalysis: safeParse(row.phaseAnalysis, null),
+    prospectDifficultyJustifications: safeParse(row.prospectDifficultyJustifications, null),
+    actionPoints: safeParse(row.actionPoints, []),
+  };
 }
 
 /**
@@ -73,6 +96,7 @@ export async function GET(
           cashCollected: salesCalls.cashCollected,
           revenueGenerated: salesCalls.revenueGenerated,
           reasonForOutcome: salesCalls.reasonForOutcome,
+          reasonTag: salesCalls.reasonTag,
         })
         .from(salesCalls)
         .leftJoin(offers, eq(salesCalls.offerId, offers.id))
@@ -94,6 +118,7 @@ export async function GET(
         (call[0] as Record<string, unknown>).cashCollected = null;
         (call[0] as Record<string, unknown>).revenueGenerated = null;
         (call[0] as Record<string, unknown>).reasonForOutcome = null;
+        (call[0] as Record<string, unknown>).reasonTag = null;
         (call[0] as Record<string, unknown>).callDate = null;
         (call[0] as Record<string, unknown>).offerId = null;
         (call[0] as Record<string, unknown>).callType = null;
@@ -109,6 +134,32 @@ export async function GET(
       );
     }
 
+    // Fetch payment plan instalment data for this call
+    let instalmentData: { count: number; monthlyAmountPounds: number } | null = null;
+    try {
+      const instalments = await db
+        .select({
+          amountCents: paymentPlanInstalments.amountCents,
+        })
+        .from(paymentPlanInstalments)
+        .where(eq(paymentPlanInstalments.salesCallId, callId));
+      if (instalments.length > 0) {
+        instalmentData = {
+          count: instalments.length,
+          monthlyAmountPounds: instalments[0].amountCents / 100,
+        };
+      }
+    } catch {
+      // paymentPlanInstalments table may not exist yet
+    }
+
+    // Attach instalment info to call object
+    if (instalmentData) {
+      (call[0] as Record<string, unknown>).paymentType = 'payment_plan';
+      (call[0] as Record<string, unknown>).numberOfInstalments = instalmentData.count;
+      (call[0] as Record<string, unknown>).monthlyAmount = instalmentData.monthlyAmountPounds;
+    }
+
     // If already completed, return current status
     // Also check if this is a roleplay session (callId might be a sessionId)
     if (call[0].status === 'completed') {
@@ -118,23 +169,7 @@ export async function GET(
         .where(eq(callAnalysis.callId, callId))
         .limit(1);
       const row = analysisRows[0];
-      let analysis: Record<string, unknown> | null = null;
-      if (row) {
-        const skillScoresRaw = safeParse(row.skillScores, null);
-        const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
-        const objections = safeParse(row.objectionDetails, []);
-        analysis = {
-          ...row,
-          categoryScores,
-          objections,
-          skillScores: categoryScores,
-          coachingRecommendations: safeParse(row.coachingRecommendations, []),
-          timestampedFeedback: safeParse(row.timestampedFeedback, []),
-          categoryFeedback: safeParse(row.categoryFeedback, null),
-          momentCoaching: safeParse(row.momentCoaching, []),
-          priorityFixes: safeParse(row.priorityFixes, []),
-        };
-      }
+      const analysis: Record<string, unknown> | null = row ? buildAnalysisFromRow(row as unknown as Record<string, unknown>) : null;
       console.log('[status-route] Returning completed call:', callId, '— analysis:', analysis ? 'found (score: ' + analysis.overallScore + ')' : 'MISSING');
       return NextResponse.json({
         status: 'completed',
@@ -157,23 +192,7 @@ export async function GET(
         .where(eq(callAnalysis.id, roleplay[0].analysisId))
         .limit(1);
       const row = analysisRows[0];
-      let analysis: Record<string, unknown> | null = null;
-      if (row) {
-        const skillScoresRaw = safeParse(row.skillScores, null);
-        const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
-        const objections = safeParse(row.objectionDetails, []);
-        analysis = {
-          ...row,
-          categoryScores,
-          objections,
-          skillScores: categoryScores,
-          coachingRecommendations: safeParse(row.coachingRecommendations, []),
-          timestampedFeedback: safeParse(row.timestampedFeedback, []),
-          categoryFeedback: safeParse(row.categoryFeedback, null),
-          momentCoaching: safeParse(row.momentCoaching, []),
-          priorityFixes: safeParse(row.priorityFixes, []),
-        };
-      }
+      const analysis: Record<string, unknown> | null = row ? buildAnalysisFromRow(row as unknown as Record<string, unknown>) : null;
       return NextResponse.json({
         status: 'completed',
         call: null,
@@ -192,21 +211,7 @@ export async function GET(
         .limit(1);
 
       if (analysis[0]) {
-        const row = analysis[0];
-        const skillScoresRaw = safeParse(row.skillScores, null);
-        const categoryScores = skillScoresRaw && typeof skillScoresRaw === 'object' && !Array.isArray(skillScoresRaw) ? skillScoresRaw : {};
-        const objections = safeParse(row.objectionDetails, []);
-        const analysisForClient = {
-          ...row,
-          categoryScores,
-          objections,
-          skillScores: categoryScores,
-          coachingRecommendations: safeParse(row.coachingRecommendations, []),
-          timestampedFeedback: safeParse(row.timestampedFeedback, []),
-          categoryFeedback: safeParse(row.categoryFeedback, null),
-          momentCoaching: safeParse(row.momentCoaching, []),
-          priorityFixes: safeParse(row.priorityFixes, []),
-        };
+        const analysisForClient = buildAnalysisFromRow(analysis[0] as unknown as Record<string, unknown>);
         return NextResponse.json({
           status: 'completed',
           call: {

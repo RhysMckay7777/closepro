@@ -1,7 +1,7 @@
 import { db } from '@/db';
 import { salesCalls, callAnalysis } from '@/db/schema';
 import { eq, sql } from 'drizzle-orm';
-import { analyzeCall } from '@/lib/ai/analysis';
+import { analyzeCall, type ConfirmFormContext } from '@/lib/ai/analysis';
 
 function isMissingColumnError(err: unknown): boolean {
   const e = err as { code?: string; cause?: { code?: string }; message?: string };
@@ -50,18 +50,19 @@ async function setCallStatusFailed(callId: string, failureReason?: string): Prom
 export async function analyzeCallAsync(
   callId: string,
   transcript: string,
-  transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> }
+  transcriptJson: { utterances: Array<{ speaker: string; start: number; end: number; text: string }> },
+  confirmFormContext?: ConfirmFormContext
 ): Promise<void> {
   console.log('[analyze-call] Starting analysis for callId:', callId, '(transcript:', transcript.length, 'chars,', transcriptJson.utterances.length, 'utterances)');
   const t0 = Date.now();
   try {
     console.log('[analyze-call] Calling AI analyzeCall()...');
-    const analysisResult = await analyzeCall(transcript, transcriptJson);
+    const analysisResult = await analyzeCall(transcript, transcriptJson, undefined, undefined, confirmFormContext);
     console.log('[analyze-call] AI analysis returned in', ((Date.now() - t0) / 1000).toFixed(1), 's — overallScore:', analysisResult.overallScore);
 
-    // Enhance coaching recommendations with execution resistance context if applicable
+    // Enhance coaching recommendations with execution resistance context if applicable (v1 only)
     let enhancedRecommendations = [...(analysisResult.coachingRecommendations || [])];
-    if (analysisResult.prospectDifficulty?.executionResistance !== undefined) {
+    if (!analysisResult.phaseScores && analysisResult.prospectDifficulty?.executionResistance !== undefined) {
       const execResistance = analysisResult.prospectDifficulty.executionResistance;
       if (execResistance <= 4) {
         enhancedRecommendations.push({
@@ -82,9 +83,12 @@ export async function analyzeCallAsync(
       }
     }
 
-    const insertValues = {
+    // Use phaseScores.overall for overallScore if v2 and overallScore is missing
+    const effectiveOverallScore = analysisResult.overallScore || analysisResult.phaseScores?.overall || 0;
+
+    const insertValues: Record<string, unknown> = {
       callId,
-      overallScore: analysisResult.overallScore,
+      overallScore: effectiveOverallScore,
       valueScore: null,
       trustScore: null,
       fitScore: null,
@@ -99,6 +103,14 @@ export async function analyzeCallAsync(
       categoryFeedback: analysisResult.categoryFeedbackDetailed ? JSON.stringify(analysisResult.categoryFeedbackDetailed) : null,
       momentCoaching: analysisResult.momentCoaching ? JSON.stringify(analysisResult.momentCoaching) : null,
       priorityFixes: analysisResult.enhancedPriorityFixes ? JSON.stringify(analysisResult.enhancedPriorityFixes) : null,
+      // v2 columns
+      phaseScores: analysisResult.phaseScores ? JSON.stringify(analysisResult.phaseScores) : null,
+      phaseAnalysis: analysisResult.phaseAnalysis ? JSON.stringify(analysisResult.phaseAnalysis) : null,
+      outcomeDiagnosticP1: analysisResult.outcomeDiagnosticP1 ?? null,
+      outcomeDiagnosticP2: analysisResult.outcomeDiagnosticP2 ?? null,
+      closerEffectiveness: analysisResult.closerEffectiveness ?? null,
+      prospectDifficultyJustifications: analysisResult.prospectDifficultyJustifications ? JSON.stringify(analysisResult.prospectDifficultyJustifications) : null,
+      actionPoints: analysisResult.actionPoints ? JSON.stringify(analysisResult.actionPoints) : null,
     };
 
     console.log('[analyze-call] Inserting analysis row into DB...');
@@ -107,14 +119,22 @@ export async function analyzeCallAsync(
       console.log('[analyze-call] Analysis row inserted successfully');
     } catch (insertErr) {
       if (isMissingColumnError(insertErr)) {
-        // Auto-migrate: add Prompt 3 columns if they don't exist yet
-        console.log('[analyze-call] Missing columns detected — running auto-migration for Prompt 3 columns…');
+        // Auto-migrate: add missing columns
+        console.log('[analyze-call] Missing columns detected — running auto-migration…');
+        // v1 columns
         await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic TEXT`);
         await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS category_feedback TEXT`);
         await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS moment_coaching TEXT`);
         await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS priority_fixes TEXT`);
+        // v2 columns
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS phase_scores TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS phase_analysis TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p1 TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p2 TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS closer_effectiveness TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS prospect_difficulty_justifications TEXT`);
+        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS action_points TEXT`);
         console.log('[analyze-call] Auto-migration complete. Retrying insert…');
-        // Retry with all columns now present
         await db.insert(callAnalysis).values(insertValues);
         console.log('[analyze-call] Analysis row inserted after migration');
       } else {
@@ -128,7 +148,6 @@ export async function analyzeCallAsync(
       callRow = rows[0] ?? null;
     } catch (err) {
       if (!isMissingColumnError(err)) throw err;
-      // DB has no analysis_intent column – skip outcome update
     }
 
     const outcome = analysisResult.outcome;
@@ -151,7 +170,6 @@ export async function analyzeCallAsync(
       outcome.revenueGenerated != null ||
       (outcome.reasonForOutcome != null && outcome.reasonForOutcome.trim() !== '')
     );
-    // Apply AI outcome to call when user asked for figures (update_figures) or intent is null (e.g. raw-insert fallback)
     const shouldApplyOutcome =
       hasOutcome &&
       (callRow?.analysisIntent === 'update_figures' || callRow?.analysisIntent === null);

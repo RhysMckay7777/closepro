@@ -38,6 +38,7 @@ export default function ConfirmCallDetailsPage() {
     revenueGenerated: '',
     commissionRatePct: '',
     reasonForOutcome: '',
+    reasonTag: '',
     callType: 'closing_call',
     paymentType: 'paid_in_full' as 'paid_in_full' | 'payment_plan',
     numberOfInstalments: '',
@@ -78,9 +79,13 @@ export default function ConfirmCallDetailsPage() {
           result: c.result || '',
           callType: c.callType || 'closing_call',
           reasonForOutcome: c.reasonForOutcome || '',
+          reasonTag: c.reasonTag || '',
           cashCollected: c.cashCollected ? (c.cashCollected / 100).toString() : '',
           revenueGenerated: c.revenueGenerated ? (c.revenueGenerated / 100).toString() : '',
           commissionRatePct: c.commissionRatePct?.toString() || '',
+          paymentType: c.paymentType === 'payment_plan' ? 'payment_plan' : 'paid_in_full',
+          numberOfInstalments: c.numberOfInstalments ? c.numberOfInstalments.toString() : '',
+          monthlyAmount: c.monthlyAmount ? c.monthlyAmount.toString() : '',
         }));
       }
     } catch (err) {
@@ -119,7 +124,7 @@ export default function ConfirmCallDetailsPage() {
       toastError('Please select a call result');
       return;
     }
-    if (['lost', 'follow_up', 'unqualified', 'deposit'].includes(form.result) && !form.reasonForOutcome.trim()) {
+    if (['lost', 'deposit', 'payment_plan'].includes(form.result) && !form.reasonForOutcome.trim()) {
       toastError('Please provide a reason for the outcome');
       return;
     }
@@ -137,8 +142,11 @@ export default function ConfirmCallDetailsPage() {
       if (form.reasonForOutcome.trim()) {
         payload.reasonForOutcome = form.reasonForOutcome.trim();
       }
+      if (form.reasonTag.trim()) {
+        payload.reasonTag = form.reasonTag.trim();
+      }
 
-      if (form.result === 'closed' || form.result === 'deposit') {
+      if (form.result === 'closed' || form.result === 'deposit' || form.result === 'payment_plan') {
         if (form.cashCollected) {
           payload.cashCollected = Math.round(parseFloat(form.cashCollected) * 100);
         }
@@ -148,9 +156,15 @@ export default function ConfirmCallDetailsPage() {
         if (form.commissionRatePct) {
           payload.commissionRatePct = parseFloat(form.commissionRatePct);
         }
-        if (form.result === 'closed') {
-          payload.paymentType = form.paymentType;
-          if (form.paymentType === 'payment_plan') {
+        // Payment plan fields for closed + payment_plan type, or payment_plan result
+        if (form.result === 'closed' || form.result === 'payment_plan') {
+          if (form.result === 'payment_plan') {
+            payload.paymentType = 'payment_plan';
+          } else {
+            payload.paymentType = form.paymentType;
+          }
+          const showInstalments = form.result === 'payment_plan' || form.paymentType === 'payment_plan';
+          if (showInstalments) {
             if (form.numberOfInstalments) {
               payload.numberOfInstalments = parseInt(form.numberOfInstalments);
             }
@@ -325,12 +339,30 @@ export default function ConfirmCallDetailsPage() {
               </div>
             </div>
 
+            {/* Call Type */}
+            <div className="space-y-2">
+              <Label htmlFor="confirm-call-type">Call Type</Label>
+              <Select
+                value={form.callType}
+                onValueChange={(value) => setForm({ ...form, callType: value })}
+              >
+                <SelectTrigger id="confirm-call-type">
+                  <SelectValue placeholder="Select call type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="closing_call">Closing Call</SelectItem>
+                  <SelectItem value="follow_up">Follow-up</SelectItem>
+                  <SelectItem value="roleplay">Roleplay</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Result */}
             <div className="space-y-2">
               <Label htmlFor="confirm-result">Call Result *</Label>
               <Select
                 value={form.result}
-                onValueChange={(value) => setForm({ ...form, result: value, reasonForOutcome: '' })}
+                onValueChange={(value) => setForm({ ...form, result: value, reasonForOutcome: '', reasonTag: '' })}
                 required
               >
                 <SelectTrigger>
@@ -338,13 +370,43 @@ export default function ConfirmCallDetailsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="closed">Closed</SelectItem>
-                  <SelectItem value="lost">Lost</SelectItem>
                   <SelectItem value="deposit">Deposit</SelectItem>
-                  <SelectItem value="follow_up">Follow-up</SelectItem>
-                  <SelectItem value="unqualified">Unqualified</SelectItem>
+                  <SelectItem value="payment_plan">Payment Plan</SelectItem>
+                  <SelectItem value="lost">Lost</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Reason Tag (for lost/deposit/payment_plan) */}
+            {['lost', 'deposit', 'payment_plan'].includes(form.result) && (
+              <div className="space-y-2">
+                <Label htmlFor="confirm-reason-tag">Reason Tag</Label>
+                <Select
+                  value={form.reasonTag}
+                  onValueChange={(value) => setForm({ ...form, reasonTag: value })}
+                >
+                  <SelectTrigger id="confirm-reason-tag">
+                    <SelectValue placeholder="Select a reason (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="No money">No money</SelectItem>
+                    <SelectItem value="Spouse">Spouse</SelectItem>
+                    <SelectItem value="Not the decision maker">Not the decision maker</SelectItem>
+                    <SelectItem value="Timing">Timing</SelectItem>
+                    <SelectItem value="Not convinced">Not convinced</SelectItem>
+                    <SelectItem value="Other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+                {form.reasonTag === 'Other' && (
+                  <Input
+                    placeholder="Enter custom reason"
+                    value=""
+                    onChange={(e) => setForm({ ...form, reasonTag: e.target.value })}
+                    className="mt-2"
+                  />
+                )}
+              </div>
+            )}
 
             {/* Conditional reason fields */}
             {form.result === 'lost' && (
@@ -375,39 +437,24 @@ export default function ConfirmCallDetailsPage() {
                 />
               </div>
             )}
-            {form.result === 'follow_up' && (
+            {form.result === 'payment_plan' && (
               <div className="space-y-2">
-                <Label htmlFor="confirm-reason">
-                  Why was this not closed yet? What objections remain? *
-                </Label>
+                <Label htmlFor="confirm-reason">Payment plan details *</Label>
                 <Textarea
                   id="confirm-reason"
                   value={form.reasonForOutcome}
                   onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
-                  placeholder="What objections were raised? What needs to happen next?"
-                  rows={3}
-                  required
-                />
-              </div>
-            )}
-            {form.result === 'unqualified' && (
-              <div className="space-y-2">
-                <Label htmlFor="confirm-reason">Why was this call unqualified? *</Label>
-                <Textarea
-                  id="confirm-reason"
-                  value={form.reasonForOutcome}
-                  onChange={(e) => setForm({ ...form, reasonForOutcome: e.target.value })}
-                  placeholder="Explain why this prospect was not qualified"
+                  placeholder="Describe the payment plan terms and what was agreed"
                   rows={3}
                   required
                 />
               </div>
             )}
 
-            {/* Closed: Financial fields */}
-            {form.result === 'closed' && (
+            {/* Financial fields (Closed, Deposit, or Payment Plan) */}
+            {(form.result === 'closed' || form.result === 'deposit' || form.result === 'payment_plan') && (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className={`grid grid-cols-1 md:grid-cols-2 ${form.result === 'closed' ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
                   <div className="space-y-2">
                     <Label htmlFor="confirm-cash">Cash Collected (&pound;)</Label>
                     <Input
@@ -439,25 +486,28 @@ export default function ConfirmCallDetailsPage() {
                       placeholder="e.g. 10"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="confirm-payment-type">Payment Type</Label>
-                    <Select
-                      value={form.paymentType}
-                      onValueChange={(value: 'paid_in_full' | 'payment_plan') =>
-                        setForm({ ...form, paymentType: value })
-                      }
-                    >
-                      <SelectTrigger id="confirm-payment-type">
-                        <SelectValue placeholder="Select payment type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="paid_in_full">Paid in Full</SelectItem>
-                        <SelectItem value="payment_plan">Payment Plan</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {form.result === 'closed' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="confirm-payment-type">Payment Type</Label>
+                      <Select
+                        value={form.paymentType}
+                        onValueChange={(value: 'paid_in_full' | 'payment_plan') =>
+                          setForm({ ...form, paymentType: value })
+                        }
+                      >
+                        <SelectTrigger id="confirm-payment-type">
+                          <SelectValue placeholder="Select payment type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="paid_in_full">Paid in Full</SelectItem>
+                          <SelectItem value="payment_plan">Payment Plan</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
-                {form.paymentType === 'payment_plan' && (
+                {/* Instalment fields: show for payment_plan result, or closed+payment_plan type */}
+                {(form.result === 'payment_plan' || (form.result === 'closed' && form.paymentType === 'payment_plan')) && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="confirm-instalments">Number of Instalments</Label>

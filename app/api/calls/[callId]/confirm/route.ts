@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { salesCalls, callAnalysis, paymentPlanInstalments, users } from '@/db/schema';
+import { salesCalls, callAnalysis, paymentPlanInstalments, users, offers } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { analyzeCallAsync } from '@/lib/calls/analyze-call';
+import type { ConfirmFormContext } from '@/lib/ai/analysis';
 
 export const maxDuration = 120;
 
-const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit', 'follow_up'] as const;
+const VALID_RESULTS = ['no_show', 'closed', 'lost', 'unqualified', 'deposit', 'follow_up', 'payment_plan'] as const;
 
 /**
  * POST - Confirm call details and trigger AI analysis.
@@ -69,6 +70,7 @@ export async function POST(
       revenueGenerated,
       commissionRatePct,
       reasonForOutcome,
+      reasonTag,
       callType,
       paymentType,
       numberOfInstalments,
@@ -117,6 +119,9 @@ export async function POST(
     if (typeof reasonForOutcome === 'string' && reasonForOutcome.trim()) {
       updatePayload.reasonForOutcome = reasonForOutcome.trim().slice(0, 2000);
     }
+    if (typeof reasonTag === 'string' && reasonTag.trim()) {
+      updatePayload.reasonTag = reasonTag.trim().slice(0, 200);
+    }
 
     // Save confirmed details
     console.log('[confirm-route] Saving confirmed details:', { offerId: updatePayload.offerId, result: updatePayload.result, callType: updatePayload.callType });
@@ -131,7 +136,7 @@ export async function POST(
       .where(eq(paymentPlanInstalments.salesCallId, callId));
 
     // Create payment plan instalments if applicable (both new confirmations and edits)
-    if (result === 'closed' && paymentType === 'payment_plan' && numberOfInstalments && monthlyAmount) {
+    if (((result === 'closed' && paymentType === 'payment_plan') || result === 'payment_plan') && numberOfInstalments && monthlyAmount) {
       const numInstalments = Number(numberOfInstalments);
       const monthlyAmountCents = Math.round(Number(monthlyAmount) * 100);
 
@@ -203,11 +208,30 @@ export async function POST(
       }
     }
 
+    // Build confirm form context for AI prompt
+    let offerName: string | undefined;
+    try {
+      const offerRows = await db.select({ name: offers.name }).from(offers).where(eq(offers.id, offerId.trim())).limit(1);
+      offerName = offerRows[0]?.name ?? undefined;
+    } catch { /* offer name is optional context */ }
+
+    const confirmFormContext: ConfirmFormContext = {
+      callDate: callDateRaw ? new Date(callDateRaw).toISOString() : undefined,
+      offerName,
+      prospectName: prospectName?.trim(),
+      callType: callType || 'closing_call',
+      result,
+      cashCollected: typeof cashCollected === 'number' ? Math.round(cashCollected) : undefined,
+      revenueGenerated: typeof revenueGenerated === 'number' ? Math.round(revenueGenerated) : undefined,
+      reasonTag: typeof reasonTag === 'string' ? reasonTag.trim() : undefined,
+      reasonForOutcome: typeof reasonForOutcome === 'string' ? reasonForOutcome.trim() : undefined,
+    };
+
     // Run full AI analysis (inline, awaited)
     console.log('[confirm-route] Starting AI analysis for callId:', callId, '(transcript length:', transcript.length, 'chars)');
     const analysisStartTime = Date.now();
     try {
-      await analyzeCallAsync(callId, transcript, transcriptJson);
+      await analyzeCallAsync(callId, transcript, transcriptJson, confirmFormContext);
       console.log('[confirm-route] ✅ AI analysis complete in', ((Date.now() - analysisStartTime) / 1000).toFixed(1), 'seconds');
     } catch (analysisErr: unknown) {
       console.error('[confirm-route] ❌ Analysis FAILED after', ((Date.now() - analysisStartTime) / 1000).toFixed(1), 'seconds:', analysisErr);

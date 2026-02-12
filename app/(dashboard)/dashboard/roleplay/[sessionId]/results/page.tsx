@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, TrendingUp, AlertTriangle, Wrench } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertTriangle, Wrench, RotateCw } from 'lucide-react';
 import Link from 'next/link';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { StageChips } from '@/components/roleplay/StageChips';
@@ -13,6 +13,7 @@ import { MomentFeedbackList } from '@/components/roleplay/MomentFeedbackList';
 import { ObjectionAnalysis } from '@/components/roleplay/ObjectionAnalysis';
 import { CategoryFeedbackSection } from '@/components/roleplay/CategoryFeedbackSection';
 import { extractMomentFeedback } from '@/lib/roleplayApi';
+import { ProspectDifficultyPanel, OutcomeDiagnostic, PhaseAnalysisTabs, ActionPointCards } from '@/components/call-review';
 import {
   parseStagesCompleted,
   parseCategoryFeedback,
@@ -36,6 +37,14 @@ interface Analysis {
   categoryFeedback?: string;
   priorityFixes?: string;
   objectionAnalysis?: string;
+  // V2 fields (phase-based scoring) — available once backend persists them
+  phaseScores?: string;
+  phaseAnalysis?: string;
+  outcomeDiagnosticP1?: string;
+  outcomeDiagnosticP2?: string;
+  closerEffectiveness?: string;
+  prospectDifficultyJustifications?: string;
+  actionPoints?: string;
 }
 
 interface Session {
@@ -43,6 +52,10 @@ interface Session {
   offerName?: string;
   overallScore: number | null;
   actualDifficultyTier: string | null;
+  replayPhase?: string | null;
+  replaySourceCallId?: string | null;
+  replaySourceSessionId?: string | null;
+  offerId?: string | null;
   prospectAvatar?: {
     difficultyIndex: number;
     difficultyTier: string;
@@ -173,6 +186,40 @@ export default function RoleplayResultsPage() {
     }
   }, [sessionId]);
 
+  // Replay comparison: fetch original phase score for comparison banner
+  const isReplay = !!(session?.replayPhase);
+  const [originalPhaseScore, setOriginalPhaseScore] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!isReplay || !session) return;
+    const fetchOriginalScore = async () => {
+      try {
+        if (session.replaySourceCallId) {
+          const res = await fetch(`/api/calls/${session.replaySourceCallId}/status`);
+          const data = await res.json();
+          const phaseScores = data?.analysis?.phaseScores;
+          if (phaseScores) {
+            const parsed = typeof phaseScores === 'string' ? JSON.parse(phaseScores) : phaseScores;
+            const phase = session.replayPhase === 'skill' ? 'overall' : session.replayPhase!;
+            if (parsed[phase] !== undefined) setOriginalPhaseScore(parsed[phase]);
+          }
+        } else if (session.replaySourceSessionId) {
+          const res = await fetch(`/api/roleplay/${session.replaySourceSessionId}`);
+          const data = await res.json();
+          const phaseScores = data?.analysis?.phaseScores;
+          if (phaseScores) {
+            const parsed = typeof phaseScores === 'string' ? JSON.parse(phaseScores) : phaseScores;
+            const phase = session.replayPhase === 'skill' ? 'overall' : session.replayPhase!;
+            if (parsed[phase] !== undefined) setOriginalPhaseScore(parsed[phase]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch original score for comparison:', err);
+      }
+    };
+    fetchOriginalScore();
+  }, [isReplay, session]);
+
   const getScoreColor = (score: number) => {
     if (score >= 80) return 'text-green-500';
     if (score >= 60) return 'text-blue-500';
@@ -266,6 +313,13 @@ export default function RoleplayResultsPage() {
 
   const recommendations = safeParse(analysis.coachingRecommendations, []);
 
+  // V2 detection — phase-based scoring
+  const v2PhaseScores = safeParse(analysis.phaseScores, null) as Record<string, number> | null;
+  const isV2 = v2PhaseScores !== null && typeof v2PhaseScores === 'object';
+  const v2PhaseAnalysis = isV2 ? (safeParse(analysis.phaseAnalysis, {}) as any) : null;
+  const v2ActionPoints = isV2 ? (safeParse(analysis.actionPoints, []) as any[]) : [];
+  const v2Justifications = isV2 ? (safeParse(analysis.prospectDifficultyJustifications, {}) as Record<string, string>) : {};
+
   // Extract flat category scores from skillScores (can be array or object)
   const rawSkillScores = safeParse(analysis.skillScores, {});
   const flatCategoryScores: Record<string, number> = {};
@@ -314,6 +368,73 @@ export default function RoleplayResultsPage() {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
+
+      {/* Replay Comparison Banner */}
+      {isReplay && analysis && (
+        (() => {
+          const phaseLabels: Record<string, string> = {
+            intro: 'Introduction',
+            discovery: 'Discovery',
+            pitch: 'Pitch / Presentation',
+            close: 'Closing',
+            objection: 'Objection Handling',
+            skill: 'Skill Practice',
+          };
+          const phaseName = phaseLabels[session?.replayPhase || ''] || session?.replayPhase || 'Phase';
+          const practiceScore = v2PhaseScores
+            ? (session?.replayPhase === 'skill' ? v2PhaseScores.overall : v2PhaseScores[session?.replayPhase || ''])
+            : analysis.overallScore;
+          const improved = originalPhaseScore !== null && practiceScore !== undefined && practiceScore > originalPhaseScore;
+          const diff = originalPhaseScore !== null && practiceScore !== undefined ? practiceScore - originalPhaseScore : null;
+          const sourceUrl = session?.replaySourceCallId
+            ? `/dashboard/calls/${session.replaySourceCallId}`
+            : session?.replaySourceSessionId
+              ? `/dashboard/roleplay/${session.replaySourceSessionId}/results`
+              : null;
+          const practiceAgainUrl = session?.replaySourceCallId
+            ? `/dashboard/roleplay?phase=${session.replayPhase}&callId=${session.replaySourceCallId}`
+            : session?.replaySourceSessionId
+              ? `/dashboard/roleplay?phase=${session.replayPhase}&sessionId=${session.replaySourceSessionId}`
+              : '/dashboard/roleplay/new';
+
+          return (
+            <Card className="p-4 border-l-4 border-primary">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-sm sm:text-base">Phase Practice: {phaseName}</h3>
+                  {originalPhaseScore !== null && practiceScore !== undefined && (
+                    <div className="flex items-center gap-2 mt-1 text-sm">
+                      <span className="text-muted-foreground">Original: <strong>{originalPhaseScore}</strong>/100</span>
+                      <ArrowRight className={`h-4 w-4 ${improved ? 'text-green-500' : diff === 0 ? 'text-muted-foreground' : 'text-orange-500'}`} />
+                      <span className={improved ? 'text-green-600 font-semibold' : diff === 0 ? 'text-muted-foreground font-semibold' : 'text-orange-600 font-semibold'}>
+                        Practice: <strong>{practiceScore}</strong>/100
+                      </span>
+                      {diff !== null && diff !== 0 && (
+                        <Badge variant={improved ? 'default' : 'secondary'} className={improved ? 'bg-green-100 text-green-700 border-green-300' : 'bg-orange-100 text-orange-700 border-orange-300'}>
+                          {diff > 0 ? '+' : ''}{diff}
+                        </Badge>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Link href={practiceAgainUrl}>
+                    <Button size="sm" variant="outline" className="gap-1">
+                      <RotateCw className="h-3.5 w-3.5" />
+                      Practice Again
+                    </Button>
+                  </Link>
+                  {sourceUrl && (
+                    <Link href={sourceUrl}>
+                      <Button size="sm" variant="ghost">Back to Original</Button>
+                    </Link>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })()
+      )}
 
       {/* Incomplete Warning Banner - Section 6.5 */}
       {isIncomplete && (
@@ -364,221 +485,269 @@ export default function RoleplayResultsPage() {
         </div>
       </div>
 
-      {/* Stage Chips - Section 6.5 */}
-      {Object.keys(stagesCompleted).length > 0 && (
-        <Card className="p-4">
-          <h3 className="text-sm font-medium mb-3">Conversation Stages</h3>
-          <StageChips stagesCompleted={stagesCompleted} />
-        </Card>
-      )}
-
-      {/* Overall Score */}
-      <Card className="p-4 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h2 className="text-lg sm:text-xl font-semibold mb-2">Overall Score</h2>
-            <p className="text-sm sm:text-base text-muted-foreground">Your performance in this roleplay</p>
-
-          </div>
-          <div className="flex items-center gap-3">
-            <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysis.overallScore)}`}>
-              {analysis.overallScore}
-            </div>
-            {isIncomplete && (
-              <Badge variant="outline" className="bg-orange-500/20 text-orange-700 border-orange-500/50">
-                Partial
-              </Badge>
-            )}
-          </div>
-        </div>
-      </Card>
-
-      {/* Priority Fixes - Section 6.6 */}
-      {priorityFixes.length > 0 && (
-        <Card className="p-4 sm:p-6">
-          <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
-            <Wrench className="h-5 w-5" />
-            Priority Fixes
-          </h2>
-          <div className="space-y-4">
-            {priorityFixes.map((fix, index) => (
-              <div key={index} className="border-l-4 border-primary pl-4 py-2">
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant={fix.priority === 1 ? 'destructive' : fix.priority === 2 ? 'default' : 'secondary'}>
-                    Priority #{fix.priority}
+      {/* ══════ V2 SECTIONS (phase-based scoring) ══════ */}
+      {isV2 ? (
+        <>
+          {/* Overall Score */}
+          <Card className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold mb-2">Overall Score</h2>
+                <p className="text-sm sm:text-base text-muted-foreground">Your performance in this roleplay</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(v2PhaseScores?.overall ?? analysis.overallScore)}`}>
+                  {v2PhaseScores?.overall ?? analysis.overallScore}
+                </div>
+                {isIncomplete && (
+                  <Badge variant="outline" className="bg-orange-500/20 text-orange-700 border-orange-500/50">
+                    Partial
                   </Badge>
-                  <span className="font-medium">{fix.category}</span>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="font-medium text-red-600">What went wrong: </span>
-                    <span>{fix.whatWentWrong}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium text-orange-600">Why it mattered: </span>
-                    <span>{fix.whyItMattered}</span>
-                  </div>
-                  <div>
-                    <span className="font-medium text-green-600">What to do differently: </span>
-                    <span>{fix.whatToDoDifferently}</span>
-                  </div>
-                  {fix.transcriptSegment && (
-                    <div className="mt-2 p-2 bg-muted rounded text-xs text-muted-foreground">
-                      &quot;{fix.transcriptSegment}&quot;
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {/* Prospect Difficulty Details */}
-      {session?.prospectAvatar && (
-        <Card className="p-4 sm:p-6">
-          <h2 className="text-lg sm:text-xl font-semibold mb-4">
-            Prospect Difficulty Profile {session.prospectAvatar.executionResistance !== undefined ? '(50-Point Model)' : '(40-Point Model)'}
-          </h2>
-
-          {/* Layer A: Persuasion Difficulty (40 points) */}
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Layer A: Persuasion Difficulty (40 points)</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Position & Problem Alignment</p>
-                <p className="text-2xl font-bold">{session.prospectAvatar.positionProblemAlignment}/10</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Pain / Ambition Intensity</p>
-                <p className="text-2xl font-bold">{session.prospectAvatar.painAmbitionIntensity}/10</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Authority & Perceived Need</p>
-                <p className="text-2xl font-bold">{session.prospectAvatar.perceivedNeedForHelp}/10</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Funnel Context</p>
-                <p className="text-2xl font-bold">{session.prospectAvatar.funnelContext}/10</p>
+                )}
               </div>
             </div>
-            <div className="mt-3 pt-3 border-t">
-              <p className="text-sm text-muted-foreground">Authority Level</p>
-              <Badge variant="outline" className="mt-1">
-                {session.prospectAvatar.authorityLevel.charAt(0).toUpperCase() + session.prospectAvatar.authorityLevel.slice(1)}
-              </Badge>
-            </div>
-          </div>
+          </Card>
 
-          {/* Layer B: Execution Resistance (10 points) */}
-          {session.prospectAvatar.executionResistance !== undefined && (
-            <div className="pt-4 border-t">
-              <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Layer B: Execution Resistance (10 points)</h3>
-              <div>
-                <p className="text-sm text-muted-foreground">Ability to Proceed</p>
-                <p className="text-2xl font-bold">{session.prospectAvatar.executionResistance}/10</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {session.prospectAvatar.executionResistance >= 8
-                    ? 'Fully Able - Has money, time, authority'
-                    : session.prospectAvatar.executionResistance >= 5
-                      ? 'Partial Ability - Needs reprioritization'
-                      : 'Extreme Resistance - Severe constraints'}
-                </p>
-              </div>
-            </div>
+          <ProspectDifficultyPanel
+            justifications={v2Justifications}
+            sectionNumber={2}
+          />
+          <OutcomeDiagnostic
+            paragraph1={analysis.outcomeDiagnosticP1}
+            paragraph2={analysis.outcomeDiagnosticP2}
+            overallScore={analysis.overallScore}
+            sectionNumber={3}
+          />
+          <PhaseAnalysisTabs
+            phaseScores={v2PhaseScores!}
+            phaseAnalysis={v2PhaseAnalysis}
+            overallScore={analysis.overallScore}
+            sessionId={sessionId}
+            sectionNumber={4}
+            defaultTab={isReplay && session?.replayPhase && session.replayPhase !== 'skill' ? session.replayPhase : undefined}
+          />
+          <ActionPointCards
+            actionPoints={v2ActionPoints}
+            sessionId={sessionId}
+            sectionNumber={5}
+          />
+        </>
+      ) : (
+        <>
+          {/* ══════ V1 SECTIONS (10-category scoring) ══════ */}
+
+          {/* Stage Chips - Section 6.5 */}
+          {Object.keys(stagesCompleted).length > 0 && (
+            <Card className="p-4">
+              <h3 className="text-sm font-medium mb-3">Conversation Stages</h3>
+              <StageChips stagesCompleted={stagesCompleted} />
+            </Card>
           )}
 
-          {/* Total Score */}
-          <div className="mt-4 pt-4 border-t">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-semibold">Total Difficulty Score</p>
-              <p className="text-3xl font-bold">
-                {session.prospectAvatar.difficultyIndex}/{session.prospectAvatar.executionResistance !== undefined ? '50' : '40'}
-              </p>
-            </div>
-            {session.prospectAvatar.executionResistance !== undefined && (
-              <p className="text-xs text-muted-foreground mt-1">
-                Layer A ({session.prospectAvatar.positionProblemAlignment + session.prospectAvatar.painAmbitionIntensity + session.prospectAvatar.perceivedNeedForHelp + session.prospectAvatar.funnelContext}) + Layer B ({session.prospectAvatar.executionResistance})
-              </p>
-            )}
-          </div>
-        </Card>
-      )}
-
-      {/* Category Feedback Accordion - Section 6.6/6.7 */}
-      {Object.keys(effectiveCategoryFeedback).length > 0 && (
-        <CategoryFeedbackSection categoryFeedback={effectiveCategoryFeedback} categoryScores={flatCategoryScores} />
-      )}
-
-      {/* Objection Analysis - Section 6.9 */}
-      {objectionItems.length > 0 && (
-        <ObjectionAnalysis items={objectionItems} />
-      )}
-
-
-
-
-      {/* Coaching Recommendations */}
-      {recommendations.length > 0 && (
-        <Card className="p-4 sm:p-6">
-          <h2 className="text-xl font-semibold mb-4">3-5 Prioritized Fixes</h2>
-          <div className="space-y-3">
-            {recommendations.slice(0, 5).map((rec: { priority?: string; category?: string; timestamp?: number; issue?: string; explanation?: string; action?: string; transcriptSegment?: string }, i: number) => (
-              <div
-                key={i}
-                className="border-l-4 border-primary pl-4 hover:bg-muted/50 rounded-r-lg p-2 transition-colors cursor-pointer"
-                onClick={() => {
-                  if (rec.timestamp) {
-                    // Navigate to session page with timestamp to jump to that moment
-                    router.push(`/dashboard/roleplay/${sessionId}?timestamp=${rec.timestamp}`);
-                  }
-                }}
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <Badge
-                    variant={
-                      rec.priority === 'high'
-                        ? 'destructive'
-                        : rec.priority === 'medium'
-                          ? 'default'
-                          : 'secondary'
-                    }
-                  >
-                    {rec.priority}
-                  </Badge>
-                  <span className="font-medium">{rec.category}</span>
-                  {rec.timestamp && (
-                    <Badge variant="outline" className="ml-auto text-xs">
-                      {Math.floor(rec.timestamp / 1000 / 60)}:{(Math.floor(rec.timestamp / 1000) % 60).toString().padStart(2, '0')}
-                    </Badge>
-                  )}
+          {/* Overall Score */}
+          <Card className="p-4 sm:p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <h2 className="text-lg sm:text-xl font-semibold mb-2">Overall Score</h2>
+                <p className="text-sm sm:text-base text-muted-foreground">Your performance in this roleplay</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysis.overallScore)}`}>
+                  {analysis.overallScore}
                 </div>
-                <p className="text-sm text-muted-foreground mb-1">{rec.issue}</p>
-                {rec.explanation && (
-                  <p className="text-xs text-muted-foreground mb-1">{rec.explanation}</p>
+                {isIncomplete && (
+                  <Badge variant="outline" className="bg-orange-500/20 text-orange-700 border-orange-500/50">
+                    Partial
+                  </Badge>
                 )}
-                {rec.action && (
-                  <p className="text-sm font-medium">{rec.action}</p>
-                )}
-                {rec.transcriptSegment && (
-                  <div className="mt-2 p-2 bg-muted rounded text-xs text-muted-foreground">
-                    &quot;{rec.transcriptSegment}&quot;
+              </div>
+            </div>
+          </Card>
+
+          {/* Priority Fixes - Section 6.6 */}
+          {priorityFixes.length > 0 && (
+            <Card className="p-4 sm:p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Wrench className="h-5 w-5" />
+                Priority Fixes
+              </h2>
+              <div className="space-y-4">
+                {priorityFixes.map((fix, index) => (
+                  <div key={index} className="border-l-4 border-primary pl-4 py-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant={fix.priority === 1 ? 'destructive' : fix.priority === 2 ? 'default' : 'secondary'}>
+                        Priority #{fix.priority}
+                      </Badge>
+                      <span className="font-medium">{fix.category}</span>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <span className="font-medium text-red-600">What went wrong: </span>
+                        <span>{fix.whatWentWrong}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium text-orange-600">Why it mattered: </span>
+                        <span>{fix.whyItMattered}</span>
+                      </div>
+                      <div>
+                        <span className="font-medium text-green-600">What to do differently: </span>
+                        <span>{fix.whatToDoDifferently}</span>
+                      </div>
+                      {fix.transcriptSegment && (
+                        <div className="mt-2 p-2 bg-muted rounded text-xs text-muted-foreground">
+                          &quot;{fix.transcriptSegment}&quot;
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-                {rec.timestamp && (
-                  <p className="text-xs text-primary mt-2">
-                    Click to jump to this moment in the call
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Prospect Difficulty Details */}
+          {session?.prospectAvatar && (
+            <Card className="p-4 sm:p-6">
+              <h2 className="text-lg sm:text-xl font-semibold mb-4">
+                Prospect Difficulty Profile {session.prospectAvatar.executionResistance !== undefined ? '(50-Point Model)' : '(40-Point Model)'}
+              </h2>
+
+              {/* Layer A: Persuasion Difficulty (40 points) */}
+              <div className="mb-4">
+                <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Layer A: Persuasion Difficulty (40 points)</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Position & Problem Alignment</p>
+                    <p className="text-2xl font-bold">{session.prospectAvatar.positionProblemAlignment}/10</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Pain / Ambition Intensity</p>
+                    <p className="text-2xl font-bold">{session.prospectAvatar.painAmbitionIntensity}/10</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Authority & Perceived Need</p>
+                    <p className="text-2xl font-bold">{session.prospectAvatar.perceivedNeedForHelp}/10</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Funnel Context</p>
+                    <p className="text-2xl font-bold">{session.prospectAvatar.funnelContext}/10</p>
+                  </div>
+                </div>
+                <div className="mt-3 pt-3 border-t">
+                  <p className="text-sm text-muted-foreground">Authority Level</p>
+                  <Badge variant="outline" className="mt-1">
+                    {session.prospectAvatar.authorityLevel.charAt(0).toUpperCase() + session.prospectAvatar.authorityLevel.slice(1)}
+                  </Badge>
+                </div>
+              </div>
+
+              {/* Layer B: Execution Resistance (10 points) */}
+              {session.prospectAvatar.executionResistance !== undefined && (
+                <div className="pt-4 border-t">
+                  <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Layer B: Execution Resistance (10 points)</h3>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Ability to Proceed</p>
+                    <p className="text-2xl font-bold">{session.prospectAvatar.executionResistance}/10</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {session.prospectAvatar.executionResistance >= 8
+                        ? 'Fully Able - Has money, time, authority'
+                        : session.prospectAvatar.executionResistance >= 5
+                          ? 'Partial Ability - Needs reprioritization'
+                          : 'Extreme Resistance - Severe constraints'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Total Score */}
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold">Total Difficulty Score</p>
+                  <p className="text-3xl font-bold">
+                    {session.prospectAvatar.difficultyIndex}/{session.prospectAvatar.executionResistance !== undefined ? '50' : '40'}
+                  </p>
+                </div>
+                {session.prospectAvatar.executionResistance !== undefined && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Layer A ({session.prospectAvatar.positionProblemAlignment + session.prospectAvatar.painAmbitionIntensity + session.prospectAvatar.perceivedNeedForHelp + session.prospectAvatar.funnelContext}) + Layer B ({session.prospectAvatar.executionResistance})
                   </p>
                 )}
               </div>
-            ))}
-          </div>
-        </Card>
-      )}
+            </Card>
+          )}
 
-      {/* Moment-by-Moment Feedback with Re-Practice - Section 6.8 */}
-      {momentFeedback.length > 0 && (
-        <MomentFeedbackList sessionId={sessionId} items={momentFeedback} />
+          {/* Category Feedback Accordion - Section 6.6/6.7 */}
+          {Object.keys(effectiveCategoryFeedback).length > 0 && (
+            <CategoryFeedbackSection categoryFeedback={effectiveCategoryFeedback} categoryScores={flatCategoryScores} />
+          )}
+
+          {/* Objection Analysis - Section 6.9 */}
+          {objectionItems.length > 0 && (
+            <ObjectionAnalysis items={objectionItems} />
+          )}
+
+          {/* Coaching Recommendations */}
+          {recommendations.length > 0 && (
+            <Card className="p-4 sm:p-6">
+              <h2 className="text-xl font-semibold mb-4">3-5 Prioritized Fixes</h2>
+              <div className="space-y-3">
+                {recommendations.slice(0, 5).map((rec: { priority?: string; category?: string; timestamp?: number; issue?: string; explanation?: string; action?: string; transcriptSegment?: string }, i: number) => (
+                  <div
+                    key={i}
+                    className="border-l-4 border-primary pl-4 hover:bg-muted/50 rounded-r-lg p-2 transition-colors cursor-pointer"
+                    onClick={() => {
+                      if (rec.timestamp) {
+                        router.push(`/dashboard/roleplay/${sessionId}?timestamp=${rec.timestamp}`);
+                      }
+                    }}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge
+                        variant={
+                          rec.priority === 'high'
+                            ? 'destructive'
+                            : rec.priority === 'medium'
+                              ? 'default'
+                              : 'secondary'
+                        }
+                      >
+                        {rec.priority}
+                      </Badge>
+                      <span className="font-medium">{rec.category}</span>
+                      {rec.timestamp && (
+                        <Badge variant="outline" className="ml-auto text-xs">
+                          {Math.floor(rec.timestamp / 1000 / 60)}:{(Math.floor(rec.timestamp / 1000) % 60).toString().padStart(2, '0')}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-1">{rec.issue}</p>
+                    {rec.explanation && (
+                      <p className="text-xs text-muted-foreground mb-1">{rec.explanation}</p>
+                    )}
+                    {rec.action && (
+                      <p className="text-sm font-medium">{rec.action}</p>
+                    )}
+                    {rec.transcriptSegment && (
+                      <div className="mt-2 p-2 bg-muted rounded text-xs text-muted-foreground">
+                        &quot;{rec.transcriptSegment}&quot;
+                      </div>
+                    )}
+                    {rec.timestamp && (
+                      <p className="text-xs text-primary mt-2">
+                        Click to jump to this moment in the call
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Moment-by-Moment Feedback with Re-Practice - Section 6.8 */}
+          {momentFeedback.length > 0 && (
+            <MomentFeedbackList sessionId={sessionId} items={momentFeedback} />
+          )}
+        </>
       )}
 
       {/* Actions */}

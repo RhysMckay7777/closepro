@@ -12,8 +12,8 @@ export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'incomplete',
   'paused'
 ]);
-export const callTypeEnum = pgEnum('call_type', ['closing_call', 'follow_up', 'no_show']);
-export const callResultEnum = pgEnum('call_result', ['no_show', 'closed', 'lost', 'unqualified', 'follow_up', 'deposit']);
+export const callTypeEnum = pgEnum('call_type', ['closing_call', 'follow_up', 'no_show', 'roleplay']);
+export const callResultEnum = pgEnum('call_result', ['no_show', 'closed', 'lost', 'unqualified', 'follow_up', 'deposit', 'payment_plan']);
 export const offerCategoryEnum = pgEnum('offer_category', ['b2c_health', 'b2c_relationships', 'b2c_wealth', 'mixed_wealth', 'b2b_services']);
 export const customerStageEnum = pgEnum('customer_stage', ['aspiring', 'current', 'mixed']);
 export const caseStudyStrengthEnum = pgEnum('case_study_strength', ['none', 'weak', 'moderate', 'strong']);
@@ -266,6 +266,7 @@ export const salesCalls = pgTable('sales_calls', {
   revenueGenerated: integer('revenue_generated'), // Amount in cents
   depositTaken: boolean('deposit_taken'),
   reasonForOutcome: text('reason_for_outcome'), // Mandatory short text field
+  reasonTag: text('reason_tag'), // Pre-populated tag: 'No money', 'Spouse', 'Not the decision maker', 'Timing', 'Not convinced', 'Other', or free-text
   analysisIntent: text('analysis_intent'), // 'update_figures' | 'analysis_only'
   wasConfirmed: boolean('was_confirmed'), // For no-shows
   bookingSource: text('booking_source'), // For no-shows
@@ -313,11 +314,20 @@ export const callAnalysis = pgTable('call_analysis', {
   // Timestamped feedback
   timestampedFeedback: text('timestamped_feedback'), // JSON array of { timestamp, type, message, transcriptSegment }
 
-  // Connor's 7-section analysis data (Prompt 3)
+  // Connor's 7-section analysis data (Prompt 3) — v1 legacy, kept for backward compat
   outcomeDiagnostic: text('outcome_diagnostic'), // Narrative paragraph explaining call outcome
   categoryFeedback: text('category_feedback'), // JSON: per-category { whyThisScore, whatWasDoneWell, whatWasMissing, howItAffectedOutcome }
   momentCoaching: text('moment_coaching'), // JSON array of { timestamp, whatHappened, whatShouldHaveHappened, affectedCategory, whyItMatters }
   priorityFixes: text('priority_fixes'), // JSON array of { problem, whatToDoDifferently, whenToApply, whyItMatters }
+
+  // v2.0 Phase-based analysis columns (all nullable for backward compat)
+  phaseScores: text('phase_scores'), // JSON: { overall, intro, discovery, pitch, close, objections } each 0-100
+  phaseAnalysis: text('phase_analysis'), // JSON: per-phase analysis (summary, whatWorked, timestampedFeedback, etc.)
+  outcomeDiagnosticP1: text('outcome_diagnostic_p1'), // Why the result occurred (cause-and-effect)
+  outcomeDiagnosticP2: text('outcome_diagnostic_p2'), // Contextual paragraph based on outcome
+  closerEffectiveness: text('closer_effectiveness'), // 'above_expectation' | 'at_expectation' | 'below_expectation'
+  prospectDifficultyJustifications: text('prospect_difficulty_justifications'), // JSON: per-dimension 2-4 sentence justifications
+  actionPoints: text('action_points'), // JSON array (max 2) replacing priorityFixes for v2
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -455,6 +465,12 @@ export const roleplaySessions = pgTable('roleplay_sessions', {
   // Metadata
   metadata: text('metadata'), // JSON for additional data
 
+  // Phase Replay context (set when session is created from a replay button)
+  replayPhase: text('replay_phase'), // 'intro'|'discovery'|'pitch'|'close'|'objection'|'skill'|null
+  replaySourceCallId: text('replay_source_call_id'), // Original call ID
+  replaySourceSessionId: text('replay_source_session_id'), // Original roleplay session ID
+  replayContext: text('replay_context'), // JSON: phase feedback, objection block, or action point data
+
   startedAt: timestamp('started_at').notNull().defaultNow(),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -514,6 +530,15 @@ export const roleplayAnalysis = pgTable('roleplay_analysis', {
   categoryFeedback: text('category_feedback'), // JSON: per-category what-was-done-well/missing/improve
   priorityFixes: text('priority_fixes'), // JSON: 3-5 priority items with whatWentWrong/whyItMattered/whatToDo
   objectionAnalysis: text('objection_analysis'), // JSON: detailed objection handling evaluation
+
+  // v2.0 Phase-based analysis columns (same as callAnalysis, all nullable for backward compat)
+  phaseScores: text('phase_scores'), // JSON: { overall, intro, discovery, pitch, close, objections } each 0-100
+  phaseAnalysis: text('phase_analysis'), // JSON: per-phase analysis (summary, whatWorked, timestampedFeedback, etc.)
+  outcomeDiagnosticP1: text('outcome_diagnostic_p1'), // Why the result occurred (cause-and-effect)
+  outcomeDiagnosticP2: text('outcome_diagnostic_p2'), // Contextual paragraph based on outcome
+  closerEffectiveness: text('closer_effectiveness'), // 'above_expectation' | 'at_expectation' | 'below_expectation'
+  prospectDifficultyJustifications: text('prospect_difficulty_justifications'), // JSON: per-dimension justifications
+  actionPoints: text('action_points'), // JSON array (max 2) replacing priorityFixes for v2
 
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),

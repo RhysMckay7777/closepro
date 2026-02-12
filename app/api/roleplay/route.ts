@@ -153,6 +153,10 @@ export async function POST(request: NextRequest) {
       inputMode = 'text',
       mode = 'manual',
       sourceCallId,
+      replayPhase,
+      replaySourceCallId,
+      replaySourceSessionId,
+      replayContext,
     } = body;
 
     // Require offerId - no default offers
@@ -295,6 +299,10 @@ export async function POST(request: NextRequest) {
         sourceCallId: sourceCallId || null,
         inputMode: inputMode || 'text',
         status: 'in_progress',
+        replayPhase: replayPhase || null,
+        replaySourceCallId: replaySourceCallId || null,
+        replaySourceSessionId: replaySourceSessionId || null,
+        replayContext: typeof replayContext === 'string' ? replayContext : (replayContext ? JSON.stringify(replayContext) : null),
       })
       .returning();
 

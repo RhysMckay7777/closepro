@@ -4,7 +4,8 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { roleplaySessions, roleplayMessages, roleplayAnalysis } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { analyzeCall } from '@/lib/ai/analysis';
+import { analyzeCall, calculateCloserEffectiveness } from '@/lib/ai/analysis';
+import { sql } from 'drizzle-orm';
 
 export const maxDuration = 120;
 
@@ -120,33 +121,77 @@ export async function POST(
       stagesCompleted,
     });
 
-    const [analysis] = await db
-      .insert(roleplayAnalysis)
-      .values({
-        roleplaySessionId: sessionId,
-        overallScore: analysisResult.overallScore,
-        // DEPRECATED: 4-pillar scores set to null, use skillScores instead
-        valueScore: null,
-        trustScore: null,
-        fitScore: null,
-        logisticsScore: null,
-        // 10-category skill scores (same framework as call analysis)
-        skillScores: JSON.stringify(analysisResult.categoryScores),
-        // Prospect difficulty (from analysis result)
-        prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
-        prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
-        // Coaching and feedback
-        coachingRecommendations: JSON.stringify(analysisResult.coachingRecommendations),
-        timestampedFeedback: JSON.stringify(analysisResult.timestampedFeedback),
-        // Completion tracking
-        isIncomplete,
-        stagesCompleted: JSON.stringify(stagesCompleted),
-        // Enhanced feedback (from analysis result if available)
-        categoryFeedback: analysisResult.categoryFeedbackDetailed ? JSON.stringify(analysisResult.categoryFeedbackDetailed) : null,
-        priorityFixes: analysisResult.priorityFixes ? JSON.stringify(analysisResult.priorityFixes) : null,
-        objectionAnalysis: analysisResult.objectionAnalysis ? JSON.stringify(analysisResult.objectionAnalysis) : null,
-      })
-      .returning();
+    // Build insert values with v1 + v2 columns
+    const insertValues = {
+      roleplaySessionId: sessionId,
+      overallScore: analysisResult.overallScore,
+      // DEPRECATED: 4-pillar scores set to null, use skillScores instead
+      valueScore: null,
+      trustScore: null,
+      fitScore: null,
+      logisticsScore: null,
+      // 10-category skill scores (same framework as call analysis)
+      skillScores: JSON.stringify(analysisResult.categoryScores),
+      // Prospect difficulty (from analysis result)
+      prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
+      prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
+      // Coaching and feedback
+      coachingRecommendations: JSON.stringify(analysisResult.coachingRecommendations),
+      timestampedFeedback: JSON.stringify(analysisResult.timestampedFeedback),
+      // Completion tracking
+      isIncomplete,
+      stagesCompleted: JSON.stringify(stagesCompleted),
+      // Enhanced feedback (from analysis result if available)
+      categoryFeedback: analysisResult.categoryFeedbackDetailed ? JSON.stringify(analysisResult.categoryFeedbackDetailed) : null,
+      priorityFixes: analysisResult.priorityFixes ? JSON.stringify(analysisResult.priorityFixes) : null,
+      objectionAnalysis: analysisResult.objectionAnalysis ? JSON.stringify(analysisResult.objectionAnalysis) : null,
+      // v2.0 Phase-based analysis columns
+      phaseScores: analysisResult.phaseScores ? JSON.stringify(analysisResult.phaseScores) : null,
+      phaseAnalysis: analysisResult.phaseAnalysis ? JSON.stringify(analysisResult.phaseAnalysis) : null,
+      outcomeDiagnosticP1: analysisResult.outcomeDiagnosticP1 ?? null,
+      outcomeDiagnosticP2: analysisResult.outcomeDiagnosticP2 ?? null,
+      closerEffectiveness: calculateCloserEffectiveness(
+        analysisResult.prospectDifficulty?.totalDifficultyScore ?? 25,
+        analysisResult.overallScore ?? 0
+      ),
+      prospectDifficultyJustifications: analysisResult.prospectDifficultyJustifications
+        ? JSON.stringify(analysisResult.prospectDifficultyJustifications) : null,
+      actionPoints: analysisResult.actionPoints
+        ? JSON.stringify(analysisResult.actionPoints.slice(0, 2)) : null,
+    };
+
+    let analysis;
+    try {
+      [analysis] = await db
+        .insert(roleplayAnalysis)
+        .values(insertValues)
+        .returning();
+    } catch (insertErr: any) {
+      if (insertErr?.message?.includes('column') && insertErr?.message?.includes('does not exist')) {
+        console.log('[roleplay-score] Missing columns detected — running auto-migration…');
+        // v2 analysis columns
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS phase_scores TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS phase_analysis TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p1 TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p2 TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS closer_effectiveness TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS prospect_difficulty_justifications TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS action_points TEXT`);
+        // Replay context columns on sessions table
+        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_phase TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_source_call_id TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_source_session_id TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_context TEXT`);
+        console.log('[roleplay-score] Auto-migration complete. Retrying insert…');
+        [analysis] = await db
+          .insert(roleplayAnalysis)
+          .values(insertValues)
+          .returning();
+        console.log('[roleplay-score] Analysis row inserted after migration');
+      } else {
+        throw insertErr;
+      }
+    }
 
     // Update session with score and analysis
     await db

@@ -7,7 +7,15 @@ export {
     PROSPECT_DIFFICULTY_MODEL,
     DIFFICULTY_BANDS,
     getDifficultyBand,
+    // v2.0 exports
+    PROSPECT_DIFFICULTY_MODEL_V2,
+    V2_DIFFICULTY_BANDS,
+    V2_DIFFICULTY_DIMENSIONS,
+    V2_DIFFICULTY_DIMENSION_LABELS,
+    getDifficultyBandV2,
 } from './prospect-difficulty-model';
+
+export type { V2DifficultyDimension } from './prospect-difficulty-model';
 
 export {
     SCORING_CATEGORIES,

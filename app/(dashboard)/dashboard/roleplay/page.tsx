@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useRef, Suspense, useCallback } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Play, Clock, TrendingUp, MessageSquare, Heart, Users, DollarSign, PieChart, Briefcase } from 'lucide-react';
+import { Plus, Play, Clock, TrendingUp, MessageSquare, Heart, Users, DollarSign, PieChart, Briefcase, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from '@/components/ui/empty';
 import { EmptyRoleplayIllustration } from '@/components/illustrations';
@@ -27,14 +27,155 @@ interface RoleplaySession {
   createdAt: string;
 }
 
-export default function RoleplayPage() {
+const PHASE_LABELS: Record<string, string> = {
+  intro: 'Introduction',
+  discovery: 'Discovery',
+  pitch: 'Pitch',
+  close: 'Close',
+  objection: 'Objection Handling',
+  skill: 'Skill Training',
+};
+
+function RoleplayPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Replay detection
+  const replayPhase = searchParams?.get('phase');
+  const replaySkill = searchParams?.get('skill');
+  const replayCallId = searchParams?.get('callId');
+  const replaySessionId = searchParams?.get('sessionId');
+  const replayObjectionIndex = searchParams?.get('objectionIndex');
+  const isReplay = !!(replayPhase || replaySkill);
+
   const [sessions, setSessions] = useState<RoleplaySession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [replayStatus, setReplayStatus] = useState<string | null>(isReplay ? 'Setting up phase practice...' : null);
+  const [replayError, setReplayError] = useState<string | null>(null);
+  const replayTriggeredRef = useRef(false);
+
+  // Safe JSON parse helper
+  const safeParse = (val: unknown, fallback: unknown = {}) => {
+    if (val === null || val === undefined) return fallback;
+    if (typeof val === 'object') return val;
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch { return fallback; }
+    }
+    return fallback;
+  };
+
+  // Replay dispatcher effect
+  const handleReplay = useCallback(async () => {
+    if (!isReplay || replayTriggeredRef.current) return;
+    replayTriggeredRef.current = true;
+
+    try {
+      setReplayStatus('Fetching original analysis...');
+
+      let offerId: string | null = null;
+      let phaseAnalysis: any = null;
+      let actionPoints: any[] = [];
+
+      if (replayCallId) {
+        // Fetch from call status API
+        const res = await fetch(`/api/calls/${replayCallId}/status`);
+        if (!res.ok) throw new Error('Failed to fetch original call');
+        const data = await res.json();
+        offerId = data.call?.offerId || null;
+        const analysis = data.analysis;
+        if (analysis) {
+          phaseAnalysis = safeParse(analysis.phaseAnalysis, null);
+          actionPoints = safeParse(analysis.actionPoints, []) as any[];
+        }
+      } else if (replaySessionId) {
+        // Fetch from roleplay session API
+        const res = await fetch(`/api/roleplay/${replaySessionId}`);
+        if (!res.ok) throw new Error('Failed to fetch original session');
+        const data = await res.json();
+        offerId = data.session?.offerId || null;
+        const analysis = data.analysis;
+        if (analysis) {
+          phaseAnalysis = safeParse(analysis.phaseAnalysis, null);
+          actionPoints = safeParse(analysis.actionPoints, []) as any[];
+        }
+      }
+
+      if (!offerId) {
+        setReplayError('Could not determine the offer for this replay. Please start a new roleplay manually.');
+        setReplayStatus(null);
+        return;
+      }
+
+      // Build replay context
+      let replayContext: any = {};
+      const effectivePhase = replayPhase || (replaySkill ? 'skill' : null);
+
+      if (effectivePhase === 'objection' && phaseAnalysis?.objections?.blocks) {
+        const idx = replayObjectionIndex ? parseInt(replayObjectionIndex) : 0;
+        const block = phaseAnalysis.objections.blocks[idx];
+        replayContext = {
+          phase: 'objection',
+          objectionIndex: idx,
+          originalObjection: block || null,
+          originalFeedback: phaseAnalysis?.objections || null,
+        };
+      } else if (effectivePhase === 'skill' && replaySkill) {
+        const matchingPoint = actionPoints.find(
+          (ap: any) => ap.thePattern === replaySkill || ap.thePattern?.toLowerCase() === replaySkill?.toLowerCase()
+        ) || actionPoints[0] || null;
+        replayContext = {
+          phase: 'skill',
+          skill: replaySkill,
+          originalActionPoint: matchingPoint,
+        };
+      } else if (effectivePhase && phaseAnalysis?.[effectivePhase]) {
+        replayContext = {
+          phase: effectivePhase,
+          originalFeedback: phaseAnalysis[effectivePhase],
+        };
+      } else {
+        replayContext = { phase: effectivePhase };
+      }
+
+      setReplayStatus('Creating practice session...');
+
+      // Create the session
+      const createRes = await fetch('/api/roleplay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          offerId,
+          selectedDifficulty: 'realistic',
+          inputMode: 'voice',
+          mode: 'manual',
+          replayPhase: effectivePhase,
+          replaySourceCallId: replayCallId || null,
+          replaySourceSessionId: replaySessionId || null,
+          replayContext: JSON.stringify(replayContext),
+        }),
+      });
+
+      if (!createRes.ok) {
+        const err = await createRes.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create practice session');
+      }
+
+      const createData = await createRes.json();
+      router.push(`/dashboard/roleplay/${createData.session.id}`);
+    } catch (err: any) {
+      console.error('Replay setup error:', err);
+      setReplayError(err.message || 'Failed to set up practice session');
+      setReplayStatus(null);
+    }
+  }, [isReplay, replayPhase, replaySkill, replayCallId, replaySessionId, replayObjectionIndex, router]);
 
   useEffect(() => {
-    fetchSessions();
-  }, []);
+    if (isReplay) {
+      handleReplay();
+    } else {
+      fetchSessions();
+    }
+  }, [isReplay, handleReplay]);
 
   const fetchSessions = async () => {
     try {
@@ -48,46 +189,44 @@ export default function RoleplayPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return <Badge variant="default" className="bg-green-500">Completed</Badge>;
-      case 'in_progress':
-        return <Badge variant="default" className="bg-blue-500">In Progress</Badge>;
-      case 'abandoned':
-        return <Badge variant="secondary">Abandoned</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
+  // If this is a replay, show the replay loading/error UI
+  if (isReplay) {
+    return (
+      <div className="container mx-auto p-4 sm:p-6 max-w-lg">
+        <Card className="p-8 sm:p-12 text-center space-y-6">
+          {replayError ? (
+            <>
+              <p className="text-destructive font-medium">{replayError}</p>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Link href="/dashboard/roleplay/new">
+                  <Button>Start New Roleplay</Button>
+                </Link>
+                <Link href="/dashboard/roleplay">
+                  <Button variant="outline">Back to Roleplays</Button>
+                </Link>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-center">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full border-4 border-muted animate-spin border-t-primary" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h2 className="text-xl font-bold">
+                  {PHASE_LABELS[replayPhase || 'skill'] || 'Phase'} Practice
+                </h2>
+                <p className="text-sm text-muted-foreground">{replayStatus}</p>
+              </div>
+            </>
+          )}
+        </Card>
+      </div>
+    );
+  }
 
-  const getDifficultyColor = (difficulty: string | null) => {
-    switch (difficulty) {
-      case 'easy':
-        return 'text-green-500';
-      case 'realistic':
-        return 'text-blue-500';
-      case 'hard':
-        return 'text-orange-500';
-      case 'expert':
-      case 'elite':
-        return 'text-red-500';
-      default:
-        return 'text-gray-500';
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
+  // Normal session listing
   const getOfferTypeLabel = (type?: string) => {
     if (!type) return '—';
     const labels: Record<string, string> = {
@@ -308,5 +447,20 @@ export default function RoleplayPage() {
         </div>
       </Card>
     </div>
+  );
+}
+
+export default function RoleplayPage() {
+  return (
+    <Suspense fallback={
+      <div className="container mx-auto p-4 sm:p-6">
+        <div className="text-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    }>
+      <RoleplayPageContent />
+    </Suspense>
   );
 }
