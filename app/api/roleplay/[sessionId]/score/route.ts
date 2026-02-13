@@ -157,7 +157,7 @@ export async function POST(
       prospectDifficultyJustifications: analysisResult.prospectDifficultyJustifications
         ? JSON.stringify(analysisResult.prospectDifficultyJustifications) : null,
       actionPoints: analysisResult.actionPoints
-        ? JSON.stringify(analysisResult.actionPoints.slice(0, 2)) : null,
+        ? JSON.stringify(analysisResult.actionPoints.slice(0, 3)) : null,
     };
 
     let analysis;

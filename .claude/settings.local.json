@@ -5,7 +5,8 @@
       "Bash(npx next build:*)",
       "Bash(cd:*)",
       "Bash(npx tsc:*)",
-      "Bash(npx drizzle-kit push:*)"
+      "Bash(npx drizzle-kit push:*)",
+      "Bash(grep:*)"
     ]
   }
 }

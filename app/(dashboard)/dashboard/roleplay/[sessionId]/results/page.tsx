@@ -13,7 +13,7 @@ import { MomentFeedbackList } from '@/components/roleplay/MomentFeedbackList';
 import { ObjectionAnalysis } from '@/components/roleplay/ObjectionAnalysis';
 import { CategoryFeedbackSection } from '@/components/roleplay/CategoryFeedbackSection';
 import { extractMomentFeedback } from '@/lib/roleplayApi';
-import { ProspectDifficultyPanel, OutcomeDiagnostic, PhaseAnalysisTabs, ActionPointCards } from '@/components/call-review';
+import { ProspectDifficultyPanel, PhaseAnalysisTabs, ActionPointCards } from '@/components/call-review';
 import {
   parseStagesCompleted,
   parseCategoryFeedback,
@@ -512,24 +512,18 @@ export default function RoleplayResultsPage() {
             justifications={v2Justifications}
             sectionNumber={2}
           />
-          <OutcomeDiagnostic
-            paragraph1={analysis.outcomeDiagnosticP1}
-            paragraph2={analysis.outcomeDiagnosticP2}
-            overallScore={analysis.overallScore}
-            sectionNumber={3}
-          />
           <PhaseAnalysisTabs
             phaseScores={v2PhaseScores!}
             phaseAnalysis={v2PhaseAnalysis}
             overallScore={analysis.overallScore}
             sessionId={sessionId}
-            sectionNumber={4}
+            sectionNumber={3}
             defaultTab={isReplay && session?.replayPhase && session.replayPhase !== 'skill' ? session.replayPhase : undefined}
           />
           <ActionPointCards
             actionPoints={v2ActionPoints}
             sessionId={sessionId}
-            sectionNumber={5}
+            sectionNumber={4}
           />
         </>
       ) : (

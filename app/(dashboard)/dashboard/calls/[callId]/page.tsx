@@ -10,7 +10,7 @@ import { ArrowLeft, Loader2, AlertCircle, ChevronDown, ChevronUp, Trash2, Refres
 import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { getCategoryLabel } from '@/lib/ai/scoring-framework';
-import { CallSnapshotBar, ProspectDifficultyPanel, OutcomeDiagnostic, PhaseAnalysisTabs, ActionPointCards, SalesFiguresPanel } from '@/components/call-review';
+import { CallSnapshotBar, ProspectDifficultyPanel, PhaseAnalysisTabs, ActionPointCards, SalesFiguresPanel } from '@/components/call-review';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 export default function CallDetailPage() {
@@ -316,24 +316,17 @@ export default function CallDetailPage() {
                 justifications={analysis.prospectDifficultyJustifications}
                 sectionNumber={2}
               />
-              <OutcomeDiagnostic
-                paragraph1={analysis.outcomeDiagnosticP1}
-                paragraph2={analysis.outcomeDiagnosticP2}
-                outcome={call.result || analysis.outcome?.result}
-                overallScore={analysis.overallScore}
-                sectionNumber={3}
-              />
               <PhaseAnalysisTabs
                 phaseScores={analysis.phaseScores}
                 phaseAnalysis={analysis.phaseAnalysis}
                 overallScore={analysis.overallScore ?? 0}
                 callId={callId}
-                sectionNumber={4}
+                sectionNumber={3}
               />
               <ActionPointCards
                 actionPoints={analysis.actionPoints ?? []}
                 callId={callId}
-                sectionNumber={5}
+                sectionNumber={4}
               />
             </>
           )}

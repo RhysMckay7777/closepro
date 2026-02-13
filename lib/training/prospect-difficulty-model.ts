@@ -4,100 +4,105 @@
  * Used by call analysis, roleplay scoring, and roleplay prospect behavior.
  *
  * v1: 6 dimensions, higher score = easier (42-50=Easy, 0-29=Expert)
- * v2: 5 dimensions, higher score = harder (0-20=Easy, 46-50=Expert)
+ * v2: 5 dimensions, higher score = easier (41-50=Easy, <20=Near Impossible)
  */
 
 // ═══════════════════════════════════════════════════════════
-// V2.0 — Phase-based analysis model (5 dimensions, higher = harder)
+// V2.0 — Phase-based analysis model (5 dimensions, higher = easier)
 // ═══════════════════════════════════════════════════════════
 
 export const V2_DIFFICULTY_DIMENSIONS = [
   'icpAlignment',
-  'painAndAmbition',
-  'funnelWarmth',
+  'motivationIntensity',
+  'funnelContext',
   'authorityAndCoachability',
-  'executionResistance',
+  'abilityToProceed',
 ] as const;
 
 export type V2DifficultyDimension = (typeof V2_DIFFICULTY_DIMENSIONS)[number];
 
 export const V2_DIFFICULTY_DIMENSION_LABELS: Record<V2DifficultyDimension, string> = {
   icpAlignment: 'ICP Alignment',
-  painAndAmbition: 'Pain & Ambition',
-  funnelWarmth: 'Funnel Warmth',
-  authorityAndCoachability: 'Authority & Coachability',
-  executionResistance: 'Execution Resistance',
+  motivationIntensity: 'Motivation Intensity',
+  funnelContext: 'Funnel Context',
+  authorityAndCoachability: 'Prospect Authority & Coachability',
+  abilityToProceed: 'Ability to Proceed',
 };
 
 export const PROSPECT_DIFFICULTY_MODEL_V2 = `
 PROSPECT DIFFICULTY MODEL v2.0 (50-Point Scoring System)
-IMPORTANT: Higher score = HARDER prospect. This is the opposite of v1.
+IMPORTANT: Higher score = EASIER prospect (more favorable conditions).
 
 Each prospect is scored across 5 dimensions (each 0-10). Total = sum of all 5 (0-50).
 
 DIMENSION 1: ICP Alignment (0-10)
-How well does the prospect match the ideal customer profile?
-- 0-2: Perfect fit — exact target avatar, ideal situation
-- 3-4: Good fit — mostly aligned, minor gaps
-- 5-7: Partial fit — some relevance but significant mismatch
-- 8-10: Poor fit — doesn't match the ICP at all
+How closely the prospect's situation and problems match what the offer solves.
+- 9-10: Very High — clear ICP match, problems exactly what offer solves
+- 7-8: Good — strong fit but missing one element
+- 4-6: Moderate — partial match, needs reframing
+- 1-3: Low — weak fit, conceptual mismatch
+- 0: None — completely wrong market
 
-DIMENSION 2: Pain & Ambition (0-10)
-How motivated is the prospect to change?
-- 0-2: Urgent pain or burning ambition, desperate to act
-- 3-4: Strong desire, actively seeking solutions
-- 5-7: Moderate awareness, not urgently motivated
-- 8-10: Content with status quo, no perceived need
+DIMENSION 2: Motivation Intensity (0-10)
+How emotionally and logically driven the prospect is to change (pain + ambition).
+- 9-10: Very High — strong pain AND/OR ambition, clear urgency
+- 7-8: Strong — one strong driver, one moderate
+- 4-6: Moderate — wants change but not urgent
+- 1-3: Low — passive, "just exploring"
+- 0: Indifferent
 
-DIMENSION 3: Funnel Warmth (0-10)
-How warm was the prospect before the call?
-- 0-2: Hot — referral, deep content consumption, self-convinced
-- 3-4: Warm — applied/registered, consumed some content
-- 5-7: Lukewarm — showed mild interest, limited context
-- 8-10: Cold — outbound, didn't ask for the call, skeptical
+DIMENSION 3: Funnel Context (0-10)
+How warm the prospect is before the call begins.
+- 9-10: Hot — referral/repeat buyer, followed content, seen proof, strong baseline trust
+- 6-8: Warm — familiar with brand, consumed some content, moderate trust
+- 3-5: Cold — came from cold ads, limited proof exposure, needs trust-building
+- 0-2: Ice Cold — outbound/minimal awareness, strong early trust resistance
 
-DIMENSION 4: Authority & Coachability (0-10)
-How receptive and empowered is the prospect?
-- 0-2: Coachable, decision-maker, defers to expert advice
-- 3-4: Open-minded, mostly autonomous, some hesitancy
-- 5-7: Guarded, needs convincing, shared decision-making
-- 8-10: Combative, dismissive, no authority, or needs others to approve
+DIMENSION 4: Prospect Authority & Coachability (0-10)
+How the prospect sees themselves relative to the closer and openness to help.
+- 8-10: Advisee/Coachable — open, shares freely, respects expertise
+- 5-7: Peer/Balanced — neutral authority, slight skepticism
+- 2-4: High Authority/Guarded — tests closer, challenges framing
+- 0-1: Advisor/Resistant — attempts to control, believes they know better
 
-DIMENSION 5: Execution Resistance (0-10)
-Practical barriers to proceeding (money, time, logistics):
-- 0-2: No barriers — has money, time, and authority to proceed
-- 3-4: Minor friction — payment plans acceptable, small scheduling issues
-- 5-7: Moderate barriers — needs to discuss with others, tight finances
-- 8-10: Severe barriers — no money, no time, immovable blockers
+DIMENSION 5: Ability to Proceed (0-10)
+Whether the prospect has practical ability to act (money, time, authority).
+- 9-10: Fully Able — has money, time, can decide independently
+- 6-8: Mostly Able — minor restructuring needed, payment plan possible
+- 3-5: Restricted — tight financially, limited time, needs partner sign-off
+- 0-2: Severe Resistance — no funds, no time, external dependency
 
-DIFFICULTY BANDS (higher = harder):
-  0–20  = Easy (green)
-  21–35 = Realistic (amber)
-  36–45 = Hard (orange)
-  46–50 = Expert (red)
+DIFFICULTY BANDS (higher = easier):
+  41–50 = Easy (green)
+  32–40 = Realistic (amber)
+  26–31 = Hard (orange)
+  20–25 = Expert (red)
+  Below 20 = Near Impossible (red)
 
 KEY PRINCIPLES:
 1. Score each dimension INDEPENDENTLY based on transcript evidence
 2. Provide a 2-4 sentence justification for EACH dimension score
-3. Higher total = harder prospect — harder prospects deserve more credit for good performance
-4. Even easy prospects say "I need to think about it" if value isn't built
-5. Expert prospects CAN close with exceptional execution
+3. Higher total = easier prospect — harder prospects deserve more credit for good performance
+4. Difficulty reflects starting conditions — not outcome
+5. Do NOT inflate difficulty to excuse poor sales or lower difficulty to punish closers
 `;
 
 export const V2_DIFFICULTY_BANDS = {
-  EASY: { min: 0, max: 20, label: 'Easy', color: 'green' },
-  REALISTIC: { min: 21, max: 35, label: 'Realistic', color: 'amber' },
-  HARD: { min: 36, max: 45, label: 'Hard', color: 'orange' },
-  EXPERT: { min: 46, max: 50, label: 'Expert', color: 'red' },
+  EASY: { min: 41, max: 50, label: 'Easy', color: 'green' },
+  REALISTIC: { min: 32, max: 40, label: 'Realistic', color: 'amber' },
+  HARD: { min: 26, max: 31, label: 'Hard', color: 'orange' },
+  EXPERT: { min: 20, max: 25, label: 'Expert', color: 'red' },
+  NEAR_IMPOSSIBLE: { min: 0, max: 19, label: 'Near Impossible', color: 'red' },
 } as const;
 
 export type V2DifficultyBandKey = keyof typeof V2_DIFFICULTY_BANDS;
 
 export function getDifficultyBandV2(score: number): (typeof V2_DIFFICULTY_BANDS)[V2DifficultyBandKey] {
-  if (score >= 46) return V2_DIFFICULTY_BANDS.EXPERT;
-  if (score >= 36) return V2_DIFFICULTY_BANDS.HARD;
-  if (score >= 21) return V2_DIFFICULTY_BANDS.REALISTIC;
-  return V2_DIFFICULTY_BANDS.EASY;
+  if (score >= 41) return V2_DIFFICULTY_BANDS.EASY;
+  if (score >= 32) return V2_DIFFICULTY_BANDS.REALISTIC;
+  if (score >= 26) return V2_DIFFICULTY_BANDS.HARD;
+  if (score >= 20) return V2_DIFFICULTY_BANDS.EXPERT;
+  return V2_DIFFICULTY_BANDS.NEAR_IMPOSSIBLE;
 }
 
 // ═══════════════════════════════════════════════════════════

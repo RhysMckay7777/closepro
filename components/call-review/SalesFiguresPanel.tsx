@@ -80,10 +80,12 @@ export function SalesFiguresPanel({ call, callId }: SalesFiguresPanelProps) {
               {call.result ? (
                 <Badge variant="outline" className={
                   call.result === 'closed' ? 'border-green-500/50 text-green-600' :
-                  call.result === 'deposit' ? 'border-blue-500/50 text-blue-600' :
+                  call.result === 'deposit' ? 'border-orange-500/50 text-orange-600' :
+                  call.result === 'payment_plan' ? 'border-orange-500/50 text-orange-600' :
                   call.result === 'lost' ? 'border-red-500/50 text-red-600' :
                   call.result === 'follow_up_result' ? 'border-amber-500/50 text-amber-600' :
-                  call.result === 'unqualified' ? 'border-gray-500/50 text-gray-500' :
+                  call.result === 'follow_up' ? 'border-amber-500/50 text-amber-600' :
+                  call.result === 'unqualified' ? 'border-red-500/50 text-red-600' :
                   ''
                 }>
                   {call.result === 'follow_up_result' ? 'Follow-up' :

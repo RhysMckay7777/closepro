@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Play } from 'lucide-react';
+import { Play, CheckCircle, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 
 export interface PhaseAnalysisTabsProps {
@@ -81,10 +81,49 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
               </div>
               <p className="text-muted-foreground mt-1">out of 100</p>
             </div>
-            {phaseAnalysis?.overall?.summary && (
+            {/* PARAGRAPH 1: Call Outcome & Why */}
+            {phaseAnalysis?.overall?.callOutcomeAndWhy && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-foreground">
+                  Call Outcome & Why This Happened
+                </h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {phaseAnalysis.overall.callOutcomeAndWhy}
+                </p>
+              </div>
+            )}
+
+            {/* PARAGRAPH 2: What Limited This Call */}
+            {phaseAnalysis?.overall?.whatLimited && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-foreground">
+                  {phaseAnalysis.overall.isStrongCall
+                    ? 'Optimization Opportunities'
+                    : 'What Limited This Call'}
+                </h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {phaseAnalysis.overall.whatLimited}
+                </p>
+              </div>
+            )}
+
+            {/* PARAGRAPH 3: Primary Improvement Focus */}
+            {phaseAnalysis?.overall?.primaryImprovementFocus && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-foreground">
+                  Primary Improvement Focus
+                </h4>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  {phaseAnalysis.overall.primaryImprovementFocus}
+                </p>
+              </div>
+            )}
+
+            {/* FALLBACK for old analyses that only have summary */}
+            {!phaseAnalysis?.overall?.callOutcomeAndWhy && phaseAnalysis?.overall?.summary && (
               <p className="text-sm leading-relaxed">{phaseAnalysis.overall.summary}</p>
             )}
-            {phaseAnalysis?.overall?.biggestImprovementTheme && (
+            {!phaseAnalysis?.overall?.callOutcomeAndWhy && phaseAnalysis?.overall?.biggestImprovementTheme && (
               <div className={`p-4 rounded-lg border-l-4 ${
                 phaseAnalysis.overall.isStrongCall
                   ? 'border-emerald-500 bg-emerald-500/5'
@@ -116,26 +155,58 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
                 </Badge>
               )}
               {detail?.summary && <p className="text-sm leading-relaxed">{detail.summary}</p>}
-              {detail?.whatWorked && (
-                <div className="border-l-4 border-emerald-500 pl-4">
-                  <p className="text-xs font-semibold text-emerald-500 mb-1">What Worked</p>
-                  {Array.isArray(detail.whatWorked) ? (
-                    <ul className="list-disc list-inside text-sm space-y-1">
-                      {detail.whatWorked.slice(0, 3).map((item: string, i: number) => <li key={i}>{item}</li>)}
-                    </ul>
-                  ) : (
-                    <p className="text-sm">{detail.whatWorked}</p>
-                  )}
+              {/* What Worked — green accent */}
+              {Array.isArray(detail?.whatWorked) && detail.whatWorked.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  <h4 className="text-sm font-semibold text-emerald-400 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4" /> What Worked
+                  </h4>
+                  <ul className="space-y-1.5">
+                    {detail.whatWorked.slice(0, 3).map((item: string, i: number) => (
+                      <li key={i} className="text-sm text-muted-foreground flex items-start gap-2">
+                        <span className="text-emerald-400 mt-1">•</span>
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-              {detail?.whatLimitedImpact && (
-                <div className="border-l-4 border-amber-500 pl-4">
-                  <p className="text-xs font-semibold text-amber-500 mb-1">What Limited Impact</p>
-                  <p className="text-sm">{detail.whatLimitedImpact}</p>
+
+              {/* What Limited Impact — structured feedback with timestamps (new array format) */}
+              {Array.isArray(detail?.whatLimitedImpact) && detail.whatLimitedImpact.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4" /> What Limited Impact
+                  </h4>
+                  {detail.whatLimitedImpact.map((item: any, i: number) => (
+                    <div key={i} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
+                      {item.timestamp && (
+                        <span className="text-xs font-mono text-muted-foreground bg-white/10 px-1.5 py-0.5 rounded">
+                          {item.timestamp}
+                        </span>
+                      )}
+                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                      {item.whatShouldHaveDone && (
+                        <div className="text-sm text-primary/80 bg-primary/5 rounded p-2 border border-primary/10">
+                          <span className="font-semibold text-xs text-primary">Instead: </span>
+                          {item.whatShouldHaveDone}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
-              {/* Timestamped Feedback */}
-              {Array.isArray(detail?.timestampedFeedback) && detail.timestampedFeedback.length > 0 && (
+
+              {/* FALLBACK: Old string-format whatLimitedImpact for pre-Prompt3 analyses */}
+              {typeof detail?.whatLimitedImpact === 'string' && detail.whatLimitedImpact && (
+                <div className="space-y-2">
+                  <h4 className="text-sm font-semibold text-amber-400">What Limited Impact</h4>
+                  <p className="text-sm text-muted-foreground">{detail.whatLimitedImpact}</p>
+                </div>
+              )}
+
+              {/* FALLBACK: Old timestampedFeedback for pre-Prompt3 analyses */}
+              {!Array.isArray(detail?.whatLimitedImpact) && Array.isArray(detail?.timestampedFeedback) && detail.timestampedFeedback.length > 0 && (
                 <div className="space-y-3">
                   <p className="text-xs font-semibold text-muted-foreground">Timestamped Feedback</p>
                   {detail.timestampedFeedback.map((fb: any, i: number) => (

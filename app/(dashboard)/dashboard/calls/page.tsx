@@ -109,34 +109,30 @@ export default function CallsPage() {
     return labels[result] || result;
   };
 
-  const getResultBadgeVariant = (result: string) => {
-    switch (result) {
-      case 'closed':
-        return 'default';
-      case 'lost':
-        return 'destructive';
-      case 'deposit':
-      case 'payment_plan':
-        return 'secondary';
-      default:
-        return 'outline';
-    }
+  const getResultBadgeColor = (result: string) => {
+    const colors: Record<string, string> = {
+      closed: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      lost: 'bg-red-500/20 text-red-400 border-red-500/30',
+      deposit: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      payment_plan: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      follow_up: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+      follow_up_result: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+      unqualified: 'bg-red-500/20 text-red-400 border-red-500/30',
+      no_show: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+    };
+    return colors[result] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
-  const getDifficultyBadgeVariant = (tier?: string) => {
-    switch (tier) {
-      case 'easy':
-        return 'default';
-      case 'realistic':
-        return 'secondary';
-      case 'hard':
-        return 'outline';
-      case 'expert':
-      case 'elite':
-        return 'destructive';
-      default:
-        return 'outline';
-    }
+  const getDifficultyBadgeColor = (tier?: string) => {
+    const colors: Record<string, string> = {
+      easy: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      realistic: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+      hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+      expert: 'bg-red-500/20 text-red-400 border-red-500/30',
+      elite: 'bg-red-500/20 text-red-400 border-red-500/30',
+      near_impossible: 'bg-red-500/20 text-red-400 border-red-500/30',
+    };
+    return colors[tier || ''] || 'bg-gray-500/20 text-gray-400 border-gray-500/30';
   };
 
   // Group calls by month
@@ -280,6 +276,7 @@ export default function CallsPage() {
               <SelectItem value="realistic">Realistic</SelectItem>
               <SelectItem value="hard">Hard</SelectItem>
               <SelectItem value="expert">Expert</SelectItem>
+              <SelectItem value="near_impossible">Near Impossible</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -383,14 +380,14 @@ export default function CallsPage() {
                           <TableCell className="font-medium">{call.offerName}</TableCell>
                           <TableCell className="text-muted-foreground">{call.prospectName ?? '—'}</TableCell>
                           <TableCell>
-                            <Badge variant={getResultBadgeVariant(call.result)}>
+                            <Badge className={getResultBadgeColor(call.result)}>
                               {getResultLabel(call.result)}
                             </Badge>
                           </TableCell>
                           <TableCell>
                             {call.difficultyTier ? (
-                              <Badge variant={getDifficultyBadgeVariant(call.difficultyTier)}>
-                                {call.difficultyTier === 'elite' ? 'Expert' : call.difficultyTier.charAt(0).toUpperCase() + call.difficultyTier.slice(1)}
+                              <Badge className={getDifficultyBadgeColor(call.difficultyTier)}>
+                                {call.difficultyTier === 'elite' ? 'Expert' : call.difficultyTier === 'near_impossible' ? 'Near Impossible' : call.difficultyTier.charAt(0).toUpperCase() + call.difficultyTier.slice(1)}
                               </Badge>
                             ) : (
                               <span className="text-muted-foreground">—</span>

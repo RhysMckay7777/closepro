@@ -240,8 +240,8 @@ export async function POST(request: NextRequest) {
       await incrementUsage(organizationId, 'calls');
     }
 
-    // Non-blocking: extract call details from transcript for auto-populating confirm form
-    runTranscriptExtraction(callId, session.user.id, trimmedTranscript).catch(() => {});
+    // Await extraction so extractedDetails is saved before client reaches confirm page
+    try { await runTranscriptExtraction(callId, session.user.id, trimmedTranscript); } catch { /* non-critical */ }
 
     console.log('[transcript-route] ✅ Complete — callId:', callId, 'status: pending_confirmation');
     // No analysis here — user must confirm details first on the confirm page.

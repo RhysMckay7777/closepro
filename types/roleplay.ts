@@ -131,6 +131,7 @@ export function parseObjectionAnalysis(value: ObjectionAnalysisItem[] | string |
 // Format difficulty for display
 export function formatDifficulty(tier: DifficultyLevel | string | null | undefined): string {
     if (!tier) return '—';
+    if (tier === 'near_impossible') return 'Near Impossible';
     return tier.charAt(0).toUpperCase() + tier.slice(1).replace('_', ' ');
 }
 
@@ -141,8 +142,8 @@ export function getDifficultyColor(tier: DifficultyLevel | string | null | undef
         case 'realistic': return 'bg-blue-500/20 text-blue-700 border-blue-500/50';
         case 'hard': return 'bg-orange-500/20 text-orange-700 border-orange-500/50';
         case 'expert':
-        case 'elite': return 'bg-red-500/20 text-red-700 border-red-500/50';
-        // near_impossible removed — falls through to default for legacy data
+        case 'elite':
+        case 'near_impossible': return 'bg-red-500/20 text-red-700 border-red-500/50';
         default: return 'bg-gray-500/20 text-gray-700 border-gray-500/50';
     }
 }

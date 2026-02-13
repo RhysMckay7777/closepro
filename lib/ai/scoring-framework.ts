@@ -35,10 +35,11 @@ export type ObjectionPillarId = ObjectionPillar;
 
 /** Prospect difficulty tiers (aligned with 50-point model) */
 export const DIFFICULTY_TIERS = [
-  'easy',           // v1: 42–50, v2: 0–20
-  'realistic',      // v1: 36–41, v2: 21–35
-  'hard',           // v1: 30–35, v2: 36–45
-  'expert',         // v1: 0–29,  v2: 46–50
+  'easy',              // 41–50
+  'realistic',         // 32–40
+  'hard',              // 26–31
+  'expert',            // 20–25
+  'near_impossible',   // 0–19
 ] as const;
 
 export type DifficultyTier = (typeof DIFFICULTY_TIERS)[number];
@@ -49,6 +50,7 @@ export const DIFFICULTY_TIER_LABELS: Record<DifficultyTier, string> = {
   realistic: 'Realistic',
   hard: 'Hard',
   expert: 'Expert',
+  near_impossible: 'Near Impossible',
 };
 
 /** Get category label by id */

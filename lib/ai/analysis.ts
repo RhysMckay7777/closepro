@@ -6,10 +6,14 @@ import Groq from 'groq-sdk';
 import { SALES_CATEGORIES, type SalesCategoryId } from './scoring-framework';
 import { getCondensedExamples } from './knowledge/real-call-examples';
 import {
+  PROSPECT_DIFFICULTY_KNOWLEDGE,
+  SALES_PHILOSOPHY_KNOWLEDGE,
+  COACHING_OUTPUT_RULES,
+} from './knowledge';
+import {
   SCORING_CATEGORIES,
   CATEGORY_LABELS,
   CATEGORY_DESCRIPTIONS,
-  PROSPECT_DIFFICULTY_MODEL_V2,
   V2_DIFFICULTY_DIMENSIONS,
   V2_DIFFICULTY_DIMENSION_LABELS,
 } from '@/lib/training';
@@ -176,16 +180,28 @@ export interface PhaseTimestampedFeedback {
   whyItMatters: string;
 }
 
+/** Structured limitation item (v3 format) */
+export interface WhatLimitedImpactItem {
+  description: string;
+  timestamp: string;
+  whatShouldHaveDone: string;
+}
+
 /** Phase detail for intro, discovery, pitch, close */
 export interface PhaseDetail {
   summary: string;
   whatWorked: string[];
-  whatLimitedImpact: string;
+  whatLimitedImpact: string | WhatLimitedImpactItem[];
   timestampedFeedback: PhaseTimestampedFeedback[];
 }
 
 /** Overall phase detail */
 export interface OverallPhaseDetail {
+  // v3 3-paragraph format
+  callOutcomeAndWhy?: string;
+  whatLimited?: string;
+  primaryImprovementFocus?: string;
+  // Legacy fields (kept for backward compat with existing analyses)
   summary: string;
   biggestImprovementTheme: string;
   isStrongCall: boolean;
@@ -213,8 +229,9 @@ export interface PhaseAnalysis {
   };
 }
 
-/** Action point (replaces priority fixes in v2) — max 2 */
+/** Action point (replaces priority fixes in v2) — max 3 */
 export interface ActionPoint {
+  label?: string;
   thePattern: string;
   whyItsCostingYou: string;
   whatToDoInstead: string;
@@ -224,21 +241,21 @@ export interface ActionPoint {
 /** Per-dimension difficulty justifications */
 export interface ProspectDifficultyJustifications {
   icpAlignment: string;
-  painAndAmbition: string;
-  funnelWarmth: string;
+  motivationIntensity: string;
+  funnelContext: string;
   authorityAndCoachability: string;
-  executionResistance: string;
+  abilityToProceed: string;
 }
 
-/** v2 prospect difficulty (5 dimensions, higher = harder) */
+/** v2 prospect difficulty (5 dimensions, higher = easier) */
 export interface ProspectDifficultyV2 {
   icpAlignment: number;
-  painAndAmbition: number;
-  funnelWarmth: number;
+  motivationIntensity: number;
+  funnelContext: number;
   authorityAndCoachability: number;
-  executionResistance: number;
+  abilityToProceed: number;
   totalDifficultyScore: number;
-  difficultyTier: 'easy' | 'realistic' | 'hard' | 'expert';
+  difficultyTier: 'easy' | 'realistic' | 'hard' | 'expert' | 'near_impossible';
 }
 
 export type CloserEffectiveness = 'above_expectation' | 'at_expectation' | 'below_expectation';
@@ -309,21 +326,27 @@ export function calculateCloserEffectiveness(
   difficultyTotal: number,
   overallScore: number
 ): CloserEffectiveness {
-  if (difficultyTotal >= 36) {
-    // Hard/Expert prospect
-    if (overallScore >= 70) return 'above_expectation';
-    if (overallScore >= 50) return 'at_expectation';
+  if (difficultyTotal >= 41) {
+    // Easy prospect (41-50)
+    if (overallScore >= 90) return 'above_expectation';
+    if (overallScore >= 75) return 'at_expectation';
     return 'below_expectation';
   }
-  if (difficultyTotal >= 21) {
-    // Realistic prospect
+  if (difficultyTotal >= 32) {
+    // Realistic prospect (32-40)
     if (overallScore >= 80) return 'above_expectation';
     if (overallScore >= 60) return 'at_expectation';
     return 'below_expectation';
   }
-  // Easy prospect (0-20)
-  if (overallScore >= 90) return 'above_expectation';
-  if (overallScore >= 75) return 'at_expectation';
+  if (difficultyTotal >= 20) {
+    // Hard/Expert prospect (20-31)
+    if (overallScore >= 70) return 'above_expectation';
+    if (overallScore >= 50) return 'at_expectation';
+    return 'below_expectation';
+  }
+  // Near Impossible (<20)
+  if (overallScore >= 60) return 'above_expectation';
+  if (overallScore >= 40) return 'at_expectation';
   return 'below_expectation';
 }
 
@@ -342,7 +365,7 @@ export async function analyzeCall(
   confirmFormContext?: ConfirmFormContext
 ): Promise<CallAnalysisResult> {
   const prompt = buildAnalysisPrompt(transcript, transcriptJson, offerCategory, customerStage, confirmFormContext);
-  const systemPrompt = `You are an expert sales coach analyzing real sales calls. You evaluate calls using a phase-based scoring framework: one overall score (0-100) and 5 phase scores (intro, discovery, pitch, close, objections — each 0-100). Prospect difficulty is scored across 5 dimensions (each 0-10, higher = harder). Provide structured, decisive, strategic feedback. No fluff. Always return valid JSON.`;
+  const systemPrompt = buildSystemPrompt();
 
   // Try Groq first (cheaper, faster) if enabled, otherwise try Anthropic
   if (USE_GROQ && groq) {
@@ -436,7 +459,70 @@ export async function analyzeCall(
 }
 
 // ═══════════════════════════════════════════════════════════
-// V2 Prompt Builder
+// System Prompt (knowledge docs + scoring rules + tone + caps)
+// ═══════════════════════════════════════════════════════════
+
+function buildSystemPrompt(): string {
+  return `You are an elite sales performance analyst and high-performance sales coach. You analyze sales call transcripts and roleplay transcripts to produce structured, actionable coaching feedback.
+
+You are NOT a transcript analyst, critic, summarizer, or generic advice generator. You are a coach focused on behavior change.
+
+PRIORITY: Actionable coaching > descriptive analysis.
+
+Always return valid JSON. No markdown, no explanation outside the JSON object.
+
+═══ KNOWLEDGE DOCUMENT 1: SALES PHILOSOPHY & SCORING FRAMEWORK ═══
+${SALES_PHILOSOPHY_KNOWLEDGE}
+
+═══ KNOWLEDGE DOCUMENT 2: PROSPECT DIFFICULTY MODEL ═══
+${PROSPECT_DIFFICULTY_KNOWLEDGE}
+
+═══ KNOWLEDGE DOCUMENT 3: AI COACHING OUTPUT RULES ═══
+${COACHING_OUTPUT_RULES}
+
+═══ TONE ADAPTATION ═══
+
+Adapt your coaching tone based on outcome:
+
+STRONG CLOSE (PIF + High Score):
+- Tone: Reinforcing, strategic, optimizing
+- Focus: What worked, what to repeat, marginal gains
+- The "What Limited" section becomes "Optimization Opportunities" framing
+
+PAYMENT PLAN / DEPOSIT:
+- Tone: Constructive, margin-focused
+- Focus: What limited PIF conversion, authority or urgency gaps
+
+LOSS / NO SALE:
+- Tone: Direct, calm, clear
+- Focus: Structural breakdown, controllable factors, one dominant fix
+- No emotional language. No shaming.
+
+ROLEPLAY:
+- Treat as real call performance
+- No "it was just practice" tone
+- Focus more on structure than outcome
+
+Prospect Difficulty must be referenced in the overall analysis to contextualize performance — not to excuse weakness.
+
+═══ SCORE CAP ENFORCEMENT ═══
+
+When scoring each phase, you MUST apply automatic score caps. These caps are defined in the Sales Philosophy knowledge document under each phase's scoring section.
+
+If a cap condition is met, the phase score CANNOT exceed the cap value, regardless of other strengths.
+
+Apply the LOWEST applicable cap if multiple conditions are met.
+
+Examples:
+- Discovery under 10 minutes → max 50, even if what was covered was good
+- No value confirmation before price → max 70 for Close, even if delivery was strong
+- Feature dumping in pitch → max 65, even if personalization was present elsewhere
+
+State which caps were applied (if any) in the phase summary.`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// User Prompt Builder
 // ═══════════════════════════════════════════════════════════
 
 function buildAnalysisPrompt(
@@ -493,7 +579,7 @@ These values are confirmed by the user. Your analysis must be consistent with th
 Do NOT infer a different outcome, cash amount, or prospect identity.
 ` : '';
 
-  return `Analyze this sales call transcript and provide a comprehensive phase-based evaluation.
+  return `Analyze this sales call transcript using the knowledge documents provided in the system prompt.
 ${lockedContext}
 ${categoryGuidance}
 ${realExamplesSection}
@@ -503,18 +589,14 @@ ${transcript.length > 6000 ? transcript.substring(0, 6000) + '\n... (truncated f
 SPEAKER TIMESTAMPS (sample):
 ${JSON.stringify(transcriptJson.utterances.slice(0, 30), null, 2)}${transcriptJson.utterances.length > 30 ? `\n... (${transcriptJson.utterances.length - 30} more utterances)` : ''}
 
-${PROSPECT_DIFFICULTY_MODEL_V2}
-
-EVALUATION FRAMEWORK (Phase-Based Scoring v2.0):
-
 Return your analysis as a single JSON object with the following structure:
 
 1. OVERALL SCORE (0-100):
-   "overallScore": number — the overall call performance score.
+   "overallScore": number — calculated using weighted formula: Discovery×0.30 + Objections×0.25 + Pitch×0.20 + Close×0.15 + Intro×0.10
 
 2. PHASE SCORES (each 0-100):
    "phaseScores": {
-     "overall": number,
+     "overall": number (same as overallScore),
      "intro": number,
      "discovery": number,
      "pitch": number,
@@ -525,14 +607,38 @@ Return your analysis as a single JSON object with the following structure:
 3. PHASE ANALYSIS:
    "phaseAnalysis": {
      "overall": {
-       "summary": string (4-8 lines, comprehensive call summary),
-       "biggestImprovementTheme": string (the single most impactful thing to improve),
-       "isStrongCall": boolean (true if overall >= 70, determines if theme is optimization vs corrective)
+       "callOutcomeAndWhy": string (PARAGRAPH 1 — "Call Outcome & Why This Happened"
+         Explain: what the result was, how prospect difficulty impacted the situation,
+         the main structural reason the call resulted this way.
+         Connect: execution → psychological effect → outcome.
+         Must feel decisive, not vague.
+         If PIF: what created inevitability, where authority was strongest.
+         If Payment Plan/Deposit: was value strong but urgency weaker? Authority soft at close?
+         If Loss: was discovery weak? Value unstabilized? Objection mishandled?),
+
+       "whatLimited": string (PARAGRAPH 2 — "What Limited This Call"
+         The main structural weakness, highest-impact flaw across phases.
+         This is a SYNTHESIS — not a repeat of phase feedback.
+         Identify dominant pattern, show how it compounded, explain why it mattered.
+         If strong close: frame as "Optimization Opportunities".
+         If weak call: clear but calm identification of breakdown.),
+
+       "primaryImprovementFocus": string (PARAGRAPH 3 — "Primary Improvement Focus"
+         The #1 highest-leverage improvement. Why it matters.
+         Specific behavioral shift. Tie to revenue impact.
+         ONE core theme, not a list. Answer: "If you fixed this one thing, what would change?"
+         Structure: The Pattern → Why It Costs You → What To Do Instead.)
      },
      "intro": {
-       "summary": string (paragraph about intro performance),
-       "whatWorked": string[] (max 3 bullet points),
-       "whatLimitedImpact": string (paragraph about what held back the intro),
+       "summary": string (structure + performance overview paragraph. State any score caps applied.),
+       "whatWorked": string[] (max 3 bullet points of what was done well),
+       "whatLimitedImpact": [
+         {
+           "description": string (what happened and why it matters),
+           "timestamp": string (e.g. "1:23" or "Early in intro"),
+           "whatShouldHaveDone": string (specific replacement behavior with language example)
+         }
+       ],
        "timestampedFeedback": [
          {
            "timestamp": string (e.g. "1:23"),
@@ -551,128 +657,54 @@ Return your analysis as a single JSON object with the following structure:
            "quote": string (verbatim prospect quote),
            "timestamp": string,
            "type": "value" | "trust" | "fit" | "logistics",
-           "whySurfaced": string (what earlier failure caused this),
+           "whySurfaced": string (what earlier failure caused this — pre-emption analysis),
            "howHandled": string (what the rep actually did),
-           "higherLeverageAlternative": string (better response)
+           "higherLeverageAlternative": string (better response with specific language)
          }
        ]
      }
    }
 
-4. OUTCOME DIAGNOSTIC (two separate paragraphs):
-   "outcomeDiagnosticP1": string — WHY the result occurred. Clear cause-and-effect chain. No generic statements.
-   "outcomeDiagnosticP2": string — Contextual paragraph:
-     - If outcome is "closed" AND overall score >= 80 → optimization opportunities
-     - If outcome is "deposit" or "payment_plan" → what would increase probability of full close
-     - If outcome is "lost" → what needed to happen to close
-   Tone: decisive and strategic, not generic.
+   OBJECTION SCORING RULE: 50% of the objection phase score is based on pre-emption
+   (were objections surfaced/prevented earlier in discovery/pitch?), 50% on live handling quality.
 
-5. PROSPECT DIFFICULTY (v2.0 — 5 dimensions, higher = harder):
+4. OUTCOME DIAGNOSTIC (backward compat — populate from overall analysis above):
+   "outcomeDiagnosticP1": string (copy of phaseAnalysis.overall.callOutcomeAndWhy)
+   "outcomeDiagnosticP2": string (copy of phaseAnalysis.overall.whatLimited)
+
+5. PROSPECT DIFFICULTY (v2.0 — 5 dimensions, higher = easier/more favorable):
    "prospectDifficulty": {
-     "icpAlignment": number (0-10, 10=worst fit),
-     "painAndAmbition": number (0-10, 10=no motivation),
-     "funnelWarmth": number (0-10, 10=cold),
-     "authorityAndCoachability": number (0-10, 10=combative),
-     "executionResistance": number (0-10, 10=immovable blockers),
+     "icpAlignment": number (0-10, 10=perfect fit),
+     "motivationIntensity": number (0-10, 10=highly motivated),
+     "funnelContext": number (0-10, 10=hot/referral),
+     "authorityAndCoachability": number (0-10, 10=very coachable),
+     "abilityToProceed": number (0-10, 10=fully able),
      "totalDifficultyScore": number (sum of above, 0-50),
-     "difficultyTier": "easy" | "realistic" | "hard" | "expert"
+     "difficultyTier": "easy" | "realistic" | "hard" | "expert" | "near_impossible"
    }
 
 6. PROSPECT DIFFICULTY JUSTIFICATIONS (2-4 sentences per dimension):
    "prospectDifficultyJustifications": {
      "icpAlignment": string,
-     "painAndAmbition": string,
-     "funnelWarmth": string,
+     "motivationIntensity": string,
+     "funnelContext": string,
      "authorityAndCoachability": string,
-     "executionResistance": string
+     "abilityToProceed": string
    }
 
-7. ACTION POINTS (MAXIMUM 2 — hard cap, do NOT return more than 2):
+7. ACTION STEPS (minimum 2, maximum 3 — 3rd is optional "Suggested Optimization"):
    "actionPoints": [
      {
-       "thePattern": string (what's happening behaviorally — reference specific call moments),
-       "whyItsCostingYou": string (revenue or authority impact),
-       "whatToDoInstead": string (specific behavioral shift),
-       "microDrill": string (clear practice instruction)
+       "label": string (short label, e.g. "Authority Drop at Price", "Weak Urgency Close"),
+       "thePattern": string (timestamp/moment + observable behavior from this call),
+       "whyItsCostingYou": string (behavior → effect → outcome. Revenue/authority/margin impact),
+       "whatToDoInstead": string (clear replacement behavior with language example),
+       "microDrill": string (specific behavioral drill, not generic advice)
      }
    ]
-   Every point MUST reference specific moments from this call. No generic advice.
+   Every action step MUST reference specific moments from this call. No abstract feedback.
 
-Return ONLY valid JSON. No markdown, no explanation outside the JSON object.
-
-Example structure:
-{
-  "overallScore": 62,
-  "phaseScores": {
-    "overall": 62,
-    "intro": 70,
-    "discovery": 55,
-    "pitch": 65,
-    "close": 50,
-    "objections": 60
-  },
-  "phaseAnalysis": {
-    "overall": {
-      "summary": "The call opened well with strong rapport and clear framing, but lost momentum during discovery where the rep failed to explore emotional consequences of inaction. The pitch was technically competent but lacked personalization to the prospect's specific situation. The close was premature — the prospect hadn't been given enough reason to act now. Objection handling was reactive rather than pre-emptive, suggesting gaps in earlier phases.",
-      "biggestImprovementTheme": "Deepen discovery by exploring emotional consequences before transitioning to pitch",
-      "isStrongCall": false
-    },
-    "intro": {
-      "summary": "Strong opening with clear agenda-setting and rapport building. The rep established authority early.",
-      "whatWorked": ["Clear agenda set in first 60 seconds", "Warm tone that built initial trust", "Asked permission before proceeding"],
-      "whatLimitedImpact": "The intro ran slightly long (4 minutes) which compressed discovery time. Could have been tighter.",
-      "timestampedFeedback": [
-        {
-          "timestamp": "0:45",
-          "whatHappened": "Rep spent 2 minutes on small talk after rapport was established",
-          "whatShouldHaveHappened": "Transition to agenda after 30 seconds of rapport",
-          "whyItMatters": "Extended small talk signals lack of structure and wastes limited call time"
-        }
-      ]
-    },
-    "discovery": { "summary": "...", "whatWorked": ["..."], "whatLimitedImpact": "...", "timestampedFeedback": [] },
-    "pitch": { "summary": "...", "whatWorked": ["..."], "whatLimitedImpact": "...", "timestampedFeedback": [] },
-    "close": { "summary": "...", "whatWorked": ["..."], "whatLimitedImpact": "...", "timestampedFeedback": [] },
-    "objections": {
-      "blocks": [
-        {
-          "quote": "I need to think about it",
-          "timestamp": "32:15",
-          "type": "trust",
-          "whySurfaced": "Insufficient gap creation during discovery — prospect didn't feel urgency to act now",
-          "howHandled": "Rep asked what specifically they needed to think about, then tried to re-pitch features",
-          "higherLeverageAlternative": "Acknowledge, then isolate: 'When you say think about it, is it the investment, the timing, or something else?' Then address the root cause directly."
-        }
-      ]
-    }
-  },
-  "outcomeDiagnosticP1": "This call resulted in a loss because the rep failed to create sufficient urgency during discovery. While surface-level problems were uncovered, the emotional consequences of inaction were never explored. This meant the pitch — while technically competent — landed as informational rather than motivational. The prospect had no compelling reason to act today.",
-  "outcomeDiagnosticP2": "To close this prospect, the rep needed to spend 5-7 more minutes in discovery exploring what happens if the problem persists. Specifically: financial cost of inaction, emotional toll, and timeline pressure. This would have made the close feel inevitable rather than pressured. The objection 'I need to think about it' would likely not have surfaced with proper urgency framing.",
-  "prospectDifficulty": {
-    "icpAlignment": 3,
-    "painAndAmbition": 4,
-    "funnelWarmth": 5,
-    "authorityAndCoachability": 3,
-    "executionResistance": 6,
-    "totalDifficultyScore": 21,
-    "difficultyTier": "realistic"
-  },
-  "prospectDifficultyJustifications": {
-    "icpAlignment": "The prospect runs an online coaching business generating £8k/month, which is a strong fit for this offer. Their current challenges around scaling and client acquisition align well with the core outcome. Minor gap in their experience level compared to ideal ICP.",
-    "painAndAmbition": "The prospect expressed clear desire to scale but framed it as aspirational rather than urgent. They mentioned wanting to 'eventually' reach £20k months, suggesting moderate motivation without time pressure.",
-    "funnelWarmth": "The prospect came through a webinar funnel and had watched 2 videos before the call. They applied proactively but didn't engage deeply with follow-up content. Lukewarm — interested but not pre-sold.",
-    "authorityAndCoachability": "The prospect was receptive to advice and asked thoughtful questions. They're the sole decision-maker with no spouse or partner to consult. Open to being coached but not easily led.",
-    "executionResistance": "The prospect mentioned cash flow concerns and said the investment would be 'a stretch'. They asked about payment plans unprompted, suggesting financial barriers are real. Moderate-to-high resistance on the execution front."
-  },
-  "actionPoints": [
-    {
-      "thePattern": "At 14:20, the rep transitioned from discovery to pitch after only 2 surface-level problem questions. This pattern of rushing through discovery appeared again at 18:45 when the prospect hinted at deeper issues that went unexplored.",
-      "whyItsCostingYou": "Without emotional anchoring, every pitch lands as information rather than transformation. This directly caused the 'I need to think about it' objection and likely costs 2-3 closes per month.",
-      "whatToDoInstead": "After identifying the core problem, ask 3 consequence questions: 'What happens if this doesn't change in 6 months?', 'How does this affect [specific area they mentioned]?', 'What's the real cost of staying where you are?'",
-      "microDrill": "Before your next 3 calls, write down 5 consequence questions specific to the prospect's situation. During discovery, do not transition to pitch until you've asked at least 3 of them and gotten emotional responses."
-    }
-  ]
-}`;
+Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -718,7 +750,13 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
   const normalizePhaseDetail = (raw: any): PhaseDetail => ({
     summary: typeof raw?.summary === 'string' ? raw.summary.slice(0, 3000) : '',
     whatWorked: Array.isArray(raw?.whatWorked) ? raw.whatWorked.slice(0, 3).map((s: any) => String(s).slice(0, 500)) : [],
-    whatLimitedImpact: typeof raw?.whatLimitedImpact === 'string' ? raw.whatLimitedImpact.slice(0, 2000) : '',
+    whatLimitedImpact: Array.isArray(raw?.whatLimitedImpact)
+      ? raw.whatLimitedImpact.slice(0, 5).map((item: any) => ({
+          description: String(item?.description || '').slice(0, 1000),
+          timestamp: String(item?.timestamp || '').slice(0, 50),
+          whatShouldHaveDone: String(item?.whatShouldHaveDone || '').slice(0, 1000),
+        }))
+      : (typeof raw?.whatLimitedImpact === 'string' ? raw.whatLimitedImpact.slice(0, 2000) : ''),
     timestampedFeedback: Array.isArray(raw?.timestampedFeedback)
       ? raw.timestampedFeedback.map((f: any) => ({
           timestamp: String(f.timestamp ?? ''),
@@ -730,10 +768,19 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
   });
 
   const overallDetail: OverallPhaseDetail = {
-    summary: typeof rawPA.overall?.summary === 'string' ? rawPA.overall.summary.slice(0, 3000) : '',
+    // New 3-paragraph format
+    callOutcomeAndWhy: typeof rawPA.overall?.callOutcomeAndWhy === 'string'
+      ? rawPA.overall.callOutcomeAndWhy.slice(0, 3000) : '',
+    whatLimited: typeof rawPA.overall?.whatLimited === 'string'
+      ? rawPA.overall.whatLimited.slice(0, 3000) : '',
+    primaryImprovementFocus: typeof rawPA.overall?.primaryImprovementFocus === 'string'
+      ? rawPA.overall.primaryImprovementFocus.slice(0, 3000) : '',
+    // Legacy fallbacks
+    summary: typeof rawPA.overall?.summary === 'string' ? rawPA.overall.summary.slice(0, 3000)
+      : (rawPA.overall?.callOutcomeAndWhy ?? '').slice(0, 3000),
     biggestImprovementTheme: typeof rawPA.overall?.biggestImprovementTheme === 'string'
       ? rawPA.overall.biggestImprovementTheme.slice(0, 1000)
-      : '',
+      : (rawPA.overall?.primaryImprovementFocus ?? '').slice(0, 1000),
     isStrongCall: typeof rawPA.overall?.isStrongCall === 'boolean' ? rawPA.overall.isStrongCall : overallScore >= 70,
   };
 
@@ -759,46 +806,47 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
     objections: { blocks: objectionBlocks },
   };
 
-  // Outcome diagnostics
-  const outcomeDiagnosticP1 = typeof analysis.outcomeDiagnosticP1 === 'string'
-    ? analysis.outcomeDiagnosticP1.trim().slice(0, 3000) : '';
-  const outcomeDiagnosticP2 = typeof analysis.outcomeDiagnosticP2 === 'string'
-    ? analysis.outcomeDiagnosticP2.trim().slice(0, 3000) : '';
+  // Outcome diagnostics (prefer new overall fields, fall back to top-level)
+  const outcomeDiagnosticP1 = (typeof rawPA.overall?.callOutcomeAndWhy === 'string' && rawPA.overall.callOutcomeAndWhy.trim())
+    || (typeof analysis.outcomeDiagnosticP1 === 'string' ? analysis.outcomeDiagnosticP1.trim().slice(0, 3000) : '');
+  const outcomeDiagnosticP2 = (typeof rawPA.overall?.whatLimited === 'string' && rawPA.overall.whatLimited.trim())
+    || (typeof analysis.outcomeDiagnosticP2 === 'string' ? analysis.outcomeDiagnosticP2.trim().slice(0, 3000) : '');
 
-  // Prospect difficulty v2
+  // Prospect difficulty v2 (with backward compat fallbacks for old key names)
   const rawPD = analysis.prospectDifficulty || {};
   const pdScores = {
     icpAlignment: clamp10(rawPD.icpAlignment),
-    painAndAmbition: clamp10(rawPD.painAndAmbition),
-    funnelWarmth: clamp10(rawPD.funnelWarmth),
+    motivationIntensity: clamp10(rawPD.motivationIntensity ?? rawPD.painAndAmbition),
+    funnelContext: clamp10(rawPD.funnelContext ?? rawPD.funnelWarmth),
     authorityAndCoachability: clamp10(rawPD.authorityAndCoachability),
-    executionResistance: clamp10(rawPD.executionResistance),
+    abilityToProceed: clamp10(rawPD.abilityToProceed ?? rawPD.executionResistance),
   };
-  const totalDifficulty = Math.min(50, pdScores.icpAlignment + pdScores.painAndAmbition + pdScores.funnelWarmth + pdScores.authorityAndCoachability + pdScores.executionResistance);
+  const totalDifficulty = Math.min(50, pdScores.icpAlignment + pdScores.motivationIntensity + pdScores.funnelContext + pdScores.authorityAndCoachability + pdScores.abilityToProceed);
   const difficultyBand = getDifficultyBandV2(totalDifficulty);
 
   const prospectDifficultyV2: ProspectDifficultyV2 = {
     ...pdScores,
     totalDifficultyScore: totalDifficulty,
-    difficultyTier: difficultyBand.label.toLowerCase() as ProspectDifficultyV2['difficultyTier'],
+    difficultyTier: difficultyBand.label.toLowerCase().replace(/ /g, '_') as ProspectDifficultyV2['difficultyTier'],
   };
 
-  // Difficulty justifications
+  // Difficulty justifications (with backward compat fallbacks)
   const rawJust = analysis.prospectDifficultyJustifications || {};
   const prospectDifficultyJustifications: ProspectDifficultyJustifications = {
     icpAlignment: typeof rawJust.icpAlignment === 'string' ? rawJust.icpAlignment.slice(0, 2000) : '',
-    painAndAmbition: typeof rawJust.painAndAmbition === 'string' ? rawJust.painAndAmbition.slice(0, 2000) : '',
-    funnelWarmth: typeof rawJust.funnelWarmth === 'string' ? rawJust.funnelWarmth.slice(0, 2000) : '',
+    motivationIntensity: typeof (rawJust.motivationIntensity ?? rawJust.painAndAmbition) === 'string' ? (rawJust.motivationIntensity ?? rawJust.painAndAmbition).slice(0, 2000) : '',
+    funnelContext: typeof (rawJust.funnelContext ?? rawJust.funnelWarmth) === 'string' ? (rawJust.funnelContext ?? rawJust.funnelWarmth).slice(0, 2000) : '',
     authorityAndCoachability: typeof rawJust.authorityAndCoachability === 'string' ? rawJust.authorityAndCoachability.slice(0, 2000) : '',
-    executionResistance: typeof rawJust.executionResistance === 'string' ? rawJust.executionResistance.slice(0, 2000) : '',
+    abilityToProceed: typeof (rawJust.abilityToProceed ?? rawJust.executionResistance) === 'string' ? (rawJust.abilityToProceed ?? rawJust.executionResistance).slice(0, 2000) : '',
   };
 
   // Closer effectiveness (deterministic)
   const closerEffectiveness = calculateCloserEffectiveness(totalDifficulty, overallScore);
 
-  // Action points (hard cap at 2)
-  const rawAP = Array.isArray(analysis.actionPoints) ? analysis.actionPoints.slice(0, 2) : [];
+  // Action points (hard cap at 3)
+  const rawAP = Array.isArray(analysis.actionPoints) ? analysis.actionPoints.slice(0, 3) : [];
   const actionPoints: ActionPoint[] = rawAP.map((ap: any) => ({
+    label: String(ap.label || '').slice(0, 200),
     thePattern: String(ap.thePattern ?? '').slice(0, 2000),
     whyItsCostingYou: String(ap.whyItsCostingYou ?? '').slice(0, 2000),
     whatToDoInstead: String(ap.whatToDoInstead ?? '').slice(0, 2000),
@@ -819,7 +867,7 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
   const prospectDifficulty: ProspectDifficultyAssessment = {
     totalDifficultyScore: totalDifficulty,
     difficultyTier: prospectDifficultyV2.difficultyTier,
-    executionResistance: pdScores.executionResistance,
+    executionResistance: pdScores.abilityToProceed,
   };
 
   return {

@@ -6,6 +6,7 @@ import { Play } from 'lucide-react';
 import Link from 'next/link';
 
 export interface ActionPoint {
+  label?: string;
   thePattern?: string;
   whyItsCostingYou?: string;
   whatToDoInstead?: string;
@@ -33,17 +34,23 @@ export function ActionPointCards({ actionPoints, callId, sessionId, sectionNumbe
   return (
     <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
       <CardHeader>
-        <CardTitle className="font-serif">{sectionNumber}. Priority Improvements</CardTitle>
+        <CardTitle className="font-serif">{sectionNumber}. Action Steps</CardTitle>
         <CardDescription>The highest-impact changes to make on your next call</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-          {actionPoints.slice(0, 2).map((ap, idx) => (
+          {actionPoints.slice(0, 3).map((ap, idx) => (
             <div key={idx} className="flex gap-4 p-4 rounded-lg border border-white/10 bg-white/5">
               <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                 <span className="text-sm font-bold text-primary">{idx + 1}</span>
               </div>
               <div className="flex-1 space-y-3">
+                {ap.label && (
+                  <h4 className="text-sm font-semibold text-foreground mb-2">{ap.label}</h4>
+                )}
+                {idx === 2 && !ap.label && (
+                  <p className="text-xs font-semibold text-muted-foreground mb-1">Suggested Optimization</p>
+                )}
                 {ap.thePattern && (
                   <div>
                     <p className="text-xs font-semibold text-red-400 mb-0.5">The Pattern</p>

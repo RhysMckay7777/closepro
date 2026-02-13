@@ -118,8 +118,8 @@ export async function POST(request: NextRequest) {
       try {
         await transcribeOnly(call.id, null, fileName, fileUrl);
 
-        // Non-blocking: extract call details from transcript for auto-populating confirm form
-        runExtraction(call.id, session.user.id, organizationId).catch(() => {});
+        // Await extraction so extractedDetails is saved before client reaches confirm page
+        try { await runExtraction(call.id, session.user.id, organizationId); } catch { /* non-critical */ }
 
         return NextResponse.json({
           callId: call.id,
@@ -206,8 +206,8 @@ export async function POST(request: NextRequest) {
     try {
       await transcribeOnly(call.id, audioBuffer, file.name);
 
-      // Non-blocking: extract call details from transcript for auto-populating confirm form
-      runExtraction(call.id, session.user.id, organizationId).catch(() => {});
+      // Await extraction so extractedDetails is saved before client reaches confirm page
+      try { await runExtraction(call.id, session.user.id, organizationId); } catch { /* non-critical */ }
 
       return NextResponse.json({
         callId: call.id,

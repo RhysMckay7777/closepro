@@ -17,9 +17,9 @@ const resultColors: Record<string, string> = {
   lost: 'bg-red-500/20 text-red-400 border-red-500/30',
   follow_up: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   follow_up_result: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  deposit: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  payment_plan: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  unqualified: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+  deposit: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  payment_plan: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  unqualified: 'bg-red-500/20 text-red-400 border-red-500/30',
   no_show: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 };
 
@@ -37,6 +37,7 @@ const tierColors: Record<string, string> = {
   hard: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
   expert: 'bg-red-500/20 text-red-400 border-red-500/30',
   elite: 'bg-red-500/20 text-red-400 border-red-500/30',
+  near_impossible: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
 const effectivenessColors: Record<string, string> = {
@@ -105,13 +106,16 @@ export function CallSnapshotBar({
           )}
           {difficultyTier && (
             <Badge className={tierColors[difficultyTier] || 'bg-gray-500/20 text-gray-400'}>
-              {difficultyTier === 'elite' ? 'Expert' : difficultyTier.charAt(0).toUpperCase() + difficultyTier.slice(1)}
+              {difficultyTier === 'elite' ? 'Expert' : difficultyTier === 'near_impossible' ? 'Near Impossible' : difficultyTier.charAt(0).toUpperCase() + difficultyTier.slice(1)}
             </Badge>
           )}
           {closerEffectiveness && (
-            <Badge className={effectivenessColors[closerEffectiveness] || 'bg-gray-500/20 text-gray-400'}>
-              {effectivenessLabels[closerEffectiveness] || closerEffectiveness}
-            </Badge>
+            <div>
+              <p className="text-xs text-muted-foreground">Closer Performance</p>
+              <Badge className={effectivenessColors[closerEffectiveness] || 'bg-gray-500/20 text-gray-400'}>
+                {effectivenessLabels[closerEffectiveness] || closerEffectiveness}
+              </Badge>
+            </div>
           )}
         </div>
       )}

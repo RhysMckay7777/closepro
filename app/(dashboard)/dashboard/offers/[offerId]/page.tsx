@@ -257,6 +257,7 @@ export default function OfferDetailsPage() {
       hard: 'Hard',
       expert: 'Expert',
       elite: 'Expert', // backward compat
+      near_impossible: 'Near Impossible',
     };
     return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
   };
@@ -268,6 +269,7 @@ export default function OfferDetailsPage() {
       hard: 'bg-orange-500/20',
       expert: 'bg-red-500/20',
       elite: 'bg-red-500/20', // backward compat
+      near_impossible: 'bg-red-500/20',
     };
     return classes[tier] ?? 'bg-muted';
   };
@@ -279,6 +281,7 @@ export default function OfferDetailsPage() {
       hard: 'bg-orange-500',
       expert: 'bg-red-500',
       elite: 'bg-red-500', // backward compat
+      near_impossible: 'bg-red-500',
     };
     return classes[tier] ?? 'bg-muted-foreground';
   };

@@ -8,14 +8,14 @@ export interface ProspectDifficultyPanelProps {
   sectionNumber?: number;
 }
 
-const DIMENSION_ORDER = ['icpAlignment', 'painAndAmbition', 'funnelWarmth', 'authorityAndCoachability', 'executionResistance'] as const;
+const DIMENSION_ORDER = ['icpAlignment', 'motivationIntensity', 'funnelContext', 'authorityAndCoachability', 'abilityToProceed'] as const;
 
 const dimensionLabels: Record<string, string> = {
   icpAlignment: 'ICP Alignment',
-  painAndAmbition: 'Pain & Ambition',
-  funnelWarmth: 'Funnel Warmth',
-  authorityAndCoachability: 'Authority & Coachability',
-  executionResistance: 'Execution Resistance',
+  motivationIntensity: 'Motivation Intensity',
+  funnelContext: 'Funnel Context',
+  authorityAndCoachability: 'Prospect Authority & Coachability',
+  abilityToProceed: 'Ability to Proceed',
 };
 
 export function ProspectDifficultyPanel({ justifications, sectionNumber = 2 }: ProspectDifficultyPanelProps) {
@@ -27,13 +27,19 @@ export function ProspectDifficultyPanel({ justifications, sectionNumber = 2 }: P
   return (
     <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
       <CardHeader>
-        <CardTitle className="font-serif">{sectionNumber}. Prospect Difficulty</CardTitle>
+        <CardTitle className="font-serif">{sectionNumber}. Prospect Difficulty Analysis</CardTitle>
         <CardDescription>Context on the prospect — not coaching, just what you were working with</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-1">
           {DIMENSION_ORDER.map((dim) => {
-            const justification = justifications[dim];
+            // Backward compat: fall back to old key names for existing analyses
+            const fallbackKeys: Record<string, string> = {
+              motivationIntensity: 'painAndAmbition',
+              funnelContext: 'funnelWarmth',
+              abilityToProceed: 'executionResistance',
+            };
+            const justification = justifications[dim] || (fallbackKeys[dim] ? justifications[fallbackKeys[dim]] : undefined);
             if (!justification) return null;
             return (
               <details key={dim} className="rounded-lg border border-white/10 overflow-hidden group">
