@@ -236,6 +236,7 @@ export async function GET(request: NextRequest) {
       totalInstalments?: number;
       instalmentStatus?: string;
       paymentType?: 'Pay in Full' | 'Payment Plan' | 'Deposit';
+      isFutureInstalment?: boolean;
     }> = salesRows.map((r) => {
       const cash = r.cashCollected ?? 0;
       const pct = r.commissionRatePct ?? userCommissionPct ?? 0;
@@ -249,6 +250,7 @@ export async function GET(request: NextRequest) {
         commissionPct: pct,
         commissionAmount: Math.round(cash * (pct / 100)),
         paymentType: r.result === 'deposit' ? 'Deposit' as const : 'Pay in Full' as const,
+        isFutureInstalment: false,
       };
     });
 
@@ -294,8 +296,10 @@ export async function GET(request: NextRequest) {
         return d >= start && d <= end;
       });
 
+      const now = new Date();
       for (const inst of monthInstalments) {
         const d = new Date(inst.dueDate);
+        const isFuture = d > now;
         const pct = inst.commissionRatePct ?? userCommissionPct ?? 0;
         const instStatus = inst.status ?? 'pending';
         // ASSUME all instalments are collected (Connor: "assume cash had been collected")
@@ -319,6 +323,7 @@ export async function GET(request: NextRequest) {
           totalInstalments,
           instalmentStatus: instStatus,
           paymentType: 'Payment Plan' as const,
+          isFutureInstalment: isFuture,
         });
       }
     } catch (instErr: unknown) {

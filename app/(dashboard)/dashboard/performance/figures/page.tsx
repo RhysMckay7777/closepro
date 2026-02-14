@@ -25,6 +25,7 @@ interface SalesListItem {
   totalInstalments?: number;
   instalmentStatus?: string;
   paymentType?: 'Pay in Full' | 'Payment Plan' | 'Deposit';
+  isFutureInstalment?: boolean;
 }
 
 interface FiguresData {
@@ -359,19 +360,34 @@ export default function FiguresPage() {
             <hr className="border-t-2 border-border" />
           </div>
 
-          {/* Commission section: Total Commission (This Month) */}
-          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-            <CardHeader className="pb-2">
-              <div className="flex items-center gap-2">
-                <PoundSterling className="h-5 w-5 text-primary" />
-                <CardTitle className="text-sm font-semibold">Total Commission</CardTitle>
-              </div>
-              <p className="text-xs text-muted-foreground">{MONTHS[Number(month) - 1]} {year}</p>
-            </CardHeader>
-            <CardContent>
-              <p className="text-3xl font-bold">£{((figures.totalCommission ?? 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            </CardContent>
-          </Card>
+          {/* Commission section: Total Commission (This Month) — split confirmed vs projected */}
+          {(() => {
+            const confirmedCommission = (figures.salesList ?? [])
+              .filter(r => !r.isFutureInstalment)
+              .reduce((sum, r) => sum + r.commissionAmount, 0);
+            const projectedCommission = (figures.salesList ?? [])
+              .filter(r => r.isFutureInstalment)
+              .reduce((sum, r) => sum + r.commissionAmount, 0);
+            return (
+              <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <PoundSterling className="h-5 w-5 text-primary" />
+                    <CardTitle className="text-sm font-semibold">Total Commission</CardTitle>
+                  </div>
+                  <p className="text-xs text-muted-foreground">{MONTHS[Number(month) - 1]} {year}</p>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-3xl font-bold">£{(confirmedCommission / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  {projectedCommission > 0 && (
+                    <p className="text-sm text-amber-400 mt-1">
+                      +£{(projectedCommission / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} projected
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           {/* Commission table: Date, Offer, Prospect Name, Cash Collected, Revenue, Commission %, Commission Amount – exportable as PDF */}
           {figures.salesList && figures.salesList.length > 0 && (
@@ -437,12 +453,15 @@ export default function FiguresPage() {
                     </thead>
                     <tbody>
                       {figures.salesList.map((row, idx) => (
-                        <tr key={`${row.callId}-${idx}`} className="border-b border-border/50">
+                        <tr key={`${row.callId}-${idx}`} className={`border-b border-border/50${row.isFutureInstalment ? ' opacity-50' : ''}`}>
                           <td className="py-2 pr-4">
                             {row.date}
                             {row.isInstalment && row.instalmentNumber && row.totalInstalments && (
                               <span className="ml-2 text-xs text-muted-foreground">
                                 (instalment {row.instalmentNumber}/{row.totalInstalments})
+                                {row.isFutureInstalment && (
+                                  <span className="ml-1 text-amber-400">— upcoming</span>
+                                )}
                               </span>
                             )}
                           </td>
@@ -464,7 +483,7 @@ export default function FiguresPage() {
                           <td className="py-2 pr-4 text-right">£{(row.cashCollected / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">£{(row.revenueGenerated / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">{row.commissionPct}%</td>
-                          <td className="py-2 pr-4 text-right">£{(row.commissionAmount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="py-2 pr-4 text-right">{row.isFutureInstalment ? '~' : ''}£{(row.commissionAmount / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2">
                             <Button
                               variant="ghost"
