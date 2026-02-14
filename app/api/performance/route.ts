@@ -240,8 +240,20 @@ function computeSkillBreakdown(
   // Per-analysis per-category scores for trend computation
   const perAnalysisScores: Array<{ createdAt: Date; scores: Record<string, number> }> = [];
 
+  let loggedSample = false;
   for (const analysis of analyses) {
     const scores = parseSkillScoresFlat(analysis.skillScores);
+    if (!loggedSample) {
+      console.log('[Performance API] parseSkillScoresFlat sample:', {
+        inputType: typeof analysis.skillScores,
+        inputIsNull: analysis.skillScores === null || analysis.skillScores === undefined,
+        inputKeys: analysis.skillScores && typeof analysis.skillScores === 'object' ? Object.keys(analysis.skillScores).slice(0, 5) : 'N/A',
+        inputSample: typeof analysis.skillScores === 'string' ? analysis.skillScores.slice(0, 200) : undefined,
+        outputKeys: Object.keys(scores),
+        outputSample: Object.entries(scores).slice(0, 3).map(([k, v]) => `${k}=${v}`),
+      });
+      loggedSample = true;
+    }
     if (Object.keys(scores).length > 0) {
       perAnalysisScores.push({ createdAt: new Date(analysis.createdAt), scores });
     }
@@ -373,15 +385,34 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    // Support both 'range=this_month' and 'month=2026-02' formats
-    const monthParam = searchParams.get('month');
-    const rangeParam = monthParam || searchParams.get('range') || searchParams.get('days') || 'this_month';
+    // Separate month/year handling from named range params
+    const monthParam = searchParams.get('month'); // YYYY-MM format from month mode
+    const rangeParam = searchParams.get('range') || searchParams.get('days'); // Named range like 'all_time'
+    const sourceParam = searchParams.get('source'); // 'calls' | 'roleplays' | null (all)
+
+    let startDate: Date;
+    let endDate: Date;
+    let periodLabel: string;
+
+    if (monthParam) {
+      // Month-specific selection (YYYY-MM format)
+      const result = getRangeDates(monthParam);
+      startDate = result.start;
+      endDate = result.end;
+      periodLabel = result.label;
+    } else {
+      // Named range — default to all_time so users always see data
+      const effectiveRange = rangeParam || 'all_time';
+      const result = getRangeDates(effectiveRange);
+      startDate = result.start;
+      endDate = result.end;
+      periodLabel = result.label;
+    }
+
     const rangeLabel =
-      ['all_time', 'this_week', 'this_month', 'last_month', 'last_quarter', 'last_year'].includes(rangeParam)
+      ['all_time', 'this_week', 'this_month', 'last_month', 'last_quarter', 'last_year'].includes(rangeParam || '')
         ? rangeParam
         : undefined;
-    const { start: startDate, end: endDate, label: periodLabel } = getRangeDates(rangeParam);
-    const sourceParam = searchParams.get('source'); // 'calls' | 'roleplays' | null (all)
     console.log('[Performance API] Params:', { monthParam, rangeParam, sourceParam, startDate: startDate.toISOString(), endDate: endDate.toISOString(), periodLabel });
 
     const userId = session.user.id;
@@ -474,6 +505,25 @@ export async function GET(request: NextRequest) {
     const filteredRoleplays = sourceParam === 'calls' ? [] : roleplayAnalyses;
     const allAnalyses = [...filteredCalls, ...filteredRoleplays]
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    console.log('[Performance API] FULL DEBUG:', {
+      rangeParam,
+      monthParam,
+      startDate: startDate.toISOString(),
+      endDate: endDate.toISOString(),
+      totalAnalyses: allAnalyses.length,
+      callCount: filteredCalls.length,
+      roleplayCount: filteredRoleplays.length,
+      analysesSample: allAnalyses.slice(0, 2).map(a => ({
+        type: a.type,
+        createdAt: a.createdAt,
+        overallScore: a.overallScore,
+        hasSkillScores: !!a.skillScores,
+        skillScoresType: typeof a.skillScores,
+        skillScoresKeys: a.skillScores && typeof a.skillScores === 'object' ? Object.keys(a.skillScores).slice(0, 5) : [],
+        hasCategoryFeedback: !!a.categoryFeedback,
+      })),
+    });
 
     // ── Calculate overall averages ──
     const totalAnalyses = allAnalyses.length;
@@ -723,10 +773,10 @@ export async function GET(request: NextRequest) {
       improvementActions: improvementActions.length > 0 ? improvementActions : undefined,
     } : null;
 
-    console.log('[Performance API] Debug:', {
+    console.log('[Performance API] SkillCategories debug:', {
       totalAnalyses: allAnalyses.length,
       skillCategoriesCount: allSkillCategories.length,
-      sampleCategories: allSkillCategories.slice(0, 3).map(c => ({ cat: c.category, avg: c.averageScore })),
+      categories: allSkillCategories.map(c => ({ name: c.category, avg: c.averageScore })),
     });
 
     // ── Principle Summaries (B1) ──
@@ -735,6 +785,12 @@ export async function GET(request: NextRequest) {
     for (const [id, name] of Object.entries(DISPLAY_NAMES)) {
       DISPLAY_NAME_TO_ID[name] = id;
     }
+
+    console.log('[Performance API] DISPLAY_NAME_TO_ID mapping:', {
+      mapping: Object.entries(DISPLAY_NAME_TO_ID).slice(0, 5),
+      skillCatNames: allSkillCategories.map(c => c.category),
+      principleRelatedCats: CORE_PRINCIPLES.map(p => ({ id: p.id, related: p.relatedCategories })),
+    });
 
     const principleSummaries = CORE_PRINCIPLES.map((p) => {
       // Find matching skillCategories for this principle's related categories

@@ -1,81 +1,126 @@
-Problem
-March 2026 is a FUTURE month (today is Feb 15, 2026). The instalments showing in March look identical to current/past month rows — full cash amounts, normal styling, as if the money has already been collected. But it hasn't, because the month hasn't happened yet.
+FIX: Core Sales Principles Still Empty — Deep Diagnostic & Fix
+The Problem
+The Performance page still shows "No scored sessions yet" for Core Sales Principles AND "Complete more call reviews to generate action steps" for Priority Action Steps, despite the user having analyzed calls. The all_time range fix from the previous prompt did NOT resolve this.
 
-What Should Happen
-Past/current month instalments: Show at full opacity, full amounts, assume collected ✅ (this is correct)
+Root Cause Investigation — Do ALL of these steps in order
+Step 1: Check how the performance page constructs the API fetch URL
+Read app/(dashboard)/dashboard/performance/page.tsx and find the fetch('/api/performance...') call. Check:
 
-Future month instalments: Still show them (so the user can see upcoming payments), BUT visually distinguish them as "upcoming" — lighter styling, and label them as projected/upcoming
+What URL parameters does it send? (range, month, year, days?)
 
-Fix — 2 changes
-Change 1: Figures API — add isFutureInstalment flag
-In app/api/performance/figures/route.ts, in the instalment processing loop where salesList.push(...) is called, add a boolean field:
+Does it send a month param that might override the range param?
+
+Log the actual fetch URL with console.log('Fetching performance:', url)
+
+Step 2: Check the Performance API parameter routing
+Read app/api/performance/route.ts around lines 375-390. The current code is:
 
 typescript
-// Right before salesList.push for instalments, add:
-const now = new Date();
-const isFuture = d > now;  // d is already `new Date(inst.dueDate)`
+const monthParam = searchParams.get('month');
+const rangeParam = monthParam || searchParams.get('range') || searchParams.get('days') || 'this_month';
+THIS IS LIKELY THE BUG: If the page sends ?month=02&year=2026&range=all_time, then monthParam = "02" takes precedence and becomes rangeParam = "02". Then getRangeDates("02") hits the default case, parses parseInt("02") = 2, and returns "last 2 days" — missing all the user's calls!
 
-salesList.push({
-  ...
-  isFutureInstalment: isFuture,
-  ...
+Fix: The month/year params should be handled SEPARATELY from the named range params. Add dedicated month/year handling:
+
+typescript
+const monthParam = searchParams.get('month');
+const yearParam = searchParams.get('year');
+const rangeParam = searchParams.get('range') || searchParams.get('days') || 'all_time';
+
+let startDate: Date;
+let endDate: Date;
+let periodLabel: string;
+
+if (monthParam && yearParam) {
+  // Specific month/year selection
+  const m = parseInt(monthParam, 10) - 1; // 0-indexed
+  const y = parseInt(yearParam, 10);
+  startDate = new Date(y, m, 1);
+  endDate = new Date(y, m + 1, 0, 23, 59, 59, 999); // Last day of month
+  periodLabel = `${new Date(y, m).toLocaleString('default', { month: 'long' })} ${y}`;
+} else {
+  const result = getRangeDates(rangeParam);
+  startDate = result.start;
+  endDate = result.end;
+  periodLabel = result.label;
+}
+Step 3: Verify allAnalyses is populated
+After the allAnalyses query, add AGGRESSIVE logging:
+
+typescript
+console.log('[Performance API] FULL DEBUG:', {
+  rangeParam,
+  monthParam,
+  yearParam,
+  startDate: startDate.toISOString(),
+  endDate: endDate.toISOString(),
+  totalAnalyses: allAnalyses.length,
+  analysesSample: allAnalyses.slice(0, 2).map(a => ({
+    id: a.id,
+    type: a.type,
+    createdAt: a.createdAt,
+    hasScores: !!a.scores,
+    hasCategoryScores: !!a.categoryScores,
+    scoreKeys: a.scores ? Object.keys(typeof a.scores === 'string' ? JSON.parse(a.scores) : a.scores).slice(0, 5) : [],
+  })),
 });
-Also add isFutureInstalment to the regular (non-instalment) salesRows.map() section with isFutureInstalment: false.
+Step 4: Check how allSkillCategories is computed from analyses
+Find the code that builds allSkillCategories from allAnalyses. The analysis JSON might store scores under a different key than what the code expects. Common mismatches:
 
-And add isFutureInstalment?: boolean to the SalesRow interface at the top of the file.
+Code expects analysis.scores but data has analysis.categoryScores
 
-Change 2: Figures Page — style future rows differently
-In app/(dashboard)/dashboard/performance/figures/page.tsx:
+Code expects analysis.scores.authority but data has analysis.scores.Authority (case mismatch)
 
-Add isFutureInstalment?: boolean to the SalesListItem interface.
+Code expects a parsed object but analysis.scores is a JSON string that needs JSON.parse()
 
-On the <tr> tag, bring back opacity for FUTURE instalments only:
-
-tsx
-<tr key={...} className={`border-b border-border/50${row.isFutureInstalment ? ' opacity-50' : ''}`}>
-After the instalment number label (instalment 2/4), add an "upcoming" indicator for future rows:
-
-tsx
-{row.isInstalment && row.instalmentNumber && row.totalInstalments && (
-  <span className="ml-2 text-xs text-muted-foreground">
-    (instalment {row.instalmentNumber}/{row.totalInstalments})
-    {row.isFutureInstalment && (
-      <span className="ml-1 text-amber-400">— upcoming</span>
-    )}
-  </span>
-)}
-For future rows, the Commission Earned column should show the amount but with a ~ prefix to indicate it's projected:
-
-tsx
-<td className="py-2 pr-4 text-right">
-  {row.isFutureInstalment ? '~' : ''}
-  £{(row.commissionAmount / 100).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-</td>
-Change 3: Total Commission header — separate confirmed vs projected
-This is optional but nice: In the Total Commission display at the top, you could show:
-
-"£120.00" (confirmed, from past/current month)
-
-"+£33.10 projected" (from future instalments, in smaller amber text)
-
-To do this, compute two sums in the figures page:
+Add logging right after allSkillCategories is computed:
 
 typescript
-const confirmedCommission = figures.salesList
-  .filter(r => !r.isFutureInstalment)
-  .reduce((sum, r) => sum + r.commissionAmount, 0);
-const projectedCommission = figures.salesList
-  .filter(r => r.isFutureInstalment)
-  .reduce((sum, r) => sum + r.commissionAmount, 0);
-Then display:
+console.log('[Performance API] SkillCategories debug:', {
+  count: allSkillCategories.length,
+  categories: allSkillCategories.map(c => ({ name: c.category, avg: c.averageScore })),
+});
+Step 5: Check the DISPLAY_NAME_TO_ID mapping
+In the principleSummaries computation, the DISPLAY_NAME_TO_ID mapping converts display names like "Authority" to IDs like "authority". But the DISPLAY_NAMES object at the top might have the mapping backwards. Check:
 
-tsx
-<p className="text-3xl font-bold">
-  £{(confirmedCommission / 100).toFixed(2)}
-</p>
-{projectedCommission > 0 && (
-  <p className="text-sm text-amber-400 mt-1">
-    +£{(projectedCommission / 100).toFixed(2)} projected
-  </p>
-)}
-Build & verify after changes.
+typescript
+const DISPLAY_NAMES: Record<string, string> = {
+  authority: 'Authority',
+  structure: 'Structure',
+  ...
+};
+Then DISPLAY_NAME_TO_ID is built as:
+
+typescript
+for (const [id, name] of Object.entries(DISPLAY_NAMES)) {
+  DISPLAY_NAME_TO_ID[name] = id;
+}
+So DISPLAY_NAME_TO_ID['Authority'] = 'authority'. This is correct.
+
+But the matchingCats filter does:
+
+typescript
+const catId = DISPLAY_NAME_TO_ID[sc.category] ?? sc.category.toLowerCase().replace(/\s/g, '')
+return p.relatedCategories.includes(catId)
+If sc.category doesn't match any key in DISPLAY_NAME_TO_ID, it falls back to lowercase-no-spaces. Check what sc.category actually contains — it might be something unexpected.
+
+Step 6: Deploy and check Vercel function logs
+After adding all the logging, deploy to Vercel and visit the Performance page. Check the Vercel function logs at:
+https://vercel.com/[your-project]/functions → look for the /api/performance function logs.
+
+The logs will tell you EXACTLY where the data pipeline breaks:
+
+0 analyses → date range or query issue
+
+analyses exist but 0 skillCategories → score extraction issue
+
+skillCategories exist but 0 principleSummaries → mapping issue
+
+Step 7: ALSO ensure the page default is truly all_time
+Double-check the page's range state actually defaults to 'all_time' and NOT 'this_month':
+
+typescript
+const [range, setRange] = useState<string>('all_time');
+And check that the page fetch uses this range in the URL (not overridden by month/year params).
+
+CRITICAL: After diagnosing, fix whatever is broken and redeploy.
