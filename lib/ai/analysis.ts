@@ -217,6 +217,12 @@ export interface ObjectionBlock {
   higherLeverageAlternative: string;
 }
 
+/** Phase timing for timeline bar */
+export interface PhaseTiming {
+  start: string;
+  end: string;
+}
+
 /** Full phase analysis structure */
 export interface PhaseAnalysis {
   overall: OverallPhaseDetail;
@@ -227,6 +233,14 @@ export interface PhaseAnalysis {
   objections: {
     blocks: ObjectionBlock[];
   };
+  phaseTimings?: {
+    intro?: PhaseTiming;
+    discovery?: PhaseTiming;
+    pitch?: PhaseTiming;
+    objections?: PhaseTiming | PhaseTiming[];
+    close?: PhaseTiming;
+  };
+  totalDuration?: string;
 }
 
 /** Action point (replaces priority fixes in v2) — max 3 */
@@ -245,6 +259,14 @@ export interface ProspectDifficultyJustifications {
   funnelContext: string;
   authorityAndCoachability: string;
   abilityToProceed: string;
+  prospectContextSummary?: string;
+  dimensionScores?: {
+    icpAlignment: number;
+    motivationIntensity: number;
+    funnelContext: number;
+    authorityAndCoachability: number;
+    abilityToProceed: number;
+  };
 }
 
 /** v2 prospect difficulty (5 dimensions, higher = easier) */
@@ -561,28 +583,48 @@ Use these to calibrate your scoring — understand what good and bad performance
 ${realExamples}
 ` : '';
 
-  // Locked contextual variables from confirm form
+  // Locked contextual variables from confirm form — placed at top of prompt for maximum salience
   const lockedContext = confirmFormContext ? `
-══════════════════════════════════════════
-LOCKED CONTEXTUAL VARIABLES (from pre-analysis form — DO NOT contradict these)
-══════════════════════════════════════════
+╔══════════════════════════════════════════════════════════════════╗
+║  CRITICAL — LOGGED OUTCOME OVERRIDE (ABSOLUTE SOURCE OF TRUTH)  ║
+╚══════════════════════════════════════════════════════════════════╝
+The user has logged this call's outcome. These values are FINAL and IMMUTABLE:
+
 ${confirmFormContext.callDate ? `Call Date: ${confirmFormContext.callDate}` : ''}
 ${confirmFormContext.offerName ? `Offer: ${confirmFormContext.offerName}` : ''}
 ${confirmFormContext.prospectName ? `Prospect Name: ${confirmFormContext.prospectName}` : ''}
 ${confirmFormContext.callType ? `Call Type: ${confirmFormContext.callType}` : ''}
 ${confirmFormContext.result ? `Outcome: ${confirmFormContext.result}` : ''}
-${confirmFormContext.cashCollected !== undefined ? `Cash Collected: £${(confirmFormContext.cashCollected / 100).toFixed(2)}` : ''}
+${confirmFormContext.cashCollected !== undefined ? `Deal Value / Cash Collected: £${(confirmFormContext.cashCollected / 100).toFixed(2)}` : ''}
 ${confirmFormContext.revenueGenerated !== undefined ? `Revenue Generated: £${(confirmFormContext.revenueGenerated / 100).toFixed(2)}` : ''}
 ${confirmFormContext.reasonForOutcome ? `Reason for Outcome: ${confirmFormContext.reasonForOutcome}` : ''}
-══════════════════════════════════════════
-These values are confirmed by the user. Your analysis must be consistent with them.
-Do NOT infer a different outcome, cash amount, or prospect identity.
+
+YOUR ANALYSIS MUST ALIGN WITH THIS OUTCOME. Do NOT contradict the logged outcome
+based on transcript inference. If the transcript is ambiguous about the outcome,
+ALWAYS defer to the user's logged result.
+
+This applies to:
+- Your overall analysis summary (callOutcomeAndWhy)
+- Phase-by-phase summaries
+- Performance rating and overallScore
+- Any mention of whether the deal closed or not
+- Objection handling assessment (if closed, objections were ultimately overcome)
+${confirmFormContext.result === 'closed' ? `- The deal DID close. Analyze HOW the rep achieved the close, not whether they did.` : ''}
+${confirmFormContext.result === 'lost' ? `- The deal was LOST. Analyze what went wrong structurally.` : ''}
+${confirmFormContext.result === 'deposit' ? `- A deposit was taken. Analyze what prevented a full close.` : ''}
+══════════════════════════════════════════════════════════════════
 ` : '';
 
   return `Analyze this sales call transcript using the knowledge documents provided in the system prompt.
 ${lockedContext}
 ${categoryGuidance}
 ${realExamplesSection}
+TIMESTAMP ACCURACY RULE:
+When referencing specific moments from the transcript, you MUST use the EXACT [MM:SS]
+timestamp from the transcript data provided. Do NOT approximate, round, or estimate
+timestamps. Every timestamp you reference must correspond to an actual line in the
+transcript. Format: Always use [MM:SS] format (e.g., [04:23], [12:07], [45:31]).
+
 TRANSCRIPT:
 ${transcript.length > 6000 ? transcript.substring(0, 6000) + '\n... (truncated for faster analysis)' : transcript}
 
@@ -634,11 +676,20 @@ Return your analysis as a single JSON object with the following structure:
        "whatWorked": string[] (max 3 bullet points of what was done well),
        "whatLimitedImpact": [
          {
-           "description": string (what happened and why it matters),
+           "description": string (PROBLEM — 3-4 sentences: Describe exactly what the closer said or did
+             that was suboptimal. Explain WHY this was a problem — what psychological or strategic effect
+             it had on the prospect. Reference the specific transcript moment with [MM:SS] timestamp.
+             Explain what the prospect likely felt or thought in that moment.),
            "timestamp": string (e.g. "1:23" or "Early in intro"),
-           "whatShouldHaveDone": string (specific replacement behavior with language example)
+           "whatShouldHaveDone": string (CORRECTION — 5-6 sentences: Explain the exact correction.
+             Provide the SPECIFIC alternative phrase or approach the closer should have used — write it
+             out as a quote they can practice. Explain WHY this alternative is better — connect it to
+             the framework principle it addresses (authority, discovery depth, objection handling calm,
+             pre-setting, etc.). Give context for when to deploy this technique. If relevant, reference
+             how this connects to other phases e.g. "This pre-setting question in discovery would have
+             given you ammunition for the 'think about it' objection that came later".)
          }
-       ],
+       ] (MINIMUM 2 items per phase, MAXIMUM 5),
        "timestampedFeedback": [
          {
            "timestamp": string (e.g. "1:23"),
@@ -683,13 +734,18 @@ Return your analysis as a single JSON object with the following structure:
      "difficultyTier": "easy" | "realistic" | "hard" | "expert" | "near_impossible"
    }
 
-6. PROSPECT DIFFICULTY JUSTIFICATIONS (2-4 sentences per dimension):
+6. PROSPECT CONTEXT & DIFFICULTY JUSTIFICATIONS:
+   "prospectContextSummary": string (2-3 sentence natural-language description of who this prospect
+     appears to be based on the transcript. Include their apparent job/situation, motivation level,
+     and demeanor. Example: "A 34-year-old warehouse worker from Manchester who has been looking at
+     online business opportunities for 6 weeks. Previously tried dropshipping but lost £500. Skeptical
+     but motivated by wanting financial freedom for his young family."),
    "prospectDifficultyJustifications": {
-     "icpAlignment": string,
-     "motivationIntensity": string,
-     "funnelContext": string,
-     "authorityAndCoachability": string,
-     "abilityToProceed": string
+     "icpAlignment": string (2-4 sentence explanation analyzing ICP fit),
+     "motivationIntensity": string (2-4 sentence explanation analyzing motivation signals),
+     "funnelContext": string (2-4 sentence explanation analyzing funnel position),
+     "authorityAndCoachability": string (2-4 sentence explanation analyzing authority dynamics),
+     "abilityToProceed": string (2-4 sentence explanation analyzing logistics/ability)
    }
 
 7. ACTION STEPS (minimum 2, maximum 3 — 3rd is optional "Suggested Optimization"):
@@ -703,6 +759,25 @@ Return your analysis as a single JSON object with the following structure:
      }
    ]
    Every action step MUST reference specific moments from this call. No abstract feedback.
+
+8. PHASE TIMING DETECTION:
+   Analyze the transcript and identify the start and end timestamp of each phase.
+   "phaseTimings": {
+     "intro": { "start": "00:00", "end": "MM:SS" },
+     "discovery": { "start": "MM:SS", "end": "MM:SS" },
+     "pitch": { "start": "MM:SS", "end": "MM:SS" },
+     "objections": { "start": "MM:SS", "end": "MM:SS" },
+     "close": { "start": "MM:SS", "end": "MM:SS" }
+   },
+   "totalDuration": "MM:SS"
+
+   Phase boundaries:
+   - Intro: From call start until first substantive discovery question
+   - Discovery: From first situational question until goal setting / transition to pitch
+   - Pitch: From when the closer starts presenting the solution/program
+   - Objections: From first objection raised until resolved (may have multiple segments —
+     use array: [{ "start": "MM:SS", "end": "MM:SS" }, ...])
+   - Close: From close attempt through to end of call
 
 Return ONLY valid JSON. No markdown, no explanation outside the JSON object.`;
 }
@@ -797,6 +872,24 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
       }))
     : [];
 
+  // Phase timings (from AI section 8)
+  const rawTimings = rawPA.phaseTimings || analysis.phaseTimings;
+  const normalizeTimingEntry = (t: any): PhaseTiming | undefined => {
+    if (!t || typeof t !== 'object' || !t.start) return undefined;
+    return { start: String(t.start), end: String(t.end || '') };
+  };
+  const parsedPhaseTimings = rawTimings && typeof rawTimings === 'object' ? {
+    intro: normalizeTimingEntry(rawTimings.intro),
+    discovery: normalizeTimingEntry(rawTimings.discovery),
+    pitch: normalizeTimingEntry(rawTimings.pitch),
+    objections: Array.isArray(rawTimings.objections)
+      ? rawTimings.objections.map(normalizeTimingEntry).filter(Boolean) as PhaseTiming[]
+      : normalizeTimingEntry(rawTimings.objections),
+    close: normalizeTimingEntry(rawTimings.close),
+  } : undefined;
+  const parsedTotalDuration = typeof (rawPA.totalDuration || analysis.totalDuration) === 'string'
+    ? String(rawPA.totalDuration || analysis.totalDuration) : undefined;
+
   const phaseAnalysis: PhaseAnalysis = {
     overall: overallDetail,
     intro: normalizePhaseDetail(rawPA.intro),
@@ -804,6 +897,8 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
     pitch: normalizePhaseDetail(rawPA.pitch),
     close: normalizePhaseDetail(rawPA.close),
     objections: { blocks: objectionBlocks },
+    ...(parsedPhaseTimings && { phaseTimings: parsedPhaseTimings }),
+    ...(parsedTotalDuration && { totalDuration: parsedTotalDuration }),
   };
 
   // Outcome diagnostics (prefer new overall fields, fall back to top-level)
@@ -838,6 +933,8 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
     funnelContext: typeof (rawJust.funnelContext ?? rawJust.funnelWarmth) === 'string' ? (rawJust.funnelContext ?? rawJust.funnelWarmth).slice(0, 2000) : '',
     authorityAndCoachability: typeof rawJust.authorityAndCoachability === 'string' ? rawJust.authorityAndCoachability.slice(0, 2000) : '',
     abilityToProceed: typeof (rawJust.abilityToProceed ?? rawJust.executionResistance) === 'string' ? (rawJust.abilityToProceed ?? rawJust.executionResistance).slice(0, 2000) : '',
+    prospectContextSummary: typeof analysis.prospectContextSummary === 'string' ? analysis.prospectContextSummary.slice(0, 2000) : undefined,
+    dimensionScores: pdScores,
   };
 
   // Closer effectiveness (deterministic)

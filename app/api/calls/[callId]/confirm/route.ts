@@ -208,10 +208,16 @@ export async function POST(
             ? Math.round(monthlyAmountCents * (effectiveCommissionPct / 100))
             : null;
 
+          // First instalment is auto-collected (paid on the call), rest are pending
+          const isFirst = i === 0;
+
           instalmentValues.push({
             salesCallId: callId,
+            instalmentNumber: i + 1,
             dueDate,
             amountCents: monthlyAmountCents,
+            status: isFirst ? 'collected' : 'pending',
+            collectedDate: isFirst ? callDate : null,
             commissionRatePct: effectiveCommissionPct,
             commissionAmountCents: commissionAmount,
           });

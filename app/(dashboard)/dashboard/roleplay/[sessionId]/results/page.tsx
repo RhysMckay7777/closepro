@@ -5,7 +5,19 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, ArrowRight, AlertTriangle, Wrench, RotateCw } from 'lucide-react';
+import {
+  ArrowLeft,
+  ArrowRight,
+  AlertTriangle,
+  RotateCw,
+  Wrench,
+  Star,
+  MessageSquareQuote,
+  Target,
+  ThumbsUp,
+  ThumbsDown,
+  Lightbulb,
+} from 'lucide-react';
 import Link from 'next/link';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { StageChips } from '@/components/roleplay/StageChips';
@@ -45,6 +57,7 @@ interface Analysis {
   closerEffectiveness?: string;
   prospectDifficultyJustifications?: string;
   actionPoints?: string;
+  roleplayFeedback?: string;
 }
 
 interface Session {
@@ -320,6 +333,16 @@ export default function RoleplayResultsPage() {
   const v2ActionPoints = isV2 ? (safeParse(analysis.actionPoints, []) as any[]) : [];
   const v2Justifications = isV2 ? (safeParse(analysis.prospectDifficultyJustifications, {}) as Record<string, string>) : {};
 
+  // Roleplay Feedback (5 dimensions: pre_set, authority, objection_handling, close_attempt, overall)
+  const roleplayFeedbackData = safeParse(analysis.roleplayFeedback, null) as {
+    dimensions?: Record<string, { score: number; feedback: string }>;
+    authorityLevelUsed?: string;
+    whatWorked?: string[];
+    whatDidntWork?: string[];
+    keyImprovement?: string;
+    transcriptMoment?: { quote: string; whatTheyShoulHaveSaid?: string; whatTheyShouldHaveSaid?: string };
+  } | null;
+
   // Extract flat category scores from skillScores (can be array or object)
   const rawSkillScores = safeParse(analysis.skillScores, {});
   const flatCategoryScores: Record<string, number> = {};
@@ -348,8 +371,8 @@ export default function RoleplayResultsPage() {
     Object.keys(categoryFeedback).length > 0
       ? categoryFeedback
       : Object.fromEntries(
-          Object.keys(flatCategoryScores).map(key => [key, { good: '', missing: '', next: '' }])
-        );
+        Object.keys(flatCategoryScores).map(key => [key, { good: '', missing: '', next: '' }])
+      );
 
 
 
@@ -525,6 +548,112 @@ export default function RoleplayResultsPage() {
             sessionId={sessionId}
             sectionNumber={4}
           />
+
+          {/* Roleplay Coaching Feedback — 5 Dimensions */}
+          {roleplayFeedbackData && roleplayFeedbackData.dimensions && (
+            <Card className="p-4 sm:p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Star className="h-5 w-5 text-amber-500" />
+                Roleplay Coaching Feedback
+              </h2>
+
+              {/* Authority Level Badge */}
+              {roleplayFeedbackData.authorityLevelUsed && (
+                <div className="mb-4 p-3 rounded-lg bg-muted/50 border">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Authority Level Used</p>
+                  <p className="text-sm">{roleplayFeedbackData.authorityLevelUsed}</p>
+                </div>
+              )}
+
+              {/* 5 Dimension Scores */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                {(['pre_set', 'authority', 'objection_handling', 'close_attempt', 'overall'] as const).map((dim) => {
+                  const d = roleplayFeedbackData.dimensions?.[dim];
+                  if (!d) return null;
+                  const labels: Record<string, string> = { pre_set: 'Pre-Set', authority: 'Authority', objection_handling: 'Objection Handling', close_attempt: 'Close Attempt', overall: 'Overall' };
+                  const scoreColor = d.score >= 8 ? 'text-green-500' : d.score >= 5 ? 'text-blue-500' : d.score >= 3 ? 'text-orange-500' : 'text-red-500';
+                  const barColor = d.score >= 8 ? 'bg-green-500' : d.score >= 5 ? 'bg-blue-500' : d.score >= 3 ? 'bg-orange-500' : 'bg-red-500';
+                  return (
+                    <div key={dim} className="p-3 rounded-lg border bg-card">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">{labels[dim]}</p>
+                      <p className={`text-2xl font-bold ${scoreColor}`}>{d.score}<span className="text-sm text-muted-foreground">/10</span></p>
+                      <div className="w-full h-1.5 rounded-full bg-muted mt-2">
+                        <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${d.score * 10}%` }} />
+                      </div>
+                      {d.feedback && <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{d.feedback}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* What Worked / Didn't Work */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {roleplayFeedbackData.whatWorked && roleplayFeedbackData.whatWorked.length > 0 && (
+                  <div className="p-3 rounded-lg border border-green-500/30 bg-green-500/5">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-green-700">
+                      <ThumbsUp className="h-4 w-4" /> What Worked
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {roleplayFeedbackData.whatWorked.map((item, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex gap-2">
+                          <span className="text-green-500 flex-shrink-0">✓</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {roleplayFeedbackData.whatDidntWork && roleplayFeedbackData.whatDidntWork.length > 0 && (
+                  <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-red-700">
+                      <ThumbsDown className="h-4 w-4" /> What Didn&apos;t Work
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {roleplayFeedbackData.whatDidntWork.map((item, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex gap-2">
+                          <span className="text-red-500 flex-shrink-0">✗</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Key Improvement Area */}
+              {roleplayFeedbackData.keyImprovement && (
+                <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 mb-4">
+                  <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-amber-700">
+                    <Target className="h-4 w-4" /> Key Improvement Area
+                  </h3>
+                  <p className="text-sm">{roleplayFeedbackData.keyImprovement}</p>
+                </div>
+              )}
+
+              {/* Specific Transcript Moment */}
+              {roleplayFeedbackData.transcriptMoment && (
+                <div className="p-3 rounded-lg border bg-muted/30">
+                  <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                    <MessageSquareQuote className="h-4 w-4" /> Specific Transcript Moment
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="p-2 bg-muted rounded text-sm">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">What was said:</p>
+                      <p className="italic">&ldquo;{roleplayFeedbackData.transcriptMoment.quote}&rdquo;</p>
+                    </div>
+                    {(roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid) && (
+                      <div className="p-2 bg-green-500/10 border border-green-500/20 rounded text-sm">
+                        <p className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
+                          <Lightbulb className="h-3 w-3" /> What they should have said:
+                        </p>
+                        <p className="italic text-green-800">&ldquo;{roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid}&rdquo;</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Card>
+          )}
         </>
       ) : (
         <>
@@ -740,6 +869,107 @@ export default function RoleplayResultsPage() {
           {/* Moment-by-Moment Feedback with Re-Practice - Section 6.8 */}
           {momentFeedback.length > 0 && (
             <MomentFeedbackList sessionId={sessionId} items={momentFeedback} />
+          )}
+
+          {/* Roleplay Coaching Feedback (V1 fallback path) */}
+          {roleplayFeedbackData && roleplayFeedbackData.dimensions && (
+            <Card className="p-4 sm:p-6">
+              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                <Star className="h-5 w-5 text-amber-500" />
+                Roleplay Coaching Feedback
+              </h2>
+
+              {roleplayFeedbackData.authorityLevelUsed && (
+                <div className="mb-4 p-3 rounded-lg bg-muted/50 border">
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Authority Level Used</p>
+                  <p className="text-sm">{roleplayFeedbackData.authorityLevelUsed}</p>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+                {(['pre_set', 'authority', 'objection_handling', 'close_attempt', 'overall'] as const).map((dim) => {
+                  const d = roleplayFeedbackData.dimensions?.[dim];
+                  if (!d) return null;
+                  const labels: Record<string, string> = { pre_set: 'Pre-Set', authority: 'Authority', objection_handling: 'Objection Handling', close_attempt: 'Close Attempt', overall: 'Overall' };
+                  const scoreColor = d.score >= 8 ? 'text-green-500' : d.score >= 5 ? 'text-blue-500' : d.score >= 3 ? 'text-orange-500' : 'text-red-500';
+                  const barColor = d.score >= 8 ? 'bg-green-500' : d.score >= 5 ? 'bg-blue-500' : d.score >= 3 ? 'bg-orange-500' : 'bg-red-500';
+                  return (
+                    <div key={dim} className="p-3 rounded-lg border bg-card">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">{labels[dim]}</p>
+                      <p className={`text-2xl font-bold ${scoreColor}`}>{d.score}<span className="text-sm text-muted-foreground">/10</span></p>
+                      <div className="w-full h-1.5 rounded-full bg-muted mt-2">
+                        <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${d.score * 10}%` }} />
+                      </div>
+                      {d.feedback && <p className="text-xs text-muted-foreground mt-2 line-clamp-3">{d.feedback}</p>}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                {roleplayFeedbackData.whatWorked && roleplayFeedbackData.whatWorked.length > 0 && (
+                  <div className="p-3 rounded-lg border border-green-500/30 bg-green-500/5">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-green-700">
+                      <ThumbsUp className="h-4 w-4" /> What Worked
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {roleplayFeedbackData.whatWorked.map((item, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex gap-2">
+                          <span className="text-green-500 flex-shrink-0">✓</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {roleplayFeedbackData.whatDidntWork && roleplayFeedbackData.whatDidntWork.length > 0 && (
+                  <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-red-700">
+                      <ThumbsDown className="h-4 w-4" /> What Didn&apos;t Work
+                    </h3>
+                    <ul className="space-y-1.5">
+                      {roleplayFeedbackData.whatDidntWork.map((item, i) => (
+                        <li key={i} className="text-sm text-muted-foreground flex gap-2">
+                          <span className="text-red-500 flex-shrink-0">✗</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {roleplayFeedbackData.keyImprovement && (
+                <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 mb-4">
+                  <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-amber-700">
+                    <Target className="h-4 w-4" /> Key Improvement Area
+                  </h3>
+                  <p className="text-sm">{roleplayFeedbackData.keyImprovement}</p>
+                </div>
+              )}
+
+              {roleplayFeedbackData.transcriptMoment && (
+                <div className="p-3 rounded-lg border bg-muted/30">
+                  <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
+                    <MessageSquareQuote className="h-4 w-4" /> Specific Transcript Moment
+                  </h3>
+                  <div className="space-y-2">
+                    <div className="p-2 bg-muted rounded text-sm">
+                      <p className="text-xs font-medium text-muted-foreground mb-1">What was said:</p>
+                      <p className="italic">&ldquo;{roleplayFeedbackData.transcriptMoment.quote}&rdquo;</p>
+                    </div>
+                    {(roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid) && (
+                      <div className="p-2 bg-green-500/10 border border-green-500/20 rounded text-sm">
+                        <p className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
+                          <Lightbulb className="h-3 w-3" /> What they should have said:
+                        </p>
+                        <p className="italic text-green-800">&ldquo;{roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid}&rdquo;</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </Card>
           )}
         </>
       )}

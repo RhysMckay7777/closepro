@@ -234,31 +234,34 @@ export async function GET(request: NextRequest) {
       isInstalment?: boolean;
       instalmentNumber?: number;
       totalInstalments?: number;
+      instalmentStatus?: string;
     }> = salesRows.map((r) => {
-      const rev = r.revenueGenerated ?? 0;
+      const cash = r.cashCollected ?? 0;
       const pct = r.commissionRatePct ?? userCommissionPct ?? 0;
       return {
         callId: r.id!,
         date: dateFor(r).toISOString().slice(0, 10),
         offerName: r.offerName ?? '—',
         prospectName: r.prospectName || 'Unknown',
-        cashCollected: r.cashCollected ?? 0,
-        revenueGenerated: rev,
+        cashCollected: cash,
+        revenueGenerated: r.revenueGenerated ?? 0,
         commissionPct: pct,
-        commissionAmount: Math.round(rev * (pct / 100)),
+        commissionAmount: Math.round(cash * (pct / 100)),
       };
     });
 
-    // Fetch ALL payment plan instalments for the user's calls.
-    // Show all instalments from a sale when the SALE DATE falls in the selected month.
-    // This gives the full commission picture for deals closed this month.
+    // Fetch payment plan instalments whose DUE DATE falls in the selected month.
+    // Each instalment appears in the month it's due, NOT the month the deal was created.
+    // Only 'collected' instalments count toward commission totals.
     const callIdsWithInstalments = new Set<string>();
     try {
       const instalmentRows = await db
         .select({
           salesCallId: paymentPlanInstalments.salesCallId,
+          instalmentNumber: paymentPlanInstalments.instalmentNumber,
           dueDate: paymentPlanInstalments.dueDate,
           amountCents: paymentPlanInstalments.amountCents,
+          status: paymentPlanInstalments.status,
           commissionRatePct: paymentPlanInstalments.commissionRatePct,
           commissionAmountCents: paymentPlanInstalments.commissionAmountCents,
           prospectName: salesCalls.prospectName,
@@ -272,47 +275,61 @@ export async function GET(request: NextRequest) {
         .leftJoin(offers, eq(salesCalls.offerId, offers.id))
         .where(eq(salesCalls.userId, userId));
 
-      // Group instalments by their parent call
-      const byCall = new Map<string, typeof instalmentRows>();
+      // Track which calls have instalments (to remove parent row and avoid double-counting)
       for (const inst of instalmentRows) {
         callIdsWithInstalments.add(inst.salesCallId);
-        const arr = byCall.get(inst.salesCallId) ?? [];
-        arr.push(inst);
-        byCall.set(inst.salesCallId, arr);
       }
 
-      // For each call with instalments, show ALL instalments if the sale date is in this month
-      for (const [, insts] of byCall) {
-        const first = insts[0];
-        const saleDate = first.callDate ? new Date(first.callDate) : new Date(first.callCreatedAt);
-        if (saleDate < start || saleDate > end) continue;
+      // Count total instalments per call for display
+      const totalsByCall = new Map<string, number>();
+      for (const inst of instalmentRows) {
+        totalsByCall.set(inst.salesCallId, (totalsByCall.get(inst.salesCallId) ?? 0) + 1);
+      }
 
-        // Sort by dueDate ascending for numbering
-        insts.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+      // Filter instalments: dueDate must fall within the selected month
+      const monthInstalments = instalmentRows.filter((inst) => {
+        const d = new Date(inst.dueDate);
+        return d >= start && d <= end;
+      });
 
-        for (let i = 0; i < insts.length; i++) {
-          const inst = insts[i];
-          const d = new Date(inst.dueDate);
-          const pct = inst.commissionRatePct ?? userCommissionPct ?? 0;
-          const commAmt = inst.commissionAmountCents ?? Math.round(inst.amountCents * (pct / 100));
-          salesList.push({
-            callId: inst.salesCallId,
-            date: d.toISOString().slice(0, 10),
-            offerName: inst.offerName ?? '—',
-            prospectName: inst.prospectName || 'Unknown',
-            cashCollected: inst.amountCents,
-            revenueGenerated: inst.amountCents,
-            commissionPct: pct,
-            commissionAmount: commAmt,
-            isInstalment: true,
-            instalmentNumber: i + 1,
-            totalInstalments: insts.length,
-          });
+      for (const inst of monthInstalments) {
+        const d = new Date(inst.dueDate);
+        const pct = inst.commissionRatePct ?? userCommissionPct ?? 0;
+        const instStatus = inst.status ?? 'pending';
+        // Commission only counts for collected instalments
+        const commAmt = instStatus === 'collected'
+          ? (inst.commissionAmountCents ?? Math.round(inst.amountCents * (pct / 100)))
+          : 0;
+        salesList.push({
+          callId: inst.salesCallId,
+          date: d.toISOString().slice(0, 10),
+          offerName: inst.offerName ?? '—',
+          prospectName: inst.prospectName || 'Unknown',
+          cashCollected: instStatus === 'collected' ? inst.amountCents : 0,
+          revenueGenerated: inst.amountCents,
+          commissionPct: pct,
+          commissionAmount: commAmt,
+          isInstalment: true,
+          instalmentNumber: inst.instalmentNumber ?? 0,
+          totalInstalments: totalsByCall.get(inst.salesCallId) ?? 0,
+          instalmentStatus: instStatus,
+        });
+      }
+    } catch (instErr: unknown) {
+      // Auto-migrate: add new columns if they don't exist
+      if (isMissingColumnError(instErr)) {
+        try {
+          await db.execute(sql`ALTER TABLE payment_plan_instalments ADD COLUMN IF NOT EXISTS instalment_number INTEGER`);
+          await db.execute(sql`ALTER TABLE payment_plan_instalments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'`);
+          await db.execute(sql`ALTER TABLE payment_plan_instalments ADD COLUMN IF NOT EXISTS collected_date TIMESTAMP`);
+          console.log('Figures API: auto-migrated payment_plan_instalments columns');
+        } catch {
+          // non-fatal
         }
+      } else {
+        // paymentPlanInstalments table may not exist yet — gracefully skip
+        console.error('Figures API: instalment query failed (may need migration):', instErr);
       }
-    } catch (instErr) {
-      // paymentPlanInstalments table may not exist yet — gracefully skip
-      console.error('Figures API: instalment query failed (may need migration):', instErr);
     }
 
     // Remove parent salesCalls rows that have payment plan instalments (avoid double-counting)

@@ -24,8 +24,30 @@ export {
     OBJECTION_PILLARS,
     OBJECTION_PILLAR_LABELS,
     getCategoryLabel,
+    ROLEPLAY_FEEDBACK_DIMENSIONS,
+    ROLEPLAY_FEEDBACK_LABELS,
+    ROLEPLAY_FEEDBACK_DESCRIPTIONS,
+    ROLEPLAY_FEEDBACK_PROMPT,
 } from './scoring-categories';
 
-export type { ScoringCategoryId, ObjectionPillar } from './scoring-categories';
+export type { ScoringCategoryId, ObjectionPillar, RoleplayFeedbackDimensionId } from './scoring-categories';
 
 export { ROLEPLAY_BEHAVIORAL_RULES } from './roleplay-behavioral-rules';
+
+export {
+    PROSPECT_BACKSTORY_INSTRUCTIONS,
+    CURRENT_JOBS,
+    PREVIOUS_ATTEMPTS,
+    REFERRAL_SOURCES,
+    FINANCIAL_SITUATIONS,
+} from './prospect-backstories';
+
+export type { FinancialSituationId } from './prospect-backstories';
+
+export {
+    SKILL_CLUSTERS,
+    getClusterForCategory,
+    computeClusterScores,
+} from './skill-clusters';
+
+export type { SkillCluster, SkillClusterId } from './skill-clusters';

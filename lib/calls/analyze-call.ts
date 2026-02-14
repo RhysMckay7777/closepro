@@ -163,6 +163,20 @@ export async function analyzeCallAsync(
     } else {
       console.log('[analyze-call] No outcome in analysis result');
     }
+
+    // Validation: if user already confirmed an outcome (analysis_only), check for AI contradiction
+    if (callRow?.analysisIntent === 'analysis_only' && outcome?.result && confirmFormContext?.result) {
+      if (outcome.result !== confirmFormContext.result) {
+        console.warn('[analyze-call] ⚠️ AI outcome CONTRADICTS user-logged outcome!',
+          { aiResult: outcome.result, userResult: confirmFormContext.result, callId });
+        // Discard AI outcome — user-logged is absolute source of truth
+        outcome.result = undefined;
+        outcome.cashCollected = undefined;
+        outcome.revenueGenerated = undefined;
+        outcome.qualified = undefined;
+      }
+    }
+
     const hasOutcome = outcome && (
       outcome.result != null ||
       outcome.qualified !== undefined ||

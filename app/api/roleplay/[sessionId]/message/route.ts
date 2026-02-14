@@ -218,6 +218,7 @@ export async function POST(
       behaviourState,
       replayPhase: roleplay[0].replayPhase ?? undefined,
       replayContext: roleplay[0].replayContext ?? undefined,
+      userId: session.user.id,
     };
 
     // Generate prospect response

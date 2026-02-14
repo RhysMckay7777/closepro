@@ -21,6 +21,7 @@ interface SalesListItem {
   isInstalment?: boolean;
   instalmentNumber?: number;
   totalInstalments?: number;
+  instalmentStatus?: string;
 }
 
 interface FiguresData {
@@ -431,12 +432,15 @@ export default function FiguresPage() {
                     </thead>
                     <tbody>
                       {figures.salesList.map((row, idx) => (
-                        <tr key={`${row.callId}-${idx}`} className="border-b border-border/50">
+                        <tr key={`${row.callId}-${idx}`} className={`border-b border-border/50${row.instalmentStatus === 'pending' ? ' opacity-50' : ''}`}>
                           <td className="py-2 pr-4">
                             {row.date}
                             {row.isInstalment && row.instalmentNumber && row.totalInstalments && (
                               <span className="ml-2 text-xs text-muted-foreground">
-                                (instalment {row.instalmentNumber} of {row.totalInstalments})
+                                (instalment {row.instalmentNumber}/{row.totalInstalments}
+                                {row.instalmentStatus === 'pending' && ' — pending'}
+                                {row.instalmentStatus === 'missed' && ' — missed'}
+                                {row.instalmentStatus === 'refunded' && ' — refunded'})
                               </span>
                             )}
                           </td>

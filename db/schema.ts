@@ -339,8 +339,11 @@ export const callAnalysis = pgTable('call_analysis', {
 export const paymentPlanInstalments = pgTable('payment_plan_instalments', {
   id: uuid('id').defaultRandom().primaryKey(),
   salesCallId: uuid('sales_call_id').notNull().references(() => salesCalls.id, { onDelete: 'cascade' }),
+  instalmentNumber: integer('instalment_number'), // 1, 2, 3, 4...
   dueDate: timestamp('due_date').notNull(),
   amountCents: integer('amount_cents').notNull(),
+  status: text('status').default('pending'), // 'pending' | 'collected' | 'missed' | 'refunded'
+  collectedDate: timestamp('collected_date'), // when actually collected (null if pending)
   commissionRatePct: integer('commission_rate_pct'), // 0-100, from deal or user default
   commissionAmountCents: integer('commission_amount_cents'), // computed or stored
   createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -542,6 +545,31 @@ export const roleplayAnalysis = pgTable('roleplay_analysis', {
   prospectDifficultyJustifications: text('prospect_difficulty_justifications'), // JSON: per-dimension justifications
   actionPoints: text('action_points'), // JSON array (max 2) replacing priorityFixes for v2
 
+  // Roleplay-specific post-call feedback (5 dimensions: pre_set, authority, objection_handling, close_attempt, overall)
+  roleplayFeedback: text('roleplay_feedback'), // JSON: { dimensions, whatWorked, whatDidntWork, keyImprovement, transcriptMoment }
+
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
+// Training Transcripts — user-uploaded sales call transcripts for AI training context
+export const trainingTranscripts = pgTable('training_transcripts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  organizationId: text('organization_id').references(() => organizations.id),
+
+  // Transcript content
+  title: text('title').notNull(), // User-provided or auto-generated name
+  rawTranscript: text('raw_transcript').notNull(), // Full transcript text
+
+  // Extracted patterns for roleplay injection
+  extractedPatterns: text('extracted_patterns'), // JSON: { closingTechniques, objectionHandles, discoveryQuestions, valueStatements }
+
+  // Metadata
+  tags: text('tags'), // JSON array of user tags (e.g. ["cold call", "B2C", "coaching"])
+  status: text('status').notNull().default('uploaded'), // 'uploaded' | 'processing' | 'processed' | 'error'
+  wordCount: integer('word_count'),
+
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -678,6 +706,8 @@ export type RoleplayMessage = typeof roleplayMessages.$inferSelect;
 export type NewRoleplayMessage = typeof roleplayMessages.$inferInsert;
 export type RoleplayAnalysis = typeof roleplayAnalysis.$inferSelect;
 export type NewRoleplayAnalysis = typeof roleplayAnalysis.$inferInsert;
+export type TrainingTranscript = typeof trainingTranscripts.$inferSelect;
+export type NewTrainingTranscript = typeof trainingTranscripts.$inferInsert;
 
 // Types
 export type User = typeof users.$inferSelect;

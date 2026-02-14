@@ -91,6 +91,16 @@ function RoleplaySessionContent() {
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const activeSpeakerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Voice consistency: lock voice ID on first TTS call so it never changes mid-session
+  const lockedVoiceIdRef = useRef<string | null>(null);
+  // Continuous listening: debounce timer + accumulated transcript
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const interimTranscriptRef = useRef<string>('');
+  const isSpeakingTTSRef = useRef(false);
+  // Session timer
+  const [sessionElapsed, setSessionElapsed] = useState(0);
+  const sessionStartRef = useRef<number>(Date.now());
+
   useEffect(() => {
     fetchSession();
     fetchUserProfile();
@@ -116,7 +126,10 @@ function RoleplaySessionContent() {
 
     return () => {
       if (recognitionRef.current) {
-        recognitionRef.current.stop();
+        try { recognitionRef.current.stop(); } catch { /* ignore */ }
+      }
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
       }
       if (activeSpeakerTimeoutRef.current) {
         clearTimeout(activeSpeakerTimeoutRef.current);
@@ -234,28 +247,99 @@ function RoleplaySessionContent() {
     }
   };
 
+  // Sentence completion detection for continuous listening
+  const shouldAutoSend = (text: string): boolean => {
+    const trimmed = text.trim();
+    if (!trimmed || trimmed.split(/\s+/).length < 3) return false;
+    // Ends with sentence-ending punctuation
+    if (/[.!?]$/.test(trimmed)) return true;
+    // Has enough words (natural pause point)
+    if (trimmed.split(/\s+/).length >= 8) return true;
+    return false;
+  };
+
+  const startContinuousListening = () => {
+    if (!recognitionRef.current || isSpeakingTTSRef.current) return;
+    try {
+      interimTranscriptRef.current = '';
+      recognitionRef.current.start();
+      setIsListening(true);
+    } catch (e) {
+      // Already started — ignore
+    }
+  };
+
+  const stopContinuousListening = () => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch { /* ignore */ }
+    }
+    setIsListening(false);
+  };
+
   const initializeVoice = () => {
-    // Initialize Web Speech API
+    // Initialize Web Speech API with continuous listening
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
 
       recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(transcript);
-        setIsListening(false);
-        handleSend(transcript);
+        let finalTranscript = '';
+        let interimText = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const t = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += t;
+          } else {
+            interimText += t;
+          }
+        }
+
+        if (finalTranscript) {
+          interimTranscriptRef.current += ' ' + finalTranscript;
+          interimTranscriptRef.current = interimTranscriptRef.current.trim();
+          setInput(interimTranscriptRef.current);
+        } else if (interimText) {
+          setInput((interimTranscriptRef.current + ' ' + interimText).trim());
+        }
+
+        // Reset silence timer on any speech
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+        // Start silence timer — auto-send after 2s of silence
+        silenceTimerRef.current = setTimeout(() => {
+          const accumulated = interimTranscriptRef.current.trim();
+          if (accumulated && shouldAutoSend(accumulated)) {
+            interimTranscriptRef.current = '';
+            handleSend(accumulated);
+          }
+        }, 2000);
       };
 
-      recognitionRef.current.onerror = () => {
-        setIsListening(false);
+      recognitionRef.current.onerror = (event: any) => {
+        if (event.error !== 'no-speech' && event.error !== 'aborted') {
+          setIsListening(false);
+        }
       };
 
+      // Auto-restart if mic stops (for continuous listening)
       recognitionRef.current.onend = () => {
-        setIsListening(false);
+        if (session?.inputMode === 'voice' && !isSpeakingTTSRef.current) {
+          // Auto-restart recognition to keep mic live
+          try {
+            recognitionRef.current.start();
+          } catch {
+            setIsListening(false);
+          }
+        } else {
+          setIsListening(false);
+        }
       };
     }
 
@@ -332,8 +416,18 @@ function RoleplaySessionContent() {
         const speakText = cleanForSpeech(data.response);
         const onEnd = () => setActiveSpeaker(null);
         try {
-          // Get voice ID from prospect avatar (matches character appearance)
-          const voiceId = prospectAvatar ? getVoiceIdFromProspect(prospectAvatar) : undefined;
+          // Voice consistency: lock voice ID on first call, reuse for entire session
+          if (!lockedVoiceIdRef.current && prospectAvatar) {
+            lockedVoiceIdRef.current = getVoiceIdFromProspect(prospectAvatar);
+          }
+          const voiceId = lockedVoiceIdRef.current || undefined;
+
+          // Pause mic during TTS to avoid echo
+          isSpeakingTTSRef.current = true;
+          if (recognitionRef.current && isListening) {
+            try { recognitionRef.current.stop(); } catch { /* ignore */ }
+          }
+
           const ttsRes = await fetch('/api/tts', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -350,6 +444,9 @@ function RoleplaySessionContent() {
             const audio = new Audio(url);
             audio.onended = () => {
               URL.revokeObjectURL(url);
+              isSpeakingTTSRef.current = false;
+              // Resume mic after TTS
+              if (session?.inputMode === 'voice') startContinuousListening();
               onEnd();
             };
             audio.onerror = () => {
@@ -405,9 +502,16 @@ function RoleplaySessionContent() {
             if (preferred) utterance.voice = preferred;
           }
           utterance.pitch = gender === 'male' ? 0.85 : 1.0;
-          utterance.onend = onEnd;
+          utterance.onend = () => {
+            isSpeakingTTSRef.current = false;
+            // Resume mic after fallback TTS
+            if (session?.inputMode === 'voice') startContinuousListening();
+            onEnd();
+          };
           synthRef.current.speak(utterance);
         } else {
+          isSpeakingTTSRef.current = false;
+          if (session?.inputMode === 'voice') startContinuousListening();
           onEnd();
         }
       }
@@ -429,11 +533,15 @@ function RoleplaySessionContent() {
     }
 
     if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+      stopContinuousListening();
+      // Send any accumulated text
+      const accumulated = interimTranscriptRef.current.trim();
+      if (accumulated) {
+        interimTranscriptRef.current = '';
+        handleSend(accumulated);
+      }
     } else {
-      recognitionRef.current.start();
-      setIsListening(true);
+      startContinuousListening();
       setActiveSpeaker('rep');
     }
   };
@@ -445,6 +553,20 @@ function RoleplaySessionContent() {
         synthRef.current.cancel();
       }
     }
+  };
+
+  // Session timer
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setSessionElapsed(Math.floor((Date.now() - sessionStartRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const formatTimer = (totalSeconds: number) => {
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
   const handleEndSession = () => {
@@ -481,9 +603,9 @@ function RoleplaySessionContent() {
     <>
       <ConfirmDialog />
       <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-linear-to-b from-stone-950 via-stone-900 to-stone-950">
-        {/* Minimal floating header */}
-        <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between p-4 pointer-events-none">
-          <div className="pointer-events-auto">
+        {/* ─── Top Header Bar ─── */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-stone-950/80 backdrop-blur-md z-20 shrink-0">
+          <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="sm"
@@ -493,8 +615,7 @@ function RoleplaySessionContent() {
               <PhoneOff className="h-4 w-4" />
               Exit
             </Button>
-          </div>
-          <div className="absolute left-1/2 -transtone-x-1/2 flex items-center gap-2 pointer-events-none">
+            <div className="w-px h-5 bg-white/10" />
             <span className="text-sm font-medium text-foreground/90">{session?.offerName || 'Roleplay'}</span>
             {session?.status === 'in_progress' && (
               <span className="flex items-center gap-1.5 text-xs text-emerald-400">
@@ -503,7 +624,12 @@ function RoleplaySessionContent() {
               </span>
             )}
           </div>
-          <div className="pointer-events-auto">
+          {/* Session Timer */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-stone-800/60 border border-white/5">
+              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+              <span className="text-sm font-mono text-foreground/80 tabular-nums">{formatTimer(sessionElapsed)}</span>
+            </div>
             <Button
               variant={showTranscript ? 'secondary' : 'ghost'}
               size="icon"
@@ -516,16 +642,70 @@ function RoleplaySessionContent() {
           </div>
         </div>
 
-        {/* Focus stage: prospect center, you PiP bottom-right */}
-        <div className="flex-1 flex overflow-hidden relative min-h-0">
-          <div className="flex-1 flex flex-col items-center justify-center p-6 pt-20 pb-32">
-            {/* Prospect as main focus */}
-            <div
-              className={cn(
-                "flex flex-col items-center text-center transition-all duration-300",
-                activeSpeaker === 'prospect' && "scale-[1.02]"
+        {/* ─── Main Content: Split Panels + Transcript ─── */}
+        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          {/* ─── User & Prospect Panels (Side by Side) ─── */}
+          <div className="flex-1 flex min-h-0">
+            {/* Left Panel: User */}
+            <div className="flex-1 flex flex-col items-center justify-center p-6 border-r border-white/5">
+              <div
+                className={cn(
+                  "relative rounded-full overflow-hidden transition-all duration-300",
+                  activeSpeaker === 'rep'
+                    ? "ring-4 ring-orange-500/50 shadow-2xl shadow-orange-500/20"
+                    : "ring-2 ring-white/10"
+                )}
+                style={{ width: 'clamp(120px, 14vw, 180px)', height: 'clamp(120px, 14vw, 180px)' }}
+              >
+                {cameraOn ? (
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="absolute inset-0 w-full h-full object-cover"
+                  />
+                ) : userProfile?.profilePhoto ? (
+                  <Avatar className="w-full h-full">
+                    <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                    <AvatarFallback className="bg-orange-500/30 text-orange-300 text-2xl">
+                      {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-stone-800">
+                    <User className="h-12 w-12 text-orange-400" />
+                  </div>
+                )}
+                {activeSpeaker === 'rep' && (
+                  <div className="absolute top-2 right-2 w-3 h-3 bg-orange-500 rounded-full animate-pulse ring-2 ring-orange-400/50" />
+                )}
+              </div>
+              <h3 className="mt-3 text-lg font-semibold text-foreground">{userProfile?.name || 'You'}</h3>
+              <p className="text-xs text-muted-foreground mt-1">Sales Rep</p>
+              {/* Live mic indicator */}
+              {isListening && (
+                <div className="mt-3 flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/30">
+                  <div className="flex items-center gap-0.5">
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <span
+                        key={i}
+                        className="w-1 bg-orange-400 rounded-full animate-pulse"
+                        style={{
+                          height: `${8 + Math.random() * 12}px`,
+                          animationDelay: `${i * 0.1}s`,
+                          animationDuration: `${0.4 + Math.random() * 0.4}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-xs text-orange-400 font-medium">Listening</span>
+                </div>
               )}
-            >
+            </div>
+
+            {/* Right Panel: Prospect */}
+            <div className="flex-1 flex flex-col items-center justify-center p-6">
               <div
                 className={cn(
                   "relative rounded-full overflow-hidden transition-all duration-300",
@@ -533,7 +713,7 @@ function RoleplaySessionContent() {
                     ? "ring-4 ring-stone-500/50 shadow-2xl shadow-stone-500/20"
                     : "ring-2 ring-white/10"
                 )}
-                style={{ width: 'clamp(160px, 20vw, 220px)', height: 'clamp(160px, 20vw, 220px)' }}
+                style={{ width: 'clamp(120px, 14vw, 180px)', height: 'clamp(120px, 14vw, 180px)' }}
               >
                 {prospectAvatar ? (
                   <Avatar className="w-full h-full">
@@ -544,13 +724,13 @@ function RoleplaySessionContent() {
                         className="object-cover"
                       />
                     ) : null}
-                    <AvatarFallback className={`text-4xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
+                    <AvatarFallback className={`text-3xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
                       {getProspectInitials(prospectAvatar.name)}
                     </AvatarFallback>
                   </Avatar>
                 ) : (
                   <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                    <Bot className="h-16 w-16 text-stone-500" />
+                    <Bot className="h-12 w-12 text-stone-500" />
                   </div>
                 )}
                 {loading && (
@@ -562,187 +742,130 @@ function RoleplaySessionContent() {
                   <div className="absolute top-2 right-2 w-3 h-3 bg-stone-500 rounded-full animate-pulse ring-2 ring-stone-400/50" />
                 )}
               </div>
-              <h2 className="mt-4 text-xl font-semibold text-foreground">
-                {prospectAvatar?.name ?? 'AI Prospect'}
-              </h2>
-              <p className="mt-1 text-sm text-muted-foreground max-w-sm">
+              <h3 className="mt-3 text-lg font-semibold text-foreground">{prospectAvatar?.name ?? 'AI Prospect'}</h3>
+              <p className="text-xs text-muted-foreground mt-1 max-w-xs text-center">
                 {prospectAvatar?.positionDescription ?? 'Virtual buyer'}
               </p>
-            </div>
-
-            {/* You – PiP bottom-right */}
-            <div
-              className={cn(
-                "absolute bottom-24 right-6 w-[210px] z-[5000] rounded-xl overflow-hidden border-2 transition-all duration-300 bg-stone-900/90 backdrop-blur",
-                activeSpeaker === 'rep'
-                  ? "border-orange-500/80 shadow-lg shadow-orange-500/20"
-                  : "border-white/10"
-              )}
-              style={{ aspectRatio: '4/3' }}
-            >
-              {cameraOn ? (
-                <>
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                  <div className="absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/80 to-transparent p-2">
-                    <span className="text-white text-xs font-medium truncate block">{userProfile?.name || 'You'}</span>
-                  </div>
-                  {isListening && (
-                    <div className="absolute top-1 right-1 flex gap-0.5">
-                      <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" />
-                      <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.15s' }} />
-                      <span className="w-1.5 h-1.5 bg-orange-400 rounded-full animate-pulse" style={{ animationDelay: '0.3s' }} />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="absolute inset-0 flex flex-col items-center justify-center bg-stone-800/80 p-2">
-                  {userProfile?.profilePhoto ? (
-                    <Avatar className="w-12 h-12">
-                      <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
-                      <AvatarFallback className="bg-orange-500/30 text-orange-300 text-sm">
-                        {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-orange-500/20 flex items-center justify-center">
-                      <User className="h-6 w-6 text-orange-400" />
-                    </div>
-                  )}
-                  <span className="text-xs text-muted-foreground mt-1 truncate w-full text-center">You</span>
-                </div>
+              {prospectAvatar?.voiceStyle && (
+                <Badge variant="outline" className="mt-2 text-xs border-white/10 text-muted-foreground">
+                  {prospectAvatar.voiceStyle}
+                </Badge>
               )}
             </div>
           </div>
 
-          {/* Transcript Panel (Right) – floating sheet style */}
+          {/* ─── Live Transcript Panel (Below) ─── */}
           {showTranscript && (
-            <div className="w-96 shrink-0 flex flex-col rounded-l-2xl border-l border-y border-white/10 bg-stone-900/95 backdrop-blur-xl shadow-2xl">
-              <div className="border-b p-3 flex items-center justify-between gap-2">
-                <h2 className="font-semibold shrink-0">Transcript</h2>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setShowTranscript(false)}
-                  aria-label="Close transcript"
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </div>
-              <div className="border-b flex gap-0">
-                {(['transcript', 'pinned', 'notes'] as const).map((tab) => (
-                  <Button
-                    key={tab}
-                    variant="ghost"
-                    size="sm"
-                    className={cn(
-                      "rounded-none border-b-2 border-transparent flex-1",
-                      transcriptTab === tab && "border-primary font-medium"
-                    )}
-                    onClick={() => setTranscriptTab(tab)}
-                  >
-                    {tab === 'transcript' ? 'Transcript' : tab === 'pinned' ? 'Pinned' : 'Notes'}
-                  </Button>
-                ))}
+            <div className="h-[280px] shrink-0 border-t border-white/10 bg-stone-900/80 backdrop-blur-xl flex flex-col">
+              <div className="border-b border-white/5 px-4 py-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-0">
+                  {(['transcript', 'pinned', 'notes'] as const).map((tab) => (
+                    <Button
+                      key={tab}
+                      variant="ghost"
+                      size="sm"
+                      className={cn(
+                        "rounded-none border-b-2 border-transparent text-xs h-8",
+                        transcriptTab === tab && "border-primary font-medium"
+                      )}
+                      onClick={() => setTranscriptTab(tab)}
+                    >
+                      {tab === 'transcript' ? 'Transcript' : tab === 'pinned' ? 'Pinned' : 'Notes'}
+                    </Button>
+                  ))}
+                </div>
+                {transcriptTab === 'transcript' && (
+                  <div className="relative max-w-xs">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input
+                      placeholder="Search..."
+                      value={transcriptSearch}
+                      onChange={(e) => setTranscriptSearch(e.target.value)}
+                      className="pl-8 h-7 text-xs bg-background/40 w-48"
+                      aria-label="Search transcript"
+                    />
+                  </div>
+                )}
               </div>
               {transcriptTab === 'transcript' && (
-                <>
-                  <div className="border-b p-2">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-1/2 -transtone-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        placeholder="Search transcript..."
-                        value={transcriptSearch}
-                        onChange={(e) => setTranscriptSearch(e.target.value)}
-                        className="pl-8 h-9 bg-background/80"
-                        aria-label="Search transcript"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                    {(() => {
-                      const filtered = transcriptSearch.trim()
-                        ? messages.filter((m) =>
-                          m.content.toLowerCase().includes(transcriptSearch.trim().toLowerCase())
-                        )
-                        : messages;
-                      if (filtered.length === 0) {
-                        return (
-                          <div className="text-center py-12 text-muted-foreground">
-                            <p>{transcriptSearch.trim() ? 'No messages match your search.' : 'Conversation will appear here'}</p>
-                          </div>
-                        );
-                      }
-                      return filtered.map((msg, idx) => (
-                        <div
-                          key={msg.id ?? idx}
-                          className="space-y-1 group"
-                          data-timestamp={msg.timestamp ?? idx * 5000}
-                        >
-                          <div className="flex items-center gap-2 justify-between">
-                            <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                              <span className={cn(
-                                "font-semibold text-sm shrink-0",
-                                msg.role === 'rep' ? "text-orange-300" : "text-blue-300"
-                              )}>
-                                {msg.role === 'rep' ? 'You' : 'Prospect'}
-                              </span>
-                              {typeof msg.timestamp === 'number' && (
-                                <span className="text-xs text-muted-foreground" title="Time in session">
-                                  {formatMessageTime(msg.timestamp)}
-                                </span>
-                              )}
-                              {msg.metadata?.objectionType && (
-                                <Badge variant="outline" className="text-xs">
-                                  {msg.metadata.objectionType}
-                                </Badge>
-                              )}
-                            </div>
-                            {msg.id && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 shrink-0 opacity-70 hover:opacity-100"
-                                onClick={() => togglePin(msg.id!)}
-                                title={pinnedMessageIds.includes(msg.id) ? 'Unpin this line' : 'Pin this line'}
-                                aria-label={pinnedMessageIds.includes(msg.id) ? 'Unpin' : 'Pin'}
-                              >
-                                {pinnedMessageIds.includes(msg.id) ? (
-                                  <Pin className="h-4 w-4 fill-current" />
-                                ) : (
-                                  <PinOff className="h-4 w-4" />
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                          <p className="text-sm text-white whitespace-pre-wrap">
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                  {(() => {
+                    const filtered = transcriptSearch.trim()
+                      ? messages.filter((m) =>
+                        m.content.toLowerCase().includes(transcriptSearch.trim().toLowerCase())
+                      )
+                      : messages;
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="text-center py-8 text-muted-foreground text-sm">
+                          <p>{transcriptSearch.trim() ? 'No messages match your search.' : 'Conversation will appear here'}</p>
+                        </div>
+                      );
+                    }
+                    return filtered.map((msg, idx) => (
+                      <div
+                        key={msg.id ?? idx}
+                        className="group flex gap-3"
+                        data-timestamp={msg.timestamp ?? idx * 5000}
+                      >
+                        <div className="shrink-0 flex flex-col items-center gap-1">
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase tracking-wider",
+                            msg.role === 'rep' ? "text-orange-400" : "text-blue-400"
+                          )}>
+                            {msg.role === 'rep' ? 'REP' : 'PRO'}
+                          </span>
+                          {typeof msg.timestamp === 'number' && (
+                            <span className="text-[10px] text-muted-foreground/60 tabular-nums">
+                              {formatMessageTime(msg.timestamp)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white/90 whitespace-pre-wrap leading-relaxed">
                             {msg.role === 'prospect' ? cleanForSpeech(msg.content) : msg.content}
                           </p>
+                          {msg.metadata?.objectionType && (
+                            <Badge variant="outline" className="text-[10px] mt-1 h-5">
+                              {msg.metadata.objectionType}
+                            </Badge>
+                          )}
                         </div>
-                      ));
-                    })()}
-                    {loading && (
-                      <div className="space-y-1">
-                        <span className="font-semibold text-sm text-muted-foreground">Prospect</span>
-                        <div className="flex items-center gap-2">
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                          <span className="text-sm text-muted-foreground">Typing...</span>
-                        </div>
+                        {msg.id && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 opacity-0 group-hover:opacity-70 hover:opacity-100 transition-opacity"
+                            onClick={() => togglePin(msg.id!)}
+                            title={pinnedMessageIds.includes(msg.id) ? 'Unpin' : 'Pin'}
+                            aria-label={pinnedMessageIds.includes(msg.id) ? 'Unpin' : 'Pin'}
+                          >
+                            {pinnedMessageIds.includes(msg.id) ? (
+                              <Pin className="h-3.5 w-3.5 fill-current" />
+                            ) : (
+                              <PinOff className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        )}
                       </div>
-                    )}
-                    <div ref={transcriptEndRef} />
-                  </div>
-                </>
+                    ));
+                  })()}
+                  {loading && (
+                    <div className="flex gap-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 shrink-0">PRO</span>
+                      <div className="flex items-center gap-2">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Typing…</span>
+                      </div>
+                    </div>
+                  )}
+                  <div ref={transcriptEndRef} />
+                </div>
               )}
               {transcriptTab === 'pinned' && (
-                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
                   {pinnedMessageIds.length === 0 ? (
-                    <div className="text-center py-12 text-muted-foreground">
+                    <div className="text-center py-8 text-muted-foreground text-sm">
                       <p>No pinned messages.</p>
                       <p className="text-xs mt-1">Pin lines from the Transcript tab.</p>
                     </div>
@@ -750,39 +873,34 @@ function RoleplaySessionContent() {
                     messages
                       .filter((m) => m.id && pinnedMessageIds.includes(m.id))
                       .map((msg) => (
-                        <div key={msg.id} className="space-y-1">
-                          <div className="flex items-center gap-2 justify-between">
-                            <span className={cn(
-                              "font-semibold text-sm",
-                              msg.role === 'rep' ? "text-orange-300" : "text-blue-300"
-                            )}>
-                              {msg.role === 'rep' ? 'You' : 'Prospect'}
-                            </span>
-                            {typeof msg.timestamp === 'number' && (
-                              <span className="text-xs text-muted-foreground">{formatMessageTime(msg.timestamp)}</span>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => togglePin(msg.id!)}
-                              title="Unpin"
-                              aria-label="Unpin"
-                            >
-                              <Pin className="h-4 w-4 fill-current" />
-                            </Button>
-                          </div>
-                          <p className="text-sm text-white whitespace-pre-wrap">{msg.role === 'prospect' ? cleanForSpeech(msg.content) : msg.content}</p>
+                        <div key={msg.id} className="flex gap-3">
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase tracking-wider shrink-0",
+                            msg.role === 'rep' ? "text-orange-400" : "text-blue-400"
+                          )}>
+                            {msg.role === 'rep' ? 'REP' : 'PRO'}
+                          </span>
+                          <p className="text-sm text-white/90 whitespace-pre-wrap flex-1">{msg.role === 'prospect' ? cleanForSpeech(msg.content) : msg.content}</p>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => togglePin(msg.id!)}
+                            title="Unpin"
+                            aria-label="Unpin"
+                          >
+                            <Pin className="h-3.5 w-3.5 fill-current" />
+                          </Button>
                         </div>
                       ))
                   )}
                 </div>
               )}
               {transcriptTab === 'notes' && (
-                <div className="flex-1 flex flex-col p-4 min-h-0">
+                <div className="flex-1 flex flex-col px-4 py-3 min-h-0">
                   <p className="text-xs text-muted-foreground mb-2">Session notes (saved automatically)</p>
                   <textarea
-                    className="flex-1 min-h-[200px] w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="flex-1 min-h-[120px] w-full rounded-md border bg-background/30 px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                     placeholder="e.g. Prospect concerned about price, follow up on timeline..."
                     value={sessionNotes}
                     onChange={(e) => setSessionNotes(e.target.value)}
@@ -793,24 +911,11 @@ function RoleplaySessionContent() {
               )}
             </div>
           )}
-
-          {/* Show Transcript Button (when hidden) */}
-          {!showTranscript && (
-            <Button
-              variant="secondary"
-              size="sm"
-              className="fixed top-16 right-6 z-30 rounded-full shadow-lg gap-2 bg-stone-800/90 hover:bg-stone-700 border-white/10"
-              onClick={() => setShowTranscript(true)}
-            >
-              <MessageSquare className="h-4 w-4" />
-              Transcript
-            </Button>
-          )}
         </div>
 
-        {/* Floating control bar */}
-        <div className="absolute bottom-0 left-0 right-0 z-20 flex justify-center p-4 pointer-events-none">
-          <div className="pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-2xl bg-stone-900/95 backdrop-blur-xl border border-white/10 shadow-2xl max-w-2xl w-full">
+        {/* ─── Floating Control Bar ─── */}
+        <div className="shrink-0 flex justify-center p-3 bg-stone-950/90 backdrop-blur-md border-t border-white/5">
+          <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-stone-900/95 backdrop-blur-xl border border-white/10 shadow-2xl max-w-2xl w-full">
             <Button
               variant={isMuted ? 'destructive' : 'ghost'}
               size="icon"
@@ -827,13 +932,13 @@ function RoleplaySessionContent() {
                 onClick={handleVoiceInput}
                 className={cn(
                   "rounded-full h-10 w-10 shrink-0 transition-all",
-                  isListening && "ring-2 ring-orange-500/50"
+                  isListening && "ring-2 ring-orange-500/50 bg-orange-500/20"
                 )}
                 title={isListening ? 'Stop voice input' : 'Start voice input'}
               >
                 {isListening ? (
                   <span className="relative flex">
-                    <Mic className="h-5 w-5" />
+                    <Mic className="h-5 w-5 text-orange-400" />
                     <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-orange-500 animate-pulse ring-2 ring-background" />
                   </span>
                 ) : (

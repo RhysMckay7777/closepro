@@ -5,9 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, FileDown, Lightbulb, ChevronDown, ChevronUp } from 'lucide-react';
+import { TrendingUp, TrendingDown, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, FileDown, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { SKILL_CLUSTERS, computeClusterScores } from '@/lib/training/skill-clusters';
+import { ObjectionInsights } from '@/components/dashboard/ObjectionInsights';
+import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
+import { PerformanceSummary } from '@/components/dashboard/PerformanceSummary';
 
 const RANGE_OPTIONS = [
   { value: 'this_week', label: 'This Week' },
@@ -577,119 +581,154 @@ export default function PerformancePage() {
         </Card>
       )}
 
-      {/* Sales Skill Breakdown (10 categories from API) */}
-      <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-        <CardHeader>
-          <CardTitle>Sales Skills Breakdown</CardTitle>
-          <CardDescription>Average score and trend per category (from analyses). Sales categories defined in Knowledge Doc: Sales Call Scoring Framework.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {performance.skillCategories.length > 0 ? (
-            <div className="space-y-1">
-              {performance.skillCategories.map((skill, idx) => {
-                const isExpanded = expandedCategories.has(idx);
-                const toggleExpand = () => {
-                  setExpandedCategories(prev => {
-                    const next = new Set(prev);
-                    if (next.has(idx)) next.delete(idx); else next.add(idx);
-                    return next;
-                  });
-                };
-                return (
-                  <div key={idx} className="rounded-lg bg-white/5 border border-white/10 overflow-hidden">
-                    <button
-                      onClick={toggleExpand}
-                      className="w-full flex items-center justify-between p-3 hover:bg-white/5 transition-colors text-left"
-                    >
-                      <p className="font-medium">{skill.category}</p>
-                      <div className="flex items-center gap-3">
-                        {typeof skill.trend === 'number' && skill.trend !== 0 && (
-                          <span className={`text-xs flex items-center gap-0.5 ${skill.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                            {skill.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                            {skill.trend > 0 ? '+' : ''}{skill.trend}
-                          </span>
-                        )}
-                        <div className="w-32 bg-muted h-2 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full transition-all ${skill.averageScore >= 80 ? 'bg-green-500' :
-                              skill.averageScore >= 60 ? 'bg-blue-500' :
-                                skill.averageScore >= 40 ? 'bg-orange-500' :
-                                  'bg-red-500'
-                              }`}
-                            style={{ width: `${skill.averageScore}%` }}
-                          />
-                        </div>
-                        <span className={`text-lg font-bold w-12 text-right ${getScoreColor(skill.averageScore)}`}>
-                          {skill.averageScore}
-                        </span>
-                        {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                      </div>
-                    </button>
-                    {isExpanded && (
-                      <div className="px-4 pb-4 pt-1 space-y-3 border-t border-white/10">
-                        {/* Trend sparkline */}
-                        {skill.trendData && skill.trendData.some(v => v > 0) && (
-                          <div>
-                            <p className="text-xs font-semibold text-muted-foreground mb-1">Trend Over Time</p>
-                            <svg viewBox={`0 0 ${(skill.trendData.length - 1) * 20} 30`} className="w-full h-8" preserveAspectRatio="none">
-                              <polyline
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.5"
-                                className="text-blue-500"
-                                points={skill.trendData.map((v, i) => `${i * 20},${30 - (v / 10) * 30}`).join(' ')}
+      {/* Skill Clusters (6 strategic clusters from 10 categories) */}
+      {(() => {
+        const NAME_TO_ID: Record<string, string> = {
+          'Authority': 'authority', 'Structure': 'structure', 'Communication': 'communication',
+          'Discovery': 'discovery', 'Gap': 'gap', 'Value': 'value',
+          'Trust': 'trust', 'Adaptation': 'adaptation', 'Objection Handling': 'objection_handling', 'Closing': 'closing',
+        };
+        const catScores: Record<string, number> = {};
+        for (const cat of performance.skillCategories) {
+          const id = NAME_TO_ID[cat.category] || cat.category.toLowerCase().replace(/\s+/g, '_');
+          catScores[id] = cat.averageScore;
+        }
+        const clusterScores = computeClusterScores(catScores);
+        const CLUSTER_COLORS: Record<string, { bar: string; badge: string }> = {
+          authority_leadership: { bar: 'bg-blue-500', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+          discovery_gap_creation: { bar: 'bg-green-500', badge: 'bg-green-500/20 text-green-400 border-green-500/30' },
+          value_stabilization: { bar: 'bg-purple-500', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+          objection_control: { bar: 'bg-orange-500', badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+          closing_decision_leadership: { bar: 'bg-teal-500', badge: 'bg-teal-500/20 text-teal-400 border-teal-500/30' },
+          emotional_intelligence: { bar: 'bg-pink-500', badge: 'bg-pink-500/20 text-pink-400 border-pink-500/30' },
+        };
+
+        return (
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader>
+              <CardTitle>Skill Clusters</CardTitle>
+              <CardDescription>6 strategic skill clusters aggregated from your 10 scoring categories</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {clusterScores.some(c => c.score > 0) ? (
+                <div className="space-y-2">
+                  {clusterScores.map((cs) => {
+                    const colors = CLUSTER_COLORS[cs.cluster.id] || { bar: 'bg-gray-500', badge: 'bg-gray-500/20 text-gray-400' };
+                    const isExpanded = expandedCategories.has(SKILL_CLUSTERS.indexOf(cs.cluster));
+                    const idx = SKILL_CLUSTERS.indexOf(cs.cluster);
+                    return (
+                      <div key={cs.cluster.id} className="rounded-lg bg-white/5 border border-white/10 overflow-hidden">
+                        <button
+                          onClick={() => {
+                            setExpandedCategories(prev => {
+                              const next = new Set(prev);
+                              next.has(idx) ? next.delete(idx) : next.add(idx);
+                              return next;
+                            });
+                          }}
+                          className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors text-left"
+                        >
+                          <div className="flex items-center gap-3">
+                            <Badge className={`text-xs ${colors.badge}`}>{cs.cluster.name}</Badge>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="w-32 bg-muted h-2.5 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-all ${colors.bar}`}
+                                style={{ width: `${cs.score}%` }}
                               />
-                            </svg>
-                          </div>
-                        )}
-                        {skill.strengths && skill.strengths.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-green-500 mb-1">Strengths</p>
-                            <ul className="text-sm text-muted-foreground space-y-0.5">
-                              {skill.strengths.map((s, i) => <li key={i}>• {s}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                        {skill.weaknesses && skill.weaknesses.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-red-500 mb-1">Weaknesses</p>
-                            <ul className="text-sm text-muted-foreground space-y-0.5">
-                              {skill.weaknesses.map((w, i) => <li key={i}>• {w}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                        {skill.actionPoints && skill.actionPoints.length > 0 && (
-                          <div>
-                            <p className="text-xs font-semibold text-blue-500 mb-1">Action Points to Improve</p>
-                            <ul className="text-sm text-muted-foreground space-y-0.5">
-                              {skill.actionPoints.map((a, i) => <li key={i}>→ {a}</li>)}
-                            </ul>
-                          </div>
-                        )}
-                        {(!skill.strengths || skill.strengths.length === 0) && (!skill.weaknesses || skill.weaknesses.length === 0) && (!skill.actionPoints || skill.actionPoints.length === 0) && (
-                          skill.averageScore > 0 ? (
-                            <div>
-                              <p className="text-sm text-muted-foreground">Averaging {skill.averageScore}/100 across your sessions.</p>
-                              <p className="text-sm text-muted-foreground mt-1">{'\u2192'} Review {skill.category} techniques in your lowest-scoring calls.</p>
                             </div>
-                          ) : (
-                            <p className="text-sm text-muted-foreground italic">Not enough data yet for a detailed breakdown.</p>
-                          )
+                            <span className={`text-lg font-bold w-12 text-right ${getScoreColor(cs.score)}`}>
+                              {cs.score > 0 ? cs.score : '—'}
+                            </span>
+                            {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
+                          </div>
+                        </button>
+                        {isExpanded && (
+                          <div className="px-4 pb-4 pt-1 space-y-3 border-t border-white/10">
+                            <p className="text-sm text-muted-foreground">{cs.cluster.description}</p>
+                            {cs.categoryBreakdown.length > 0 && (
+                              <div className="space-y-1.5">
+                                <p className="text-xs font-semibold text-muted-foreground">Category Breakdown</p>
+                                {cs.categoryBreakdown.map((cat) => {
+                                  const catData = performance.skillCategories.find(
+                                    s => (NAME_TO_ID[s.category] || s.category.toLowerCase().replace(/\s+/g, '_')) === cat.id
+                                  );
+                                  return (
+                                    <div key={cat.id} className="flex items-center justify-between text-sm">
+                                      <span className="text-muted-foreground">{catData?.category || cat.id}</span>
+                                      <div className="flex items-center gap-2">
+                                        {typeof catData?.trend === 'number' && catData.trend !== 0 && (
+                                          <span className={`text-xs flex items-center gap-0.5 ${catData.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                            {catData.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                            {catData.trend > 0 ? '+' : ''}{catData.trend}
+                                          </span>
+                                        )}
+                                        <span className={`font-bold ${getScoreColor(cat.score)}`}>{cat.score}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {/* Show strengths/weaknesses/actions from constituent categories */}
+                            {(() => {
+                              const clusterStrengths: string[] = [];
+                              const clusterWeaknesses: string[] = [];
+                              const clusterActions: string[] = [];
+                              for (const cat of cs.categoryBreakdown) {
+                                const catData = performance.skillCategories.find(
+                                  s => (NAME_TO_ID[s.category] || s.category.toLowerCase().replace(/\s+/g, '_')) === cat.id
+                                );
+                                if (catData?.strengths) clusterStrengths.push(...catData.strengths);
+                                if (catData?.weaknesses) clusterWeaknesses.push(...catData.weaknesses);
+                                if (catData?.actionPoints) clusterActions.push(...catData.actionPoints);
+                              }
+                              return (
+                                <>
+                                  {clusterStrengths.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-green-500 mb-1">Strengths</p>
+                                      <ul className="text-sm text-muted-foreground space-y-0.5">
+                                        {clusterStrengths.slice(0, 3).map((s, i) => <li key={i}>• {s}</li>)}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {clusterWeaknesses.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-red-500 mb-1">Weaknesses</p>
+                                      <ul className="text-sm text-muted-foreground space-y-0.5">
+                                        {clusterWeaknesses.slice(0, 3).map((w, i) => <li key={i}>• {w}</li>)}
+                                      </ul>
+                                    </div>
+                                  )}
+                                  {clusterActions.length > 0 && (
+                                    <div>
+                                      <p className="text-xs font-semibold text-blue-500 mb-1">Action Points</p>
+                                      <ul className="text-sm text-muted-foreground space-y-0.5">
+                                        {clusterActions.slice(0, 3).map((a, i) => <li key={i}>{'\u2192'} {a}</li>)}
+                                      </ul>
+                                    </div>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
                         )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-muted-foreground">No scored sessions yet.</p>
-              <p className="text-sm text-muted-foreground mt-1">Complete a call analysis or roleplay to see your skills breakdown.</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No scored sessions yet.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Complete a call analysis or roleplay to see your skill clusters.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* Box 4: Average Scores By (Tabs) */}
       {((performance.byOfferType && Object.keys(performance.byOfferType).length > 0) ||
@@ -800,160 +839,43 @@ export default function PerformancePage() {
           </Card>
         )}
 
-      {/* Objection Handling Insights */}
+      {/* Objection Handling Intelligence */}
       {performance.objectionInsights && (
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lightbulb className="h-5 w-5" />
-              Objection Handling Insights
-            </CardTitle>
-            <CardDescription>Common objections and how you handle them</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Top objections */}
-            <div>
-              <h4 className="text-sm font-semibold mb-2">Most Common Objections</h4>
-              <div className="space-y-2">
-                {performance.objectionInsights.topObjections.map((obj, idx) => (
-                  <div key={idx} className="p-3 rounded-lg bg-white/5 border border-white/10 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">&ldquo;{obj.text}&rdquo;</span>
-                        <Badge variant="outline" className="text-xs">{obj.pillar}</Badge>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {obj.handlingQuality != null && (
-                          <span className={`text-xs font-medium ${getScoreColor(obj.handlingQuality * 10)}`}>Quality: {obj.handlingQuality}/10</span>
-                        )}
-                        <span className="text-sm font-medium">{obj.count}×</span>
-                      </div>
-                    </div>
-                    {obj.rootCause && (
-                      <p className="text-xs text-muted-foreground"><span className="font-medium">Root Cause:</span> {obj.rootCause}</p>
-                    )}
-                    {obj.preventionOpportunity && (
-                      <p className="text-xs text-muted-foreground"><span className="font-medium">Prevention:</span> {obj.preventionOpportunity}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Pillar breakdown */}
-            {performance.objectionInsights.pillarBreakdown.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold mb-2">Handling Score by Pillar</h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {performance.objectionInsights.pillarBreakdown.map((p) => (
-                    <div key={p.pillar} className={`text-center p-3 rounded-lg border ${p.pillar === performance.objectionInsights?.weakestArea?.pillar ? 'border-red-500/40 bg-red-500/10' : 'border-white/10 bg-white/5'}`}>
-                      <p className="text-xs text-muted-foreground mb-1">{p.pillar}</p>
-                      <p className={`text-lg font-bold ${getScoreColor(p.averageHandling * 10)}`}>{p.averageHandling}</p>
-                      <p className="text-[10px] text-muted-foreground">{p.count} handled</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Guidance */}
-            {performance.objectionInsights.guidance && (
-              <p className="text-sm text-muted-foreground bg-amber-500/5 border border-amber-500/20 rounded-lg p-3">
-                💡 {performance.objectionInsights.guidance}
-              </p>
-            )}
-
-            {/* Prioritised Improvement Actions */}
-            {performance.objectionInsights.improvementActions && performance.objectionInsights.improvementActions.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold mb-2">Prioritised Improvement Actions</h4>
-                <div className="space-y-2">
-                  {performance.objectionInsights.improvementActions.map((action, idx) => (
-                    <div key={idx} className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20 space-y-1">
-                      <p className="text-sm font-medium">{action.problem}</p>
-                      <p className="text-xs text-muted-foreground"><span className="font-medium">Do differently:</span> {action.whatToDoDifferently}</p>
-                      <p className="text-xs text-muted-foreground"><span className="font-medium">When:</span> {action.whenToApply}</p>
-                      <p className="text-xs text-muted-foreground"><span className="font-medium">Why:</span> {action.whyItMatters}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ObjectionInsights
+          topObjections={performance.objectionInsights.topObjections}
+          pillarBreakdown={performance.objectionInsights.pillarBreakdown}
+          weakestArea={performance.objectionInsights.weakestArea}
+          guidance={performance.objectionInsights.guidance}
+          improvementActions={performance.objectionInsights.improvementActions}
+        />
       )}
 
-      {/* AI Insight */}
-      {performance.aiInsight && (
-        <Card className="border border-amber-500/30 bg-amber-500/5">
-          <CardHeader>
-            <CardTitle className="text-sm flex items-center gap-2">
-              <Lightbulb className="h-4 w-4" />
-              Insight
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground">{performance.aiInsight}</p>
-          </CardContent>
-        </Card>
-      )}
+      {/* Pattern Insights */}
+      <InsightsPanel
+        skillCategories={performance.skillCategories}
+        totalCalls={performance.totalCalls}
+        totalRoleplays={performance.totalRoleplays}
+      />
 
+      {/* Performance Summary & Coaching */}
+      <PerformanceSummary
+        skillCategories={performance.skillCategories}
+        aiInsight={performance.aiInsight}
+        weeklySummary={performance.weeklySummary}
+        monthlySummary={performance.monthlySummary}
+      />
 
-      {/* Weekly & Monthly Summary + PDF export */}
-      {(performance.weeklySummary || performance.monthlySummary) && (
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Summaries</CardTitle>
-              <CardDescription>This week and this month overview</CardDescription>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
-                <FileDown className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleDownloadSummary}>
-                <Download className="h-4 w-4 mr-2" />
-                Download PDF
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {performance.weeklySummary && (
-              <div>
-                <h3 className="text-sm font-semibold mb-1">This week</h3>
-                <p className="text-sm text-muted-foreground">{performance.weeklySummary.overview}</p>
-                {performance.weeklySummary.skillTrends && (
-                  <p className="text-sm text-muted-foreground mt-1">{performance.weeklySummary.skillTrends}</p>
-                )}
-                {performance.weeklySummary.actionPlan?.length ? (
-                  <ul className="list-disc list-inside text-sm mt-2 space-y-0.5">
-                    {performance.weeklySummary.actionPlan.map((a, i) => (
-                      <li key={i}>{a}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            )}
-            {performance.monthlySummary && (
-              <div>
-                <h3 className="text-sm font-semibold mb-1">This month</h3>
-                <p className="text-sm text-muted-foreground">{performance.monthlySummary.overview}</p>
-                {performance.monthlySummary.skillTrends && (
-                  <p className="text-sm text-muted-foreground mt-1">{performance.monthlySummary.skillTrends}</p>
-                )}
-                {performance.monthlySummary.actionPlan?.length ? (
-                  <ul className="list-disc list-inside text-sm mt-2 space-y-0.5">
-                    {performance.monthlySummary.actionPlan.map((a, i) => (
-                      <li key={i}>{a}</li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      {/* Export buttons */}
+      <div className="flex items-center gap-2 justify-end">
+        <Button variant="outline" size="sm" onClick={handleDownloadCSV}>
+          <FileDown className="h-4 w-4 mr-2" />
+          Export CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleDownloadSummary}>
+          <Download className="h-4 w-4 mr-2" />
+          Download PDF
+        </Button>
+      </div>
     </div>
   );
 }

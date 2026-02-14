@@ -7,8 +7,9 @@ import { OfferProfile, generateOfferSummary, getDefaultSalesStyle } from './offe
 import { ProspectAvatar, ProspectDifficultyProfile, DifficultyTier } from './prospect-avatar';
 import { FunnelContext } from './funnel-context';
 import { BehaviourState, initializeBehaviourState, adaptBehaviour, shouldRaiseObjection, getObjectionType, getOpeningLine, getBehaviourInstructions, OpeningLineContext } from './behaviour-rules';
-import { ROLEPLAY_BEHAVIORAL_RULES, PROSPECT_DIFFICULTY_MODEL } from '@/lib/training';
+import { ROLEPLAY_BEHAVIORAL_RULES, PROSPECT_DIFFICULTY_MODEL, PROSPECT_BACKSTORY_INSTRUCTIONS } from '@/lib/training';
 import { getCondensedExamples } from '@/lib/ai/knowledge/real-call-examples';
+import { getTranscriptPatternsForUser } from './transcript-patterns';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
@@ -36,6 +37,7 @@ export interface RoleplayContext {
   behaviourState: BehaviourState;
   replayPhase?: string;
   replayContext?: string;
+  userId?: string; // For loading user-specific training transcript patterns
 }
 
 /**
@@ -54,7 +56,20 @@ export async function generateProspectResponse(
   const updatedBehaviourState = adaptBehaviour(context.behaviourState, repAction);
 
   // Build system prompt with all layers
-  const systemPrompt = buildRoleplaySystemPrompt(context);
+  let systemPrompt = buildRoleplaySystemPrompt(context);
+
+  // Inject user-specific training transcript patterns (if available)
+  if (context.userId) {
+    try {
+      const transcriptPatterns = await getTranscriptPatternsForUser(context.userId);
+      if (transcriptPatterns) {
+        systemPrompt += '\n\n' + transcriptPatterns;
+      }
+    } catch (err) {
+      // Non-fatal — continue without patterns
+      console.error('[roleplay-engine] Failed to load transcript patterns:', err);
+    }
+  }
 
   // Build conversation context
   const conversationMessages = buildConversationMessages(
@@ -144,6 +159,8 @@ ${prospectAvatar.positionDescription ? `Position: ${prospectAvatar.positionDescr
 ${prospectAvatar.problems?.length ? `Problems: ${prospectAvatar.problems.join(', ')}` : ''}
 ${prospectAvatar.painDrivers?.length ? `Pain Drivers: ${prospectAvatar.painDrivers.join(', ')}` : ''}
 ${prospectAvatar.ambitionDrivers?.length ? `Ambition Drivers: ${prospectAvatar.ambitionDrivers.join(', ')}` : ''}
+
+${PROSPECT_BACKSTORY_INSTRUCTIONS}
 
 CURRENT BEHAVIOUR STATE:
 Resistance Level: ${behaviourState.currentResistance}/10

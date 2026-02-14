@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Play, CheckCircle, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
+import { PhaseTimelineBar } from './PhaseTimelineBar';
 
 export interface PhaseAnalysisTabsProps {
   phaseScores: { overall?: number; intro?: number; discovery?: number; pitch?: number; close?: number; objections?: number };
@@ -71,6 +72,13 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
             </button>
           ))}
         </div>
+
+        {/* Phase Timeline Bar */}
+        <PhaseTimelineBar
+          phaseTimings={phaseAnalysis?.phaseTimings}
+          totalDuration={phaseAnalysis?.totalDuration}
+          activePhase={activePhase as any}
+        />
 
         {/* OVERALL TAB */}
         {activePhase === 'overall' && (
@@ -172,24 +180,31 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
                 </div>
               )}
 
-              {/* What Limited Impact — structured feedback with timestamps (new array format) */}
+              {/* What Limited Impact — structured feedback with Problem/Correction cards */}
               {Array.isArray(detail?.whatLimitedImpact) && detail.whatLimitedImpact.length > 0 && (
                 <div className="space-y-3">
                   <h4 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" /> What Limited Impact
                   </h4>
                   {detail.whatLimitedImpact.map((item: any, i: number) => (
-                    <div key={i} className="rounded-lg border border-white/10 bg-white/5 p-3 space-y-2">
-                      {item.timestamp && (
-                        <span className="text-xs font-mono text-muted-foreground bg-white/10 px-1.5 py-0.5 rounded">
-                          {item.timestamp}
-                        </span>
-                      )}
-                      <p className="text-sm text-muted-foreground">{item.description}</p>
+                    <div key={i} className="rounded-lg border border-white/10 overflow-hidden">
+                      {/* Problem section — red/warning accent */}
+                      <div className="border-l-4 border-l-red-500 bg-red-500/5 p-4 space-y-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold text-red-400 uppercase tracking-wider">Problem</p>
+                          {item.timestamp && (
+                            <span className="text-xs font-mono text-muted-foreground bg-white/10 px-1.5 py-0.5 rounded">
+                              {item.timestamp}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+                      </div>
+                      {/* Correction section — green/positive accent */}
                       {item.whatShouldHaveDone && (
-                        <div className="text-sm text-primary/80 bg-primary/5 rounded p-2 border border-primary/10">
-                          <span className="font-semibold text-xs text-primary">Instead: </span>
-                          {item.whatShouldHaveDone}
+                        <div className="border-l-4 border-l-emerald-500 bg-emerald-500/5 p-4 space-y-2">
+                          <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">Correction</p>
+                          <p className="text-sm text-muted-foreground leading-relaxed">{item.whatShouldHaveDone}</p>
                         </div>
                       )}
                     </div>

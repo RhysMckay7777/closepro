@@ -6,8 +6,67 @@ import { roleplaySessions, roleplayMessages, roleplayAnalysis } from '@/db/schem
 import { eq, and } from 'drizzle-orm';
 import { analyzeCall, calculateCloserEffectiveness } from '@/lib/ai/analysis';
 import { sql } from 'drizzle-orm';
+import { ROLEPLAY_FEEDBACK_PROMPT, ROLEPLAY_FEEDBACK_DIMENSIONS, ROLEPLAY_FEEDBACK_LABELS, ROLEPLAY_FEEDBACK_DESCRIPTIONS } from '@/lib/training/scoring-categories';
+import Groq from 'groq-sdk';
 
 export const maxDuration = 120;
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const groqClient = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
+
+/**
+ * Generate roleplay-specific post-call feedback (5 dimensions + coaching).
+ * Runs as a secondary AI call after the main analysis.
+ */
+async function generateRoleplayFeedback(transcript: string): Promise<Record<string, unknown> | null> {
+  if (!groqClient) return null;
+  try {
+    const prompt = `You are a high-performance sales coach. Analyze this roleplay transcript and provide structured post-call feedback.
+
+${ROLEPLAY_FEEDBACK_PROMPT}
+
+TRANSCRIPT:
+${transcript.length > 4000 ? transcript.substring(0, 4000) + '\n... (truncated)' : transcript}
+
+Return ONLY valid JSON with this structure:
+{
+  "dimensions": {
+    "pre_set": { "score": number (1-10), "feedback": string },
+    "authority": { "score": number (1-10), "feedback": string },
+    "objection_handling": { "score": number (1-10), "feedback": string },
+    "close_attempt": { "score": number (1-10), "feedback": string },
+    "overall": { "score": number (1-10), "feedback": string }
+  },
+  "authorityLevelUsed": string (which archetype: Advisee/Peer/Advisor and why),
+  "whatWorked": string[] (2-4 specific moments where salesperson did well),
+  "whatDidntWork": string[] (2-4 missed opportunities or weak moments),
+  "keyImprovement": string (the ONE thing that would have the biggest impact),
+  "transcriptMoment": {
+    "quote": string (the specific exchange from the transcript),
+    "whatTheyShoulHaveSaid": string (the improved version)
+  }
+}`;
+
+    const response = await groqClient.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: 'You are an elite sales performance coach. Return only valid JSON.' },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.3,
+      max_tokens: 3000,
+      response_format: { type: 'json_object' },
+    });
+
+    const content = response.choices[0]?.message?.content;
+    if (!content) return null;
+    let jsonText = content.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
+    return JSON.parse(jsonText);
+  } catch (err) {
+    console.error('[roleplay-feedback] Error generating feedback:', err);
+    return null;
+  }
+}
 
 /**
  * POST - Score a completed roleplay session
@@ -121,6 +180,15 @@ export async function POST(
       stagesCompleted,
     });
 
+    // Generate roleplay-specific post-call feedback (5 dimensions) in parallel
+    let roleplayFeedback: Record<string, unknown> | null = null;
+    try {
+      roleplayFeedback = await generateRoleplayFeedback(transcript);
+      console.log('[SCORING] Roleplay feedback generated:', !!roleplayFeedback);
+    } catch (feedbackErr) {
+      console.error('[SCORING] Roleplay feedback generation failed (non-fatal):', feedbackErr);
+    }
+
     // Build insert values with v1 + v2 columns
     const insertValues = {
       roleplaySessionId: sessionId,
@@ -158,6 +226,8 @@ export async function POST(
         ? JSON.stringify(analysisResult.prospectDifficultyJustifications) : null,
       actionPoints: analysisResult.actionPoints
         ? JSON.stringify(analysisResult.actionPoints.slice(0, 3)) : null,
+      // Roleplay-specific post-call feedback (5 dimensions)
+      roleplayFeedback: roleplayFeedback ? JSON.stringify(roleplayFeedback) : null,
     };
 
     let analysis;
@@ -177,6 +247,7 @@ export async function POST(
         await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS closer_effectiveness TEXT`);
         await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS prospect_difficulty_justifications TEXT`);
         await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS action_points TEXT`);
+        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS roleplay_feedback TEXT`);
         // Replay context columns on sessions table
         await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_phase TEXT`);
         await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_source_call_id TEXT`);

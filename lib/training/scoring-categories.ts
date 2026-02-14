@@ -168,3 +168,65 @@ export const OBJECTION_PILLAR_LABELS: Record<ObjectionPillar, string> = {
 export function getCategoryLabel(id: string): string {
     return CATEGORY_LABELS[id as ScoringCategoryId] ?? id;
 }
+
+/**
+ * Roleplay Post-Call Feedback Dimensions — v2.0
+ * Used after a roleplay ends (either close or prospect leaving) to provide
+ * structured feedback to the student. These are SEPARATE from the 10 scoring
+ * categories — they are roleplay-specific coaching dimensions.
+ *
+ * Source: Connor Williams' post-call feedback framework.
+ */
+export const ROLEPLAY_FEEDBACK_DIMENSIONS = [
+    'pre_set',
+    'authority',
+    'objection_handling',
+    'close_attempt',
+    'overall',
+] as const;
+
+export type RoleplayFeedbackDimensionId = (typeof ROLEPLAY_FEEDBACK_DIMENSIONS)[number];
+
+export const ROLEPLAY_FEEDBACK_LABELS: Record<RoleplayFeedbackDimensionId, string> = {
+    pre_set: 'Pre-Set Score',
+    authority: 'Authority Score',
+    objection_handling: 'Objection Handling Score',
+    close_attempt: 'Close Attempt Score',
+    overall: 'Overall Score',
+};
+
+export const ROLEPLAY_FEEDBACK_DESCRIPTIONS: Record<RoleplayFeedbackDimensionId, string> = {
+    pre_set:
+        'Did the salesperson effectively plant ammunition during discovery? (e.g., got prospect to admit analysis paralysis, commitment level, time spent looking)',
+    authority:
+        'Was the salesperson\'s tone consistent and authoritative throughout — not pushy, not weak? Did they maintain frame control?',
+    objection_handling:
+        'How well were objections addressed? Did they stay calm, use the prospect\'s own words, and offer logical workarounds?',
+    close_attempt:
+        'Was the close natural and well-timed? Did they use an assumptive close, handle silence, and lead the decision?',
+    overall:
+        'Overall performance considering all dimensions. Was the salesperson\'s approach effective for this prospect\'s difficulty level?',
+};
+
+/**
+ * Prompt instructions for the AI to generate post-call roleplay feedback.
+ * Injected into the scoring/feedback prompt after a roleplay ends.
+ */
+export const ROLEPLAY_FEEDBACK_PROMPT = `
+POST-CALL FEEDBACK MODE — After the roleplay ends, provide a structured breakdown:
+
+1. Authority Level Used: Which archetype you played (Advisee/Peer/Advisor) and why
+2. What Worked: Specific moments where the salesperson did well
+3. What Didn't Work: Missed opportunities, weak objection handling, tone issues
+
+Score each dimension 1-10:
+- Pre-Set Score: Did the salesperson effectively plant ammunition during discovery?
+- Authority Score: Was the salesperson's tone consistent and authoritative (not pushy)?
+- Objection Handling Score: How well were objections addressed?
+- Close Attempt Score: Was the close natural and well-timed?
+- Overall Score: Overall performance
+
+4. Key Improvement Area: The ONE thing that would have the biggest impact
+5. Specific Transcript Moment: Reference a specific exchange and suggest what they should have said instead
+`;
+

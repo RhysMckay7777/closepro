@@ -10,7 +10,7 @@ import { ArrowLeft, Loader2, AlertCircle, ChevronDown, ChevronUp, Trash2, Refres
 import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { getCategoryLabel } from '@/lib/ai/scoring-framework';
-import { CallSnapshotBar, ProspectDifficultyPanel, PhaseAnalysisTabs, ActionPointCards, SalesFiguresPanel } from '@/components/call-review';
+import { CallSnapshotBar, ProspectDifficultyPanel, PhaseAnalysisTabs, ActionPointCards, SalesFiguresPanel, TranscriptView } from '@/components/call-review';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 export default function CallDetailPage() {
@@ -286,13 +286,14 @@ export default function CallDetailPage() {
                 </div>
               )}
 
-              {/* Transcript */}
-              {call.transcript && (
+              {/* Transcript — structured with speaker labels & timestamps */}
+              {(call.transcript || call.transcriptJson) && (
                 <div>
                   <p className="text-sm font-medium mb-2">Transcript</p>
-                  <div className="max-h-64 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4 text-sm leading-relaxed whitespace-pre-wrap">
-                    {call.transcript}
-                  </div>
+                  <TranscriptView
+                    transcript={call.transcript}
+                    transcriptJson={call.transcriptJson}
+                  />
                 </div>
               )}
 
@@ -305,6 +306,7 @@ export default function CallDetailPage() {
                 prospectDifficultyTotal={analysis.prospectDifficulty}
                 difficultyTier={analysis.prospectDifficultyTier}
                 closerEffectiveness={analysis.closerEffectiveness}
+                overallScore={analysis.overallScore ?? analysis.phaseScores?.overall ?? null}
               />
             </CardContent>
           </Card>
