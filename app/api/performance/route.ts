@@ -127,6 +127,11 @@ function getRangeDates(range: string): { start: Date; end: Date; label: string }
       end.setDate(31);
       end.setHours(23, 59, 59, 999);
       return { start, end, label: 'Last Year' };
+    case 'all_time':
+      start.setFullYear(2020);
+      start.setMonth(0);
+      start.setDate(1);
+      return { start, end, label: 'All Time' };
     default: {
       const days = parseInt(range, 10) || 30;
       start.setDate(start.getDate() - days);
@@ -372,7 +377,7 @@ export async function GET(request: NextRequest) {
     const monthParam = searchParams.get('month');
     const rangeParam = monthParam || searchParams.get('range') || searchParams.get('days') || 'this_month';
     const rangeLabel =
-      ['this_week', 'this_month', 'last_month', 'last_quarter', 'last_year'].includes(rangeParam)
+      ['all_time', 'this_week', 'this_month', 'last_month', 'last_quarter', 'last_year'].includes(rangeParam)
         ? rangeParam
         : undefined;
     const { start: startDate, end: endDate, label: periodLabel } = getRangeDates(rangeParam);
@@ -717,6 +722,12 @@ export async function GET(request: NextRequest) {
       guidance: objectionGuidance,
       improvementActions: improvementActions.length > 0 ? improvementActions : undefined,
     } : null;
+
+    console.log('[Performance API] Debug:', {
+      totalAnalyses: allAnalyses.length,
+      skillCategoriesCount: allSkillCategories.length,
+      sampleCategories: allSkillCategories.slice(0, 3).map(c => ({ cat: c.category, avg: c.averageScore })),
+    });
 
     // ── Principle Summaries (B1) ──
     // Build a lookup from category display name → canonical ID

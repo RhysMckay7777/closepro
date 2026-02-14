@@ -14,6 +14,7 @@ import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
 import { PerformanceSummary } from '@/components/dashboard/PerformanceSummary';
 
 const RANGE_OPTIONS = [
+  { value: 'all_time', label: 'All Time' },
   { value: 'this_week', label: 'This Week' },
   { value: 'this_month', label: 'This Month' },
   { value: 'last_month', label: 'Last Month' },
@@ -112,7 +113,7 @@ export default function PerformancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
-  const [range, setRange] = useState<string>('this_month');
+  const [range, setRange] = useState<string>('all_time');
   // Month-specific selection
   const defaultMonthYear = getDefaultMonthYear();
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthYear.month);

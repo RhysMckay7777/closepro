@@ -14,10 +14,36 @@ export interface TranscriptViewProps {
   transcriptJson?: string | { utterances: TranscriptUtterance[] } | null;
 }
 
-function formatTimestamp(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
+function formatTimestamp(rawSeconds: number): string {
+  // Handle various input formats from different STT providers
+  let seconds = rawSeconds;
+
+  // If the value is unreasonably large, it might be in milliseconds
+  // A typical call is under 2 hours = 7200 seconds
+  if (seconds > 36000) {
+    // Likely milliseconds (> 10 hours in seconds)
+    seconds = seconds / 1000;
+  }
+  if (seconds > 36000) {
+    // Still too large — might be centiseconds or deciseconds
+    seconds = seconds / 10;
+  }
+  if (seconds > 36000) {
+    seconds = seconds / 10;
+  }
+
+  const totalSeconds = Math.floor(seconds);
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
   return `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}]`;
+}
+
+function cleanRawTranscriptTimestamps(text: string): string {
+  // Match patterns like [36925:10] or [36925.10] — large numbers that are raw seconds/ms
+  return text.replace(/\[(\d{3,})[:.]\d+\]/g, (match, startRaw) => {
+    const num = parseFloat(startRaw);
+    return formatTimestamp(num);
+  });
 }
 
 function getSpeakerLabel(speaker: string): 'Closer' | 'Prospect' {
@@ -67,7 +93,7 @@ export function TranscriptView({ transcript, transcriptJson }: TranscriptViewPro
   if (transcript) {
     return (
       <div className="max-h-80 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-4 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
-        {transcript}
+        {cleanRawTranscriptTimestamps(transcript)}
       </div>
     );
   }

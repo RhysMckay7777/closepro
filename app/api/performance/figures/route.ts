@@ -298,10 +298,9 @@ export async function GET(request: NextRequest) {
         const d = new Date(inst.dueDate);
         const pct = inst.commissionRatePct ?? userCommissionPct ?? 0;
         const instStatus = inst.status ?? 'pending';
-        // Commission only counts for collected instalments
-        const commAmt = instStatus === 'collected'
-          ? (inst.commissionAmountCents ?? Math.round(inst.amountCents * (pct / 100)))
-          : 0;
+        // ASSUME all instalments are collected (Connor: "assume cash had been collected")
+        // User can delete the row if the cash wasn't actually collected
+        const commAmt = inst.commissionAmountCents ?? Math.round(inst.amountCents * (pct / 100));
         // B3: Only instalment 1 gets full deal revenue; subsequent instalments get 0
         const totalInstalments = totalsByCall.get(inst.salesCallId) ?? 1;
         const fullDealRevenueCents = inst.amountCents * totalInstalments;
@@ -311,10 +310,10 @@ export async function GET(request: NextRequest) {
           date: d.toISOString().slice(0, 10),
           offerName: inst.offerName ?? '—',
           prospectName: inst.prospectName || 'Unknown',
-          cashCollected: instStatus === 'collected' ? inst.amountCents : 0,
+          cashCollected: inst.amountCents,  // Always show — assumed collected
           revenueGenerated: isFirstInstalment ? fullDealRevenueCents : 0,
           commissionPct: pct,
-          commissionAmount: commAmt,
+          commissionAmount: commAmt,  // Always calculate commission
           isInstalment: true,
           instalmentNumber: inst.instalmentNumber ?? 0,
           totalInstalments,
