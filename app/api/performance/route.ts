@@ -5,6 +5,7 @@ import { db } from '@/db';
 import { salesCalls, callAnalysis, roleplaySessions, roleplayAnalysis, offers } from '@/db/schema';
 import { eq, and, gte, lt, lte, desc, sql } from 'drizzle-orm';
 import { SCORING_CATEGORIES, CATEGORY_LABELS, type ScoringCategoryId } from '@/lib/training/scoring-categories';
+import { CORE_PRINCIPLES } from '@/lib/training/core-principles';
 
 // ── Category ID mapping (old → new canonical) ────────────────
 const VALID_IDS = new Set<string>(SCORING_CATEGORIES);
@@ -717,6 +718,169 @@ export async function GET(request: NextRequest) {
       improvementActions: improvementActions.length > 0 ? improvementActions : undefined,
     } : null;
 
+    // ── Principle Summaries (B1) ──
+    // Build a lookup from category display name → canonical ID
+    const DISPLAY_NAME_TO_ID: Record<string, string> = {};
+    for (const [id, name] of Object.entries(DISPLAY_NAMES)) {
+      DISPLAY_NAME_TO_ID[name] = id;
+    }
+
+    const principleSummaries = CORE_PRINCIPLES.map((p) => {
+      // Find matching skillCategories for this principle's related categories
+      const matchingCats = allSkillCategories.filter((sc) => {
+        const catId = DISPLAY_NAME_TO_ID[sc.category] || sc.category.toLowerCase().replace(/\s+/g, '_');
+        return p.relatedCategories.includes(catId);
+      });
+
+      const score = matchingCats.length > 0
+        ? Math.round(matchingCats.reduce((s, c) => s + c.averageScore, 0) / matchingCats.length)
+        : 0;
+
+      const trend = matchingCats.length > 0
+        ? Math.round(matchingCats.reduce((s, c) => s + (c.trend ?? 0), 0) / matchingCats.length * 10) / 10
+        : 0;
+
+      const strengths = matchingCats.flatMap((c) => c.strengths ?? []).filter(Boolean);
+      const weaknesses = matchingCats.flatMap((c) => c.weaknesses ?? []).filter(Boolean);
+      const improvements = matchingCats.flatMap((c) => c.actionPoints ?? []).filter(Boolean);
+
+      // Generate summary without AI call
+      let summary: string;
+      if (score === 0) {
+        summary = `No data yet for ${p.name}. Complete more calls or roleplays to see insights.`;
+      } else if (score >= 80) {
+        summary = `Strong performance in ${p.name}. ${strengths[0] || 'Consistently scoring above target.'}`;
+      } else if (score >= 60) {
+        summary = `Developing competency in ${p.name}. ${strengths[0] || 'Showing progress'}, but ${weaknesses[0] || 'room for improvement remains'}.`;
+      } else {
+        summary = `Needs focus on ${p.name}. ${weaknesses[0] || 'Scores below target'}. Priority: ${improvements[0] || 'review techniques and practice'}.`;
+      }
+
+      return {
+        id: p.id,
+        name: p.name,
+        description: p.description,
+        score,
+        trend,
+        summary,
+        strengths: [...new Set(strengths)].slice(0, 3),
+        weaknesses: [...new Set(weaknesses)].slice(0, 3),
+        improvements: [...new Set(improvements)].slice(0, 3),
+      };
+    });
+
+    // ── Priority Action Steps (B2) ──
+    // Extract ALL action steps from every analysis
+    const STOP_WORDS = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'it', 'its', 'you', 'your', 'they', 'their', 'more', 'not', 'no', 'so', 'if', 'than', 'from', 'up', 'out', 'when', 'how', 'what', 'which', 'who', 'about']);
+
+    interface ActionStepEntry {
+      action: string;
+      reason: string;
+      source: string;
+    }
+
+    const allActionSteps: ActionStepEntry[] = [];
+
+    for (const analysis of allAnalyses) {
+      // Extract action steps from categoryFeedback
+      const feedback = parseCategoryFeedbackText(analysis.categoryFeedback);
+      for (const [, fb] of Object.entries(feedback)) {
+        if (fb.howItAffectedOutcome) {
+          const sourceName = analysis.type === 'call'
+            ? `Call: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`
+            : `Roleplay: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`;
+          allActionSteps.push({
+            action: fb.howItAffectedOutcome,
+            reason: fb.whatWasMissing || '',
+            source: sourceName,
+          });
+        }
+      }
+
+      // Extract from priorityFixes
+      const fixes = (() => {
+        if (!analysis.priorityFixesData) return [];
+        try {
+          const parsed = typeof analysis.priorityFixesData === 'string'
+            ? JSON.parse(analysis.priorityFixesData)
+            : analysis.priorityFixesData;
+          return Array.isArray(parsed) ? parsed : [];
+        } catch { return []; }
+      })();
+
+      for (const fix of fixes) {
+        const action = fix.whatToDoDifferently || fix.whatToDo || '';
+        const reason = fix.whyItMatters || fix.whyItMattered || fix.problem || '';
+        if (action) {
+          const sourceName = analysis.type === 'call'
+            ? `Call: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`
+            : `Roleplay: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`;
+          allActionSteps.push({ action, reason, source: sourceName });
+        }
+      }
+    }
+
+    // Group by similarity (3+ common words after removing stop words)
+    const getKeywords = (text: string): Set<string> => {
+      return new Set(
+        text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !STOP_WORDS.has(w))
+      );
+    };
+
+    interface ActionGroup {
+      action: string;
+      reason: string;
+      frequency: number;
+      sources: Set<string>;
+    }
+
+    const groups: ActionGroup[] = [];
+
+    for (const step of allActionSteps) {
+      const stepKeywords = getKeywords(step.action);
+      let matched = false;
+
+      for (const group of groups) {
+        const groupKeywords = getKeywords(group.action);
+        let commonCount = 0;
+        for (const kw of stepKeywords) {
+          if (groupKeywords.has(kw)) commonCount++;
+        }
+        if (commonCount >= 3) {
+          group.frequency++;
+          group.sources.add(step.source);
+          // Use the longer phrasing as representative
+          if (step.action.length > group.action.length) {
+            group.action = step.action;
+          }
+          if (step.reason && (!group.reason || step.reason.length > group.reason.length)) {
+            group.reason = step.reason;
+          }
+          matched = true;
+          break;
+        }
+      }
+
+      if (!matched) {
+        groups.push({
+          action: step.action,
+          reason: step.reason,
+          frequency: 1,
+          sources: new Set([step.source]),
+        });
+      }
+    }
+
+    const priorityActionSteps = groups
+      .sort((a, b) => b.frequency - a.frequency)
+      .slice(0, 3)
+      .map((g) => ({
+        action: g.action,
+        reason: g.reason,
+        frequency: g.frequency,
+        sources: [...g.sources].slice(0, 3),
+      }));
+
     // ── AI insight ──
     const bestCat = allSkillCategories[0];
     const worstCat = allSkillCategories[allSkillCategories.length - 1];
@@ -805,6 +969,8 @@ export async function GET(request: NextRequest) {
       callWeeklyData,
       roleplayWeeklyData,
       skillCategories: allSkillCategories,
+      principleSummaries,
+      priorityActionSteps,
       strengths,
       weaknesses,
       byOfferType,

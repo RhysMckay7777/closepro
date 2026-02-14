@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Loader2, AlertCircle, ChevronDown, ChevronUp, Trash2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, ChevronDown, ChevronUp, Trash2, RefreshCw, Play } from 'lucide-react';
 import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
 import { getCategoryLabel } from '@/lib/ai/scoring-framework';
@@ -24,6 +24,7 @@ export default function CallDetailPage() {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [reanalyzing, setReanalyzing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [replayLoading, setReplayLoading] = useState(false);
 
   useEffect(() => {
     if (!callId) return;
@@ -85,6 +86,27 @@ export default function CallDetailPage() {
         return <Badge variant="destructive">Failed</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const handleReplayInRoleplay = async () => {
+    setReplayLoading(true);
+    try {
+      const res = await fetch('/api/roleplay/replay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callId: call.id }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to create replay session');
+      }
+      const data = await res.json();
+      router.push(`/dashboard/roleplay/${data.sessionId}`);
+    } catch (err: any) {
+      toastError(err.message || 'Failed to start replay');
+    } finally {
+      setReplayLoading(false);
     }
   };
 
@@ -331,6 +353,27 @@ export default function CallDetailPage() {
                 sectionNumber={4}
               />
             </>
+          )}
+
+          {/* Replay in Roleplay */}
+          {analysis?.prospectDifficultyJustifications && (
+            <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+              <CardContent className="py-4">
+                <Button
+                  onClick={handleReplayInRoleplay}
+                  disabled={replayLoading}
+                  className="w-full"
+                  variant="outline"
+                >
+                  {replayLoading ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="h-4 w-4 mr-2" />
+                  )}
+                  Replay This Call in Roleplay
+                </Button>
+              </CardContent>
+            </Card>
           )}
 
           {/* ══════ V1 SECTIONS (10-category scoring — backward compat) ══════ */}

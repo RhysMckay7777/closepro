@@ -235,6 +235,7 @@ export async function GET(request: NextRequest) {
       instalmentNumber?: number;
       totalInstalments?: number;
       instalmentStatus?: string;
+      paymentType?: 'Pay in Full' | 'Payment Plan' | 'Deposit';
     }> = salesRows.map((r) => {
       const cash = r.cashCollected ?? 0;
       const pct = r.commissionRatePct ?? userCommissionPct ?? 0;
@@ -247,6 +248,7 @@ export async function GET(request: NextRequest) {
         revenueGenerated: r.revenueGenerated ?? 0,
         commissionPct: pct,
         commissionAmount: Math.round(cash * (pct / 100)),
+        paymentType: r.result === 'deposit' ? 'Deposit' as const : 'Pay in Full' as const,
       };
     });
 
@@ -300,19 +302,24 @@ export async function GET(request: NextRequest) {
         const commAmt = instStatus === 'collected'
           ? (inst.commissionAmountCents ?? Math.round(inst.amountCents * (pct / 100)))
           : 0;
+        // B3: Only instalment 1 gets full deal revenue; subsequent instalments get 0
+        const totalInstalments = totalsByCall.get(inst.salesCallId) ?? 1;
+        const fullDealRevenueCents = inst.amountCents * totalInstalments;
+        const isFirstInstalment = (inst.instalmentNumber ?? 0) === 1;
         salesList.push({
           callId: inst.salesCallId,
           date: d.toISOString().slice(0, 10),
           offerName: inst.offerName ?? '—',
           prospectName: inst.prospectName || 'Unknown',
           cashCollected: instStatus === 'collected' ? inst.amountCents : 0,
-          revenueGenerated: inst.amountCents,
+          revenueGenerated: isFirstInstalment ? fullDealRevenueCents : 0,
           commissionPct: pct,
           commissionAmount: commAmt,
           isInstalment: true,
           instalmentNumber: inst.instalmentNumber ?? 0,
-          totalInstalments: totalsByCall.get(inst.salesCallId) ?? 0,
+          totalInstalments,
           instalmentStatus: instStatus,
+          paymentType: 'Payment Plan' as const,
         });
       }
     } catch (instErr: unknown) {

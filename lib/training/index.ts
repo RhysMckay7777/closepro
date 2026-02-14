@@ -45,9 +45,9 @@ export {
 export type { FinancialSituationId } from './prospect-backstories';
 
 export {
-    SKILL_CLUSTERS,
-    getClusterForCategory,
-    computeClusterScores,
-} from './skill-clusters';
+    CORE_PRINCIPLES,
+    getPrincipleForCategory,
+    computePrincipleScores,
+} from './core-principles';
 
-export type { SkillCluster, SkillClusterId } from './skill-clusters';
+export type { CorePrinciple, PrincipleScore } from './core-principles';

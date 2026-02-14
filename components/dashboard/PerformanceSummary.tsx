@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { SKILL_CLUSTERS, computeClusterScores } from '@/lib/training/skill-clusters';
+import { CORE_PRINCIPLES, computePrincipleScores } from '@/lib/training/core-principles';
 
 export interface PerformanceSummaryProps {
   /** Skill categories from the API (10 categories with averageScore 0-100) */
@@ -55,9 +55,9 @@ export function PerformanceSummary({
     catScores[id] = cat.averageScore;
   }
 
-  // Compute cluster scores
-  const clusterScores = computeClusterScores(catScores);
-  const sorted = [...clusterScores].sort((a, b) => a.score - b.score);
+  // Compute principle scores
+  const principleScores = computePrincipleScores(catScores);
+  const sorted = [...principleScores].sort((a, b) => a.score - b.score);
   const primaryFocus = sorted.find(c => c.score > 0);
   const secondaryFocus = sorted.length > 1 ? sorted.find((c, i) => i > 0 && c.score > 0) : null;
 
@@ -105,7 +105,7 @@ export function PerformanceSummary({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold uppercase tracking-wider text-red-400">Primary</span>
-                  <span className="text-sm font-medium">{primaryFocus.cluster.name}</span>
+                  <span className="text-sm font-medium">{primaryFocus.principle.name}</span>
                 </div>
                 <span className={`text-lg font-bold ${getScoreColor(primaryFocus.score)}`}>
                   {primaryFocus.score}/100
@@ -115,7 +115,7 @@ export function PerformanceSummary({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-semibold uppercase tracking-wider text-amber-400">Secondary</span>
-                    <span className="text-sm font-medium">{secondaryFocus.cluster.name}</span>
+                    <span className="text-sm font-medium">{secondaryFocus.principle.name}</span>
                   </div>
                   <span className={`text-lg font-bold ${getScoreColor(secondaryFocus.score)}`}>
                     {secondaryFocus.score}/100

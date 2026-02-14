@@ -1,587 +1,1009 @@
-PROMPT 3/5 — PHASE TIMELINE BAR + TRANSCRIPT IMPROVEMENTS
+PROMPT B: 9 Core Principles + Commission Fixes + Replay Feature
 CONTEXT
-Connor's V2.1 spec adds a visual timeline bar to phase analysis and fixes transcript display issues.
-These are connected: the timeline bar must align with transcript timestamps, and coaching references
-must use exact timestamps from the transcript.
+This is a refinement prompt. The system is nearly production-ready. This prompt addresses 5 remaining items from Connor's review. Read every module fully before starting.
 
-STEP 1: AUDIT
-bash
-# Find phase analysis components
-find . -path "*phase*" -name "*.tsx" | head -20
-find . -path "*analysis*" -name "*.tsx" | head -20
-grep -rn "phase.*tab\|phaseTab\|ActivePhase\|selectedPhase" --include="*.tsx" components/ app/
+Previous prompts already built:
 
-# Find transcript display components
-find . -path "*transcript*" -name "*.tsx" | head -20
-grep -rn "Speaker.*A\|Speaker.*B\|speakerA\|speakerB\|speaker.*label" --include="*.tsx" components/ app/
-grep -rn "transcript.*line\|TranscriptLine\|transcriptEntry" --include="*.tsx" components/ app/
+Prompt 1: Commission on cash collected (figures/route.ts line 249), instalment dueDate filtering, instalmentNumber/status/collectedDate columns
 
-# Find timestamp handling
-grep -rn "timestamp\|startTime\|endTime\|duration" --include="*.ts" --include="*.tsx" lib/ app/ components/
+Prompt 25: ProspectDifficultyPanel with prospectContextSummary + dimensionScores, three-column CallSnapshotBar, deeper phase analysis
 
-# Find phase detection / phase transition logic
-grep -rn "phaseTransition\|detectPhase\|phaseStart\|phaseEnd\|phaseBoundary" --include="*.ts" lib/ app/
-Read the entire phase analysis component and transcript display component.
+Prompt 35: TranscriptView with Closer/Prospect labels + MM:SS timestamps, PhaseTimelineBar
 
-STEP 2: IMPLEMENT 10.1 — Speaker Labels Fix
-CURRENT: Shows "Speaker A" and "Speaker B"
-REQUIRED: Shows "Closer" and "Prospect"
-Find the transcript processing function (where raw transcript is formatted for display)
+Prompt 45: 6 skill clusters (skill-clusters.ts), ObjectionInsights, InsightsPanel, PerformanceSummary components
 
-Replace speaker label logic:
+Prompt A: ElevenLabs TTS (lib/tts/elevenlabs-client.ts), prospect behavior rules, Zoom-style roleplay layout, Prospect Context UI restyle
 
-typescript
-// OLD
-const speakerLabel = speaker === 'A' ? 'Speaker A' : 'Speaker B';
+AUDIT FIRST
+Before implementing, read these files in full:
 
-// NEW
-const speakerLabel = speaker === 'A' ? 'Closer' : 'Prospect';
-// OR if detected by who speaks first / who opened the call:
-const speakerLabel = isCloser(speaker) ? 'Closer' : 'Prospect';
-Apply this EVERYWHERE transcript lines are displayed:
+lib/training/skill-clusters.ts (will be replaced)
 
-Main transcript panel
+app/(dashboard)/dashboard/performance/page.tsx (imports SKILL_CLUSTERS, computeClusterScores)
 
-Phase analysis quoted moments
+app/api/performance/route.ts (returns skillCategories array)
 
-Action step references
+app/api/performance/figures/route.ts (instalment loop ~line 293-314)
 
-Any modal/popup that shows transcript excerpts
+app/(dashboard)/dashboard/performance/figures/page.tsx (commission table UI)
 
-STEP 3: IMPLEMENT 10.2 — Timestamp Display on Each Transcript Line
-CURRENT: Transcript lines may not show timestamps
-REQUIRED: Every line shows [MM:SS] Closer: or [MM:SS] Prospect:
-Find where transcript data comes from (transcription API response)
+app/(dashboard)/dashboard/calls/[callId]/page.tsx (call detail page)
 
-Verify timestamps exist in the raw data (they should from Deepgram/Whisper/AssemblyAI)
+app/api/roleplay/route.ts (roleplay session creation)
 
-Format each line as:
+lib/ai/analysis.ts (analysis prompt — has action steps in section 7)
 
-text
-[12:43] Closer: So what would that look like for you?
-[12:46] Prospect: I think I'd want to…
-The timestamp format MUST be [MM:SS] — consistent, zero-padded
+MODULE B1: Replace 6 Skill Clusters with 9 Core Principles
+What Connor Said
+"Where we done our sales philosophy document, we said there were some core principles: Authority, Structure, Communication & Listening, Gap Creation, Value Positioning, Trust Building, Adaptability, Objection Strategy, Decision Leadership. Those nine things — I would like in the performance."
 
-Implementation in the transcript component:
+"Not necessarily scored, just how are they faring in each area? What advice do we have? It should be broken down into a summary of how they're performing, what their strengths are, what their weaknesses are, and then suggested ways to improve."
+
+Step 1: Replace lib/training/skill-clusters.ts with lib/training/core-principles.ts
+Delete or rename skill-clusters.ts. Create core-principles.ts:
 
 typescript
-function formatTimestamp(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `[${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}]`;
+export interface CorePrinciple {
+  id: string;
+  name: string;
+  description: string;
+  relatedCategories: string[]; // Maps to the 10 scoring categories from analysis
 }
 
-// Each transcript line renders as:
-<span className="text-gray-400 font-mono text-sm">{formatTimestamp(line.startTime)}</span>
-<span className="font-semibold">{line.speaker === 'closer' ? 'Closer' : 'Prospect'}:</span>
-<span>{line.text}</span>
-STEP 4: IMPLEMENT SECTION 11 — Timestamp Consistency Between Transcript and Phase Analysis
-REQUIREMENT:
-All timestamps referenced in coaching output (What Limited Impact, Action Steps, Phase summaries)
-MUST match the exact transcript timestamps. No approximations.
-
-Find the AI analysis prompt that generates phase summaries and coaching
-
-ADD this instruction:
-
-text
-TIMESTAMP ACCURACY RULE:
-When referencing specific moments from the transcript, you MUST use the EXACT [MM:SS]
-timestamp from the transcript data provided. Do NOT approximate, round, or estimate
-timestamps. Every timestamp you reference must correspond to an actual line in the
-transcript.
-
-Format: Always use [MM:SS] format (e.g., [04:23], [12:07], [45:31])
-Ensure the full transcript with timestamps is passed to the AI during analysis
-
-Verify that the AI's referenced timestamps appear in the actual transcript
-
-STEP 5: IMPLEMENT SECTION 9 — Phase Analysis Visual Timeline Bar
-This is a NEW feature. Create a horizontal timeline bar component.
-
-9.1: OVERALL TAB — Full Timeline
-When the "Overall" tab is selected in Phase Analysis:
-
-text
-┌──────────────────────────────────────────────────────────────────────┐
-│ [INTRO]  [    DISCOVERY     ]  [ PITCH ]  [OBJECTIONS] [  CLOSE  ] │
-│  blue       green               purple     orange        teal      │
-└──────────────────────────────────────────────────────────────────────┘
-                    Total Call Length: 47:32
-Full-width thin horizontal bar (h-3 or h-4)
-
-Each phase section is proportionally sized based on duration
-
-Each phase has a distinct color
-
-Below the bar: "Total Call Length: XX:XX"
-
-Phases should have subtle labels on hover or inline if space allows
-
-9.2-9.5: INDIVIDUAL PHASE TABS — Highlight Selected Phase
-When clicking Intro, Discovery, Pitch, Close, or Objections:
-
-text
-┌──────────────────────────────────────────────────────────────────────┐
-│ [░░░░]  [████DISCOVERY█████]  [░░░░░░] [░░░░░░░░░░] [░░░░░░░░░░] │
-│  grey       HIGHLIGHTED        grey       grey          grey       │
-└──────────────────────────────────────────────────────────────────────┘
-           Discovery Length: 21:11
-           Started at: 02:47
-           Ended at: 23:58
-Same full-width bar but only selected phase is colored
-
-All other phases are grey/neutral (bg-gray-200)
-
-Below the bar show:
-
-"[Phase] Length: XX:XX"
-
-"Started at: XX:XX"
-
-"Ended at: XX:XX"
-
-9.6: OBJECTIONS TAB — Special Case
-Objections may occur in multiple non-contiguous segments:
-
-text
-┌──────────────────────────────────────────────────────────────────────┐
-│ [░░░░]  [░░░░░░░░░░░░░░░░░]  [░░░░░░] [████OBJ████] [░░OBJ░░░░] │
-│  grey       grey               grey      HIGHLIGHTED    HIGHLIGHTED│
-└──────────────────────────────────────────────────────────────────────┘
-           Objection Handling Duration: 08:43
-           Multiple objection segments occurred.
-           Segment 1: 32:10 – 37:22
-           Segment 2: 41:05 – 44:36
-9.7: TECHNICAL IMPLEMENTATION
-Phase Detection: The AI must detect phase transitions during analysis and output timestamps:
-
-text
-Add to the AI analysis prompt:
-
-PHASE TIMING DETECTION:
-Analyze the transcript and identify the start and end timestamp of each phase:
-- Intro: From call start until the first substantive discovery question
-- Discovery: From first "why are you here" / situational question until goal setting
-- Pitch: From when the closer starts presenting the solution/program
-- Objections: From first objection raised until objections are resolved
-- Close: From close attempt through to end of call
-
-Output as JSON:
-{
-  "phaseTimings": {
-    "intro": { "start": "00:00", "end": "02:47" },
-    "discovery": { "start": "02:47", "end": "23:58" },
-    "pitch": { "start": "23:58", "end": "33:12" },
-    "objections": { "start": "33:12", "end": "41:55" },
-    "close": { "start": "41:55", "end": "47:32" }
+export const CORE_PRINCIPLES: CorePrinciple[] = [
+  {
+    id: 'authority',
+    name: 'Authority',
+    description: 'Positional, conversational, and structural authority — leading the call, not following',
+    relatedCategories: ['authority'],
   },
-  "totalDuration": "47:32"
+  {
+    id: 'structure',
+    name: 'Structure',
+    description: 'Clear intro, focused discovery, logical pitch transition, controlled close, defined next steps',
+    relatedCategories: ['structure'],
+  },
+  {
+    id: 'communication_listening',
+    name: 'Communication & Listening',
+    description: 'Deep listening, emotional cues, referencing prospect words, strategic silence, layered follow-ups',
+    relatedCategories: ['communication'],
+  },
+  {
+    id: 'gap_creation',
+    name: 'Gap Creation',
+    description: 'Creating distance between current state and desired state, quantifying cost of inaction',
+    relatedCategories: ['gap', 'discovery'],
+  },
+  {
+    id: 'value_positioning',
+    name: 'Value Positioning',
+    description: 'Anchoring value to pain, personalizing the pitch, structuring clearly, avoiding feature dumps',
+    relatedCategories: ['value'],
+  },
+  {
+    id: 'trust_building',
+    name: 'Trust Building',
+    description: 'Clarity, calmness, truth-telling, not overselling, acknowledging concerns properly',
+    relatedCategories: ['trust'],
+  },
+  {
+    id: 'adaptability',
+    name: 'Adaptability',
+    description: 'Adjusting tone, pace, depth, energy, and question style based on prospect personality and context',
+    relatedCategories: ['adaptation'],
+  },
+  {
+    id: 'objection_strategy',
+    name: 'Objection Strategy',
+    description: 'Pre-handling predictable objections, handling at belief level, maintaining authority under resistance',
+    relatedCategories: ['objection_handling'],
+  },
+  {
+    id: 'decision_leadership',
+    name: 'Decision Leadership',
+    description: 'Assumptive language, clear investment framing, controlled silence, direct next-step clarity',
+    relatedCategories: ['closing'],
+  },
+];
+
+// Maps scoring category IDs to principle IDs
+export function getPrincipleForCategory(categoryId: string): string | null {
+  for (const p of CORE_PRINCIPLES) {
+    if (p.relatedCategories.includes(categoryId)) return p.id;
+  }
+  return null;
 }
 
-Note: Objections may have multiple segments if they occur at different points.
-In that case, use an array: "objections": [{ "start": "33:12", "end": "37:22" }, { "start": "41:05", "end": "44:36" }]
-Store phase timings in the analysis results (same place as other analysis data)
+// Compute principle scores from category scores
+export interface PrincipleScore {
+  principle: CorePrinciple;
+  score: number;
+  categoryBreakdown: { id: string; score: number }[];
+}
 
-Create the TimelineBar component:
+export function computePrincipleScores(
+  catScores: Record<string, number>
+): PrincipleScore[] {
+  return CORE_PRINCIPLES.map((p) => {
+    const breakdown = p.relatedCategories
+      .filter((c) => catScores[c] !== undefined)
+      .map((c) => ({ id: c, score: catScores[c] }));
+    const avg = breakdown.length > 0
+      ? Math.round(breakdown.reduce((sum, b) => sum + b.score, 0) / breakdown.length)
+      : 0;
+    return { principle: p, score: avg, categoryBreakdown: breakdown };
+  });
+}
+Step 2: Update barrel export lib/training/index.ts
+Replace the skill-clusters exports:
 
 typescript
-// components/analysis/PhaseTimelineBar.tsx
-interface PhaseTimings {
-  intro: { start: string; end: string };
-  discovery: { start: string; end: string };
-  pitch: { start: string; end: string };
-  objections: { start: string; end: string } | Array<{ start: string; end: string }>;
-  close: { start: string; end: string };
-}
+// REMOVE these:
+// export { SKILL_CLUSTERS, getClusterForCategory, computeClusterScores } from './skill-clusters';
+// export type { SkillCluster, SkillClusterId } from './skill-clusters';
 
-interface Props {
-  phaseTimings: PhaseTimings;
-  totalDuration: string;
-  activePhase: 'overall' | 'intro' | 'discovery' | 'pitch' | 'objections' | 'close';
-}
-Phase colors:
+// ADD these:
+export { CORE_PRINCIPLES, getPrincipleForCategory, computePrincipleScores } from './core-principles';
+export type { CorePrinciple, PrincipleScore } from './core-principles';
+Step 3: Update Performance API — Add Principle Summaries
+In app/api/performance/route.ts, after computing skillCategories, add a new field principleSummaries to the response.
+
+For each of the 9 principles:
+
+Find matching skillCategories by checking relatedCategories
+
+Aggregate strengths, weaknesses, actionPoints from those categories
+
+Compute average score
+
+Generate a 2-3 sentence summary by combining the category-level data
+
+The response should include:
 
 typescript
-const PHASE_COLORS = {
-  intro:      'bg-blue-500',
-  discovery:  'bg-green-500',
-  pitch:      'bg-purple-500',
-  objections: 'bg-orange-500',
-  close:      'bg-teal-500',
+principleSummaries: {
+  id: string;
+  name: string;
+  description: string;
+  score: number;
+  trend: number;
+  summary: string;        // 2-3 sentence performance summary synthesized from category data
+  strengths: string[];     // Aggregated from related categories (max 3)
+  weaknesses: string[];    // Aggregated from related categories (max 3)
+  improvements: string[];  // Aggregated from related categories (max 3)
+}[]
+For the summary field: Don't make an extra AI call. Construct it from the available data:
+
+If score >= 80: "Strong performance in {name}. {first strength}."
+
+If score >= 60: "Developing competency in {name}. {first strength}, but {first weakness}."
+
+If score < 60: "Needs focus on {name}. {first weakness}. Priority: {first improvement}."
+
+If score === 0: "No data yet for {name}. Complete more calls or roleplays to see insights."
+
+Step 4: Update Performance Page UI
+In app/(dashboard)/dashboard/performance/page.tsx:
+
+Replace import:
+
+typescript
+// REMOVE: import { SKILL_CLUSTERS, computeClusterScores } from '@/lib/training/skill-clusters';
+// ADD:
+import { CORE_PRINCIPLES, computePrincipleScores } from '@/lib/training/core-principles';
+Replace the entire "Skill Clusters" card (currently renders 6 clusters) with a "Sales Principles" card that renders 9 principles.
+
+Each principle row shows:
+
+Principle name (bold) + description (small, muted)
+
+Score bar + score number (secondary — Connor said "not necessarily scored")
+
+Trend indicator
+
+Expandable section with:
+
+Summary paragraph (normal text)
+
+Strengths (green bullets, max 3)
+
+Weaknesses (red bullets, max 3)
+
+How to Improve (blue bullets, max 3)
+
+Card title: "Core Sales Principles"
+Card description: "Performance insights across 9 core principles from the sales philosophy"
+
+Use performance.principleSummaries if available from API; otherwise fall back to computing from performance.skillCategories using computePrincipleScores on the client side (backward compat).
+
+Color scheme for 9 principles:
+
+text
+authority:              blue
+structure:              indigo
+communication_listening: emerald
+gap_creation:           green
+value_positioning:      purple
+trust_building:         amber
+adaptability:           pink
+objection_strategy:     orange
+decision_leadership:    teal
+MODULE B2: Performance Action Steps (Aggregated)
+What Connor Said
+"Underneath here there needs to be 'Action Steps' — their biggest three things they should be working on RIGHT NOW. We should get this from all the suggested action steps in all the call analysis and the roleplay analysis. They should all feed into this performance action steps."
+
+Step 1: Update Performance API
+In app/api/performance/route.ts, after computing skill categories:
+
+You already have access to all call analyses in the date range (they're fetched to compute skillCategories).
+
+Extract ALL actionSteps arrays from every call analysis and roleplay analysis in the range.
+
+Flatten into a single list.
+
+Group by similarity — use simple keyword matching (check if action steps share 3+ common words after removing stop words).
+
+Count frequency of each theme.
+
+Return top 3 as:
+
+typescript
+priorityActionSteps: {
+  action: string;       // The most representative phrasing of this action step
+  reason: string;       // Why this matters (from the action step context)
+  frequency: number;    // How many sessions flagged this
+  sources: string[];    // e.g., ["Call: John Smith 02/10", "Roleplay: 02/12"] (max 3)
+}[]
+If there are fewer than 3 themes, return whatever is available. If no action steps exist, return empty array.
+
+Step 2: Add UI Section on Performance Page
+Below the "Core Sales Principles" card, add a new card:
+
+Card title: "Priority Action Steps"
+
+Card description: "Your top development focuses based on all analysed calls and roleplays"
+
+If priorityActionSteps is empty, show: "Complete more call reviews to generate action steps."
+
+Otherwise, show 3 numbered items, each with:
+
+Number badge (1, 2, 3) in a circle
+
+Action (bold, normal text)
+
+Why it matters (muted text, smaller)
+
+Frequency badge: "Flagged in {n} sessions" (small badge)
+
+Style: Use a distinct card background (e.g., bg-gradient-to-br from-amber-500/5 to-card/40 with border-amber-500/20) so it stands out as the "what to work on" section.
+
+MODULE B3: Payment Plan Revenue Allocation Fix
+What Connor Said
+"The first month the payment plan is taken, the full revenue should be put in Revenue Generated. Then in the next month, zero revenue generated, but cash collected of 12.50."
+
+Current Bug
+In app/api/performance/figures/route.ts, the instalment loop (~line 301-314) sets:
+
+typescript
+revenueGenerated: inst.amountCents,  // BUG: every instalment shows its own amount
+Required Fix
+In the instalment processing loop, change revenueGenerated logic:
+
+typescript
+// Calculate full deal revenue = instalment amount × total instalments
+const totalInstalments = totalsByCall.get(inst.salesCallId) ?? 1;
+const fullDealRevenueCents = inst.amountCents * totalInstalments;
+const isFirstInstalment = (inst.instalmentNumber ?? 0) === 1;
+
+salesList.push({
+  callId: inst.salesCallId,
+  date: d.toISOString().slice(0, 10),
+  offerName: inst.offerName ?? '',
+  prospectName: inst.prospectName ?? 'Unknown',
+  cashCollected: instStatus === 'collected' ? inst.amountCents : 0,
+  revenueGenerated: isFirstInstalment ? fullDealRevenueCents : 0,  // ← KEY FIX
+  commissionPct: pct,
+  commissionAmount: commAmt,
+  isInstalment: true,
+  instalmentNumber: inst.instalmentNumber ?? 0,
+  totalInstalments,
+  instalmentStatus: instStatus,
+});
+This means:
+
+Month 1 (instalment 1): Revenue Generated = full deal value, Cash Collected = 1 instalment
+
+Month 2+ (instalment 2, 3, 4): Revenue Generated = £0, Cash Collected = 1 instalment each
+
+Commission always = rate × cash collected (already correct from Prompt 1)
+
+Also fix the totals row
+Make sure the totals at bottom of figures page correctly sum:
+
+Total Revenue Generated = sum of all revenueGenerated values (won't double-count because only instalment 1 has the value)
+
+Total Cash Collected = sum of all cashCollected values
+
+Total Commission = sum of all commissionAmount values
+
+MODULE B4: Payment Type Column
+What Connor Said
+"We need to add one to the commission sheet where it says Type — Payment Type — and it either says Pay in Full, or Payment Plan, or Deposit."
+
+Step 1: Add paymentType to figures API response
+In app/api/performance/figures/route.ts:
+
+For regular sales rows (non-instalment):
+
+typescript
+paymentType: row.result === 'deposit' ? 'Deposit' : 'Pay in Full',
+For instalment rows:
+
+typescript
+paymentType: 'Payment Plan',
+Add paymentType to the SalesRow interface:
+
+typescript
+paymentType?: 'Pay in Full' | 'Payment Plan' | 'Deposit';
+Step 2: Add column to figures page UI
+In app/(dashboard)/dashboard/performance/figures/page.tsx:
+
+Add paymentType to the SalesRow type definition (around line 21-24).
+
+In the table header row, add a new <th> between "Prospect" and "Cash Collected":
+
+tsx
+<th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Type</th>
+In the table body row, add a new <td> in the same position:
+
+tsx
+<td className="py-2 pr-4">
+  <Badge 
+    variant="outline" 
+    className={cn(
+      'text-xs',
+      row.paymentType === 'Pay in Full' && 'border-green-500/30 text-green-400 bg-green-500/10',
+      row.paymentType === 'Payment Plan' && 'border-blue-500/30 text-blue-400 bg-blue-500/10',
+      row.paymentType === 'Deposit' && 'border-amber-500/30 text-amber-400 bg-amber-500/10',
+    )}
+  >
+    {row.paymentType ?? 'Pay in Full'}
+  </Badge>
+</td>
+MODULE B5: Replay Call in Roleplay (New Feature)
+What Connor Said
+"When we click any of these, it should have an option to 'Replay Call in Roleplay.' It needs to create a prospect based on the prospect we're reviewing — same name, same prospect difficulty, same prospect context. All it has to do is take all the details from what we've summarised on prospect difficulty."
+
+Step 1: Add "Replay in Roleplay" Button on Call Detail Page
+In app/(dashboard)/dashboard/calls/[callId]/page.tsx:
+
+Add imports:
+
+typescript
+import { Play } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+After the PhaseAnalysisTabs section (or below ActionPointCards), add:
+
+tsx
+{/* Replay in Roleplay */}
+{analysis?.prospectDifficultyJustifications && (
+  <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+    <CardContent className="py-4">
+      <Button 
+        onClick={handleReplayInRoleplay}
+        disabled={replayLoading}
+        className="w-full"
+        variant="outline"
+      >
+        {replayLoading ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <Play className="h-4 w-4 mr-2" />
+        )}
+        Replay This Call in Roleplay
+      </Button>
+    </CardContent>
+  </Card>
+)}
+Add state and handler:
+
+typescript
+const [replayLoading, setReplayLoading] = useState(false);
+const router = useRouter();
+
+const handleReplayInRoleplay = async () => {
+  setReplayLoading(true);
+  try {
+    const res = await fetch('/api/roleplay/replay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId: call.id }),
+    });
+    if (!res.ok) throw new Error('Failed to create replay session');
+    const data = await res.json();
+    router.push(`/dashboard/roleplay/${data.sessionId}`);
+  } catch (err: any) {
+    toastError(err.message || 'Failed to start replay');
+  } finally {
+    setReplayLoading(false);
+  }
 };
-const PHASE_INACTIVE = 'bg-gray-200';
-Integrate into the phase analysis section:
+Step 2: Create Replay API Endpoint
+Create app/api/roleplay/replay/route.ts:
 
-Place the timeline bar BELOW the phase tab row (Overall / Intro / Discovery / Pitch / Close / Objections)
+typescript
+// POST /api/roleplay/replay
+// Body: { callId: string }
+// Creates a new roleplay session using prospect data from an analyzed call
+This endpoint must:
 
-ABOVE the phase content/score
+Authenticate user (same pattern as other roleplay routes).
 
-It should be the first thing visible when switching tabs
+Fetch the call by callId, including its analysis JSON.
 
-STEP 6: VERIFY
-bash
-# Build
-npm run build
+Extract from the analysis:
 
-# Verify timeline component exists
-find . -name "*Timeline*" -o -name "*timeline*" | grep -v node_modules
+prospectName from the call
 
-# Verify speaker labels
-grep -rn "Closer\|Prospect" --include="*.tsx" components/ | grep -i speaker
+prospectDifficultyJustifications (has icpAlignment, motivationIntensity, funnelContext, authorityAndCoachability, abilityToProceed, prospectContextSummary, dimensionScores)
 
-# Verify timestamp formatting
-grep -rn "formatTimestamp\|MM:SS\|padStart" --include="*.tsx" --include="*.ts" components/ lib/
+prospectDifficultyTier (easy/realistic/hard/expert)
 
-# Verify phase timing in AI prompt
-grep -rn "phaseTimings\|phase.*start.*end\|PHASE TIMING" --include="*.ts" lib/
-OUTPUT REQUIRED:
-Every file changed
+prospectDifficulty (total score /50)
 
-Screenshot/description of the timeline bar in Overall vs individual phase view
+offerId from the call
 
-Example transcript line showing new format: [12:43] Closer: ...
+Check if a prospect avatar already exists with that name for this user. If yes, use it. If not, create a temporary one using the call data:
 
-The phase timing detection prompt addition (full text)
+name: prospectName from the call
 
-Build status: exit code 0
+positionDescription: Extract from prospectContextSummary
 
-text
+backstory: prospectContextSummary
 
-***
+Set dimension scores: icpAlignment, motivationIntensity, funnelContext, authorityAndCoachability, abilityToProceed from dimensionScores
 
-# PROMPT 4 OF 5: Dashboard Overhaul — 6 Skill Clusters, Objection Insights, Pattern Aggregation, Coaching Summary
+Create a new roleplay session (same pattern as app/api/roleplay/route.ts):
 
-Copy everything below this line and send to agent:
+userId: authenticated user
 
-***
+prospectAvatarId: the prospect found/created above
 
-PROMPT 4/5 — DASHBOARD & PERFORMANCE PAGE: Skill Clusters, Objection Insights, Patterns, Coaching
+offerId: from the original call
+
+inputMode: 'voice' (default)
+
+status: 'active'
+
+metadata: { replayFromCallId: callId, difficultyTier: tier }
+
+Return { sessionId: newSession.id }.
+
+Step 3: Roleplay Engine — Accept Replay Context
+In lib/ai/roleplay/roleplay-engine.ts, the system prompt already uses prospect data from the session's prospect avatar. Since we're creating a proper prospect avatar with the call's data in Step 2, the roleplay engine should work WITHOUT changes — it will read the prospect avatar's backstory, dimension scores, etc. naturally.
+
+However, verify that the roleplay engine reads prospectAvatar.backstory and includes it in the system prompt. If it doesn't, add it to the prospect context section of the prompt.
+
+BUILD VERIFICATION
+After all modules:
+
+npm run build must exit code 0
+
+Grep verification:
+
+grep -r "SKILL_CLUSTERS\|skill-clusters" --include="*.ts" --include="*.tsx" should return NO results (fully replaced)
+
+grep -r "CORE_PRINCIPLES\|core-principles" --include="*.ts" --include="*.tsx" should show imports in performance page + barrel
+
+grep -r "paymentType" --include="*.ts" --include="*.tsx" should show figures route + figures page
+
+grep -r "replay" app/api/roleplay/ --include="*.ts" should show the new replay route
+
+grep -r "priorityActionSteps" --include="*.ts" --include="*.tsx" should show performance route + page
+
+grep "revenueGenerated.*isFirstInstalment\|isFirstInstalment.*fullDealRevenue" --include="*.ts" should confirm the revenue fixPROMPT B: 9 Core Principles + Commission Fixes + Replay Feature
 CONTEXT
-Connor's V2.1 spec requires replacing the old 10-category scoring system on the dashboard with
-6 skill clusters aligned to his Sales Philosophy. The dashboard must feel strategic, pattern-based,
-and performance-oriented — not just raw data. It must provide directive coaching, not passive metrics.
+This is a refinement prompt. The system is nearly production-ready. This prompt addresses 5 remaining items from Connor's review. Read every module fully before starting.
 
-The three Knowledge Documents govern all logic:
+Previous prompts already built:
 
-Sales Philosophy & Scoring Framework
+Prompt 1: Commission on cash collected (figures/route.ts line 249), instalment dueDate filtering, instalmentNumber/status/collectedDate columns
 
-Prospect Difficulty Model
+Prompt 25: ProspectDifficultyPanel with prospectContextSummary + dimensionScores, three-column CallSnapshotBar, deeper phase analysis
 
-AI Coaching Output Rules
+Prompt 35: TranscriptView with Closer/Prospect labels + MM:SS timestamps, PhaseTimelineBar
 
-STEP 1: AUDIT
-bash
-# Find dashboard / performance page
-find . -path "*dashboard*" -name "*.tsx" | head -20
-find . -path "*performance*" -name "*.tsx" | head -20
+Prompt 45: 6 skill clusters (skill-clusters.ts), ObjectionInsights, InsightsPanel, PerformanceSummary components
 
-# Find current 10-category scoring display
-grep -rn "scoring.*categ\|categoryScore\|skillScore\|SCORING_CATEGORIES" --include="*.tsx" components/ app/
-grep -rn "rapport\|discovery\|pitch\|closing\|objection" --include="*.tsx" components/ app/ | grep -i score
+Prompt A: ElevenLabs TTS (lib/tts/elevenlabs-client.ts), prospect behavior rules, Zoom-style roleplay layout, Prospect Context UI restyle
 
-# Find insight/action step aggregation
-grep -rn "actionStep\|insight\|pattern\|aggregate" --include="*.tsx" --include="*.ts" components/ app/ lib/
+AUDIT FIRST
+Before implementing, read these files in full:
 
-# Read the current scoring categories
-cat lib/training/scoring-categories.ts
+lib/training/skill-clusters.ts (will be replaced)
 
-# Find where scores are aggregated across calls
-grep -rn "average\|aggregate\|allCalls\|callHistory\|performanceOver" --include="*.ts" --include="*.tsx" lib/ app/ components/
-Read the entire dashboard page and all its sub-components.
+app/(dashboard)/dashboard/performance/page.tsx (imports SKILL_CLUSTERS, computeClusterScores)
 
-STEP 2: IMPLEMENT 4.1 — Replace 10-Category System with 6 Skill Clusters
-REMOVE: The old 10-category breakdown from the dashboard display
-REPLACE WITH: 6 Connor-aligned skill clusters
-Create a mapping file: lib/training/skill-clusters.ts
+app/api/performance/route.ts (returns skillCategories array)
 
-typescript
-/**
- * Skill Clusters — Connor's Sales Philosophy Framework v2.1
- * Maps the 10 scoring categories into 6 strategic skill clusters.
- * Used on the dashboard/performance page for aggregated display.
- */
+app/api/performance/figures/route.ts (instalment loop ~line 293-314)
 
-export const SKILL_CLUSTERS = [
-  {
-    id: 'authority_leadership',
-    name: 'Authority & Leadership',
-    description: 'Frame control, confidence, challenging prospects, maintaining expert position throughout the call',
-    // Map from existing scoring categories that relate to authority
-    sourceCategories: ['tonality_authority', 'frame_control', /* find actual IDs from scoring-categories.ts */],
-    icon: 'Shield', // or whatever icon system you use
-  },
-  {
-    id: 'discovery_gap_creation',
-    name: 'Discovery & Gap Creation',
-    description: 'Questioning depth, uncovering pain, goal setting, getting prospects to self-diagnose their problems',
-    sourceCategories: ['discovery_depth', 'questioning', 'needs_analysis', /* actual IDs */],
-    icon: 'Search',
-  },
-  {
-    id: 'value_stabilization',
-    name: 'Value Stabilization',
-    description: 'Pitch effectiveness, social proof usage, program presentation, building perceived value before price reveal',
-    sourceCategories: ['pitch_quality', 'value_building', 'social_proof', /* actual IDs */],
-    icon: 'TrendingUp',
-  },
-  {
-    id: 'objection_control',
-    name: 'Objection Control',
-    description: 'Staying calm, using prospect\'s own words, logical workarounds, deposit strategy, never arguing',
-    sourceCategories: ['objection_handling', 'resistance_management', /* actual IDs */],
-    icon: 'ShieldCheck',
-  },
-  {
-    id: 'closing_decision_leadership',
-    name: 'Closing & Decision Leadership',
-    description: 'Trial close, assumptive close, urgency creation, deposit taking, handling silence, leading to action',
-    sourceCategories: ['closing_technique', 'urgency_creation', /* actual IDs */],
-    icon: 'Target',
-  },
-  {
-    id: 'emotional_intelligence',
-    name: 'Emotional Intelligence & Adaptation',
-    description: 'Reading prospect type (advisee/peer/advisor), adapting tone, managing fight/flight reactions, staying calm under pressure',
-    sourceCategories: ['rapport_building', 'adaptability', 'emotional_awareness', /* actual IDs */],
-    icon: 'Heart',
-  },
-] as const;
+app/(dashboard)/dashboard/performance/figures/page.tsx (commission table UI)
 
-export type SkillClusterId = typeof SKILL_CLUSTERS[number]['id'];
-IMPORTANT: Read the actual SCORING_CATEGORIES from scoring-categories.ts first, then map each
-of the 10 existing categories into the appropriate cluster. Every existing category MUST map to exactly
-one cluster. Some clusters may have 1-2 source categories, others may have 2-3.
+app/(dashboard)/dashboard/calls/[callId]/page.tsx (call detail page)
 
-Dashboard display for each cluster:
+app/api/roleplay/route.ts (roleplay session creation)
 
-Cluster name + icon
+lib/ai/analysis.ts (analysis prompt — has action steps in section 7)
 
-Aggregated score (average of source category scores across all calls + roleplays)
+MODULE B1: Replace 6 Skill Clusters with 9 Core Principles
+What Connor Said
+"Where we done our sales philosophy document, we said there were some core principles: Authority, Structure, Communication & Listening, Gap Creation, Value Positioning, Trust Building, Adaptability, Objection Strategy, Decision Leadership. Those nine things — I would like in the performance."
 
-Score out of 10
+"Not necessarily scored, just how are they faring in each area? What advice do we have? It should be broken down into a summary of how they're performing, what their strengths are, what their weaknesses are, and then suggested ways to improve."
 
-Visual indicator: Strength (7+, green), Average (5-6, amber), Weakness (<5, red)
-
-Trend arrow: Improving ↑ / Declining ↓ / Stable → (compare last 5 calls to previous 5)
-
-On click/expand: show breakdown of individual source category scores
-
-STEP 3: IMPLEMENT 4.2 — Objection Handling Insights (Upgrade)
-CURRENT: Just counts objections.
-REQUIRED: Deep objection intelligence panel.
-Create a new component: components/dashboard/ObjectionInsights.tsx
-
-This component must show:
-
-A. Most Common Objection Types
-Pull from all analyzed calls and categorize objections into the 6 types:
-
-"I need to think about it"
-
-"I don't have the money"
-
-"I need to check with my partner"
-
-"I've been burned before"
-
-"Is the market saturated?"
-
-"I want to explore other options"
-
-Show frequency count and percentage for each.
-
-B. Current Handling Quality
-For each objection type, show the average score when that type appears.
-Example: "Think about it" objections → Average handling score: 4.2/10
-
-C. Pre-emption Gaps
-Analyze which objections could have been PREVENTED with better discovery/pre-setting.
-Logic: If an objection appeared AND the closer did NOT pre-set ammunition for it during
-discovery, flag it as a pre-emption gap.
-Example: "3 out of 4 'think about it' objections had NO analysis paralysis pre-set during discovery"
-
-D. Margin Leakage Patterns
-Track when discounts/concessions are given:
-
-How often discounts are offered
-
-At what stage (too early = before handling the real objection)
-
-Average discount amount
-
-Flag: "Discount given before exploring payment plan alternative" = margin leakage
-
-E. Improvement Recommendation
-Generate a specific, actionable text recommendation:
-Example: "Focus on pre-setting analysis paralysis during discovery. In 4 out of 6 recent calls,
-the 'I need to think about it' objection appeared without prior ammunition. Adding the question
-'Would you say you're the type to overthink decisions?' would give you a callback during objections."
-
-F. Reference the 4 Objection Pillars
-Categorize each objection type by its underlying pillar:
-
-VALUE: "Is the market saturated?", "I want to explore other options"
-
-TRUST: "I've been burned before"
-
-FIT: (prospect doesn't see themselves succeeding)
-
-LOGISTICS: "I don't have the money", "I need to check with my partner", "I need to think about it"
-
-STEP 4: IMPLEMENT 4.3 — Insights Panel (Pattern Aggregation)
-Create: components/dashboard/InsightsPanel.tsx
-
-This panel must:
-
-Aggregate ALL action steps from every call review + roleplay
-
-Group by theme using the 6 skill clusters as categories
-
-Identify repeated patterns (same issue appearing in 3+ calls):
-
-"Authority drops during objection handling (seen in 4/6 recent calls)"
-
-"Discovery consistently too short (avg 8 min vs recommended 15-20 min)"
-
-"Price collapse pattern: discounting before handling the real objection (3/5 calls)"
-
-"Failing to pre-set analysis paralysis question (seen in 5/6 calls)"
-
-"Losing frame control when prospect pushes back (4/6 calls)"
-
-Surface top 3 recurring issues with:
-
-Issue description
-
-How many calls it appeared in
-
-Which skill cluster it belongs to
-
-Severity (how much it impacts close rate)
-
-Implementation logic:
+Step 1: Replace lib/training/skill-clusters.ts with lib/training/core-principles.ts
+Delete or rename skill-clusters.ts. Create core-principles.ts:
 
 typescript
-// Pseudo-logic for pattern detection
-interface ActionStep {
-  callId: string;
-  phase: string;
-  text: string;
-  category: string; // mapped to skill cluster
+export interface CorePrinciple {
+  id: string;
+  name: string;
+  description: string;
+  relatedCategories: string[]; // Maps to the 10 scoring categories from analysis
 }
 
-function detectPatterns(actionSteps: ActionStep[]): Pattern[] {
-  // 1. Group action steps by semantic similarity (use embeddings or keyword matching)
-  // 2. Count occurrences across different calls
-  // 3. If same issue appears in 3+ calls → it's a pattern
-  // 4. Rank by frequency × impact
-  // 5. Return top 3-5 patterns
+export const CORE_PRINCIPLES: CorePrinciple[] = [
+  {
+    id: 'authority',
+    name: 'Authority',
+    description: 'Positional, conversational, and structural authority — leading the call, not following',
+    relatedCategories: ['authority'],
+  },
+  {
+    id: 'structure',
+    name: 'Structure',
+    description: 'Clear intro, focused discovery, logical pitch transition, controlled close, defined next steps',
+    relatedCategories: ['structure'],
+  },
+  {
+    id: 'communication_listening',
+    name: 'Communication & Listening',
+    description: 'Deep listening, emotional cues, referencing prospect words, strategic silence, layered follow-ups',
+    relatedCategories: ['communication'],
+  },
+  {
+    id: 'gap_creation',
+    name: 'Gap Creation',
+    description: 'Creating distance between current state and desired state, quantifying cost of inaction',
+    relatedCategories: ['gap', 'discovery'],
+  },
+  {
+    id: 'value_positioning',
+    name: 'Value Positioning',
+    description: 'Anchoring value to pain, personalizing the pitch, structuring clearly, avoiding feature dumps',
+    relatedCategories: ['value'],
+  },
+  {
+    id: 'trust_building',
+    name: 'Trust Building',
+    description: 'Clarity, calmness, truth-telling, not overselling, acknowledging concerns properly',
+    relatedCategories: ['trust'],
+  },
+  {
+    id: 'adaptability',
+    name: 'Adaptability',
+    description: 'Adjusting tone, pace, depth, energy, and question style based on prospect personality and context',
+    relatedCategories: ['adaptation'],
+  },
+  {
+    id: 'objection_strategy',
+    name: 'Objection Strategy',
+    description: 'Pre-handling predictable objections, handling at belief level, maintaining authority under resistance',
+    relatedCategories: ['objection_handling'],
+  },
+  {
+    id: 'decision_leadership',
+    name: 'Decision Leadership',
+    description: 'Assumptive language, clear investment framing, controlled silence, direct next-step clarity',
+    relatedCategories: ['closing'],
+  },
+];
+
+// Maps scoring category IDs to principle IDs
+export function getPrincipleForCategory(categoryId: string): string | null {
+  for (const p of CORE_PRINCIPLES) {
+    if (p.relatedCategories.includes(categoryId)) return p.id;
+  }
+  return null;
 }
-If semantic matching is too complex for now, use keyword/category matching:
 
-Group by skill cluster
+// Compute principle scores from category scores
+export interface PrincipleScore {
+  principle: CorePrinciple;
+  score: number;
+  categoryBreakdown: { id: string; score: number }[];
+}
 
-Within each cluster, look for repeated action step themes
+export function computePrincipleScores(
+  catScores: Record<string, number>
+): PrincipleScore[] {
+  return CORE_PRINCIPLES.map((p) => {
+    const breakdown = p.relatedCategories
+      .filter((c) => catScores[c] !== undefined)
+      .map((c) => ({ id: c, score: catScores[c] }));
+    const avg = breakdown.length > 0
+      ? Math.round(breakdown.reduce((sum, b) => sum + b.score, 0) / breakdown.length)
+      : 0;
+    return { principle: p, score: avg, categoryBreakdown: breakdown };
+  });
+}
+Step 2: Update barrel export lib/training/index.ts
+Replace the skill-clusters exports:
 
-Count frequency across calls
+typescript
+// REMOVE these:
+// export { SKILL_CLUSTERS, getClusterForCategory, computeClusterScores } from './skill-clusters';
+// export type { SkillCluster, SkillClusterId } from './skill-clusters';
 
-STEP 5: IMPLEMENT 4.4 — Performance Summary (Directive Coaching)
-Create: components/dashboard/PerformanceSummary.tsx
+// ADD these:
+export { CORE_PRINCIPLES, getPrincipleForCategory, computePrincipleScores } from './core-principles';
+export type { CorePrinciple, PrincipleScore } from './core-principles';
+Step 3: Update Performance API — Add Principle Summaries
+In app/api/performance/route.ts, after computing skillCategories, add a new field principleSummaries to the response.
 
-This goes at the BOTTOM of the dashboard. It must provide:
+For each of the 9 principles:
 
-A. Top 1-3 Priorities (ranked by impact on close rate)
+Find matching skillCategories by checking relatedCategories
+
+Aggregate strengths, weaknesses, actionPoints from those categories
+
+Compute average score
+
+Generate a 2-3 sentence summary by combining the category-level data
+
+The response should include:
+
+typescript
+principleSummaries: {
+  id: string;
+  name: string;
+  description: string;
+  score: number;
+  trend: number;
+  summary: string;        // 2-3 sentence performance summary synthesized from category data
+  strengths: string[];     // Aggregated from related categories (max 3)
+  weaknesses: string[];    // Aggregated from related categories (max 3)
+  improvements: string[];  // Aggregated from related categories (max 3)
+}[]
+For the summary field: Don't make an extra AI call. Construct it from the available data:
+
+If score >= 80: "Strong performance in {name}. {first strength}."
+
+If score >= 60: "Developing competency in {name}. {first strength}, but {first weakness}."
+
+If score < 60: "Needs focus on {name}. {first weakness}. Priority: {first improvement}."
+
+If score === 0: "No data yet for {name}. Complete more calls or roleplays to see insights."
+
+Step 4: Update Performance Page UI
+In app/(dashboard)/dashboard/performance/page.tsx:
+
+Replace import:
+
+typescript
+// REMOVE: import { SKILL_CLUSTERS, computeClusterScores } from '@/lib/training/skill-clusters';
+// ADD:
+import { CORE_PRINCIPLES, computePrincipleScores } from '@/lib/training/core-principles';
+Replace the entire "Skill Clusters" card (currently renders 6 clusters) with a "Sales Principles" card that renders 9 principles.
+
+Each principle row shows:
+
+Principle name (bold) + description (small, muted)
+
+Score bar + score number (secondary — Connor said "not necessarily scored")
+
+Trend indicator
+
+Expandable section with:
+
+Summary paragraph (normal text)
+
+Strengths (green bullets, max 3)
+
+Weaknesses (red bullets, max 3)
+
+How to Improve (blue bullets, max 3)
+
+Card title: "Core Sales Principles"
+Card description: "Performance insights across 9 core principles from the sales philosophy"
+
+Use performance.principleSummaries if available from API; otherwise fall back to computing from performance.skillCategories using computePrincipleScores on the client side (backward compat).
+
+Color scheme for 9 principles:
 
 text
-1. Stop collapsing on price before handling the real objection
-2. Add pre-setting questions to discovery (analysis paralysis, commitment level)
-3. Maintain authority tone through objection handling — don't become apologetic
-B. What Skill to Focus On (linked to the 6 clusters)
+authority:              blue
+structure:              indigo
+communication_listening: emerald
+gap_creation:           green
+value_positioning:      purple
+trust_building:         amber
+adaptability:           pink
+objection_strategy:     orange
+decision_leadership:    teal
+MODULE B2: Performance Action Steps (Aggregated)
+What Connor Said
+"Underneath here there needs to be 'Action Steps' — their biggest three things they should be working on RIGHT NOW. We should get this from all the suggested action steps in all the call analysis and the roleplay analysis. They should all feed into this performance action steps."
 
-text
-Primary Focus: Objection Control (current score: 4.2/10)
-Secondary Focus: Discovery & Gap Creation (current score: 5.8/10)
-C. What to Train Next
+Step 1: Update Performance API
+In app/api/performance/route.ts, after computing skill categories:
 
-text
-Recommended: Complete 3 roleplays this week focused on Advisor-type prospects (hard difficulty).
-Your objection handling needs practice against combative prospects who raise "I need to think
-about it" — focus on staying calm and using their own words from discovery.
-D. Direct Coaching Statement (written in Connor's voice — authoritative but supportive)
+You already have access to all call analyses in the date range (they're fetched to compute skillCategories).
 
-text
-"Your discovery is getting better — you're asking deeper questions and I can see the improvement
-in your last 3 calls. But here's the issue: you're still folding on price too early. When someone
-says 'I need to think about it', you're jumping straight to a discount instead of staying calm,
-acknowledging it, and then using what they told you earlier against them. Next 3 calls, I want
-you to hold frame on the first objection for at least 2 exchanges before offering anything.
-If you pre-set the analysis paralysis question in discovery, you'll have the ammunition you need."
-This coaching statement MUST:
+Extract ALL actionSteps arrays from every call analysis and roleplay analysis in the range.
 
-Be generated by AI based on actual performance data
+Flatten into a single list.
 
-Sound like a real mentor (Connor's style: direct, supportive, specific, not generic)
+Group by similarity — use simple keyword matching (check if action steps share 3+ common words after removing stop words).
 
-Reference specific patterns from recent calls
+Count frequency of each theme.
 
-Give a concrete, actionable directive (not vague advice)
+Return top 3 as:
 
-NEVER just say "keep practicing" — always say WHAT to practice and HOW
+typescript
+priorityActionSteps: {
+  action: string;       // The most representative phrasing of this action step
+  reason: string;       // Why this matters (from the action step context)
+  frequency: number;    // How many sessions flagged this
+  sources: string[];    // e.g., ["Call: John Smith 02/10", "Roleplay: 02/12"] (max 3)
+}[]
+If there are fewer than 3 themes, return whatever is available. If no action steps exist, return empty array.
 
-AI Prompt for generating the coaching statement:
+Step 2: Add UI Section on Performance Page
+Below the "Core Sales Principles" card, add a new card:
 
-text
-You are Connor Williams, a high-ticket sales mentor. Based on this closer's performance data
-across their last [N] calls, write a direct coaching statement.
+Card title: "Priority Action Steps"
 
-Style rules:
-- Speak as a mentor, not a robot
-- Be direct and specific — reference actual patterns you see
-- Always acknowledge what's improving (even if small)
-- Then identify the ONE biggest thing holding them back
-- Give a specific directive: what to do, how many times, and what to focus on
-- Keep it under 100 words
-- Use phrases like: "Here's the issue:", "What I want you to do:", "Next 3 calls:", 
-  "The reason this matters is:", "I can see the improvement in:"
-STEP 6: UPDATE EXPORTS AND INTEGRATION
-Add skill-clusters.ts to training index exports
+Card description: "Your top development focuses based on all analysed calls and roleplays"
 
-Wire dashboard page to use new components
+If priorityActionSteps is empty, show: "Complete more call reviews to generate action steps."
 
-Remove or hide old 10-category display (keep the data — just change the display layer)
+Otherwise, show 3 numbered items, each with:
 
-Ensure skill cluster scores are calculated on page load from existing call data
+Number badge (1, 2, 3) in a circle
 
-STEP 7: VERIFY
-bash
-npm run build
+Action (bold, normal text)
 
-# Verify skill clusters exist
-grep -rn "SKILL_CLUSTERS\|skillCluster\|skill_cluster" --include="*.ts" --include="*.tsx" lib/ components/ app/
+Why it matters (muted text, smaller)
 
-# Verify objection insights component
-find . -name "*ObjectionInsight*" -o -name "*objectionInsight*" | grep -v node_modules
+Frequency badge: "Flagged in {n} sessions" (small badge)
 
-# Verify insights panel
-find . -name "*InsightsPanel*" -o -name "*insightsPanel*" | grep -v node_modules
+Style: Use a distinct card background (e.g., bg-gradient-to-br from-amber-500/5 to-card/40 with border-amber-500/20) so it stands out as the "what to work on" section.
 
-# Verify performance summary
-find . -name "*PerformanceSummary*" -o -name "*performanceSummary*" | grep -v node_modules
+MODULE B3: Payment Plan Revenue Allocation Fix
+What Connor Said
+"The first month the payment plan is taken, the full revenue should be put in Revenue Generated. Then in the next month, zero revenue generated, but cash collected of 12.50."
 
-# Verify coaching prompt
-grep -rn "Connor Williams\|mentor.*style\|coaching.*statement" --include="*.ts" lib/
-OUTPUT REQUIRED:
-All files changed with descriptions
+Current Bug
+In app/api/performance/figures/route.ts, the instalment loop (~line 301-314) sets:
 
-Skill cluster mapping: which old categories → which new cluster
+typescript
+revenueGenerated: inst.amountCents,  // BUG: every instalment shows its own amount
+Required Fix
+In the instalment processing loop, change revenueGenerated logic:
 
-Example of the objection insights panel data structure
+typescript
+// Calculate full deal revenue = instalment amount × total instalments
+const totalInstalments = totalsByCall.get(inst.salesCallId) ?? 1;
+const fullDealRevenueCents = inst.amountCents * totalInstalments;
+const isFirstInstalment = (inst.instalmentNumber ?? 0) === 1;
 
-Example of the coaching statement AI prompt
+salesList.push({
+  callId: inst.salesCallId,
+  date: d.toISOString().slice(0, 10),
+  offerName: inst.offerName ?? '',
+  prospectName: inst.prospectName ?? 'Unknown',
+  cashCollected: instStatus === 'collected' ? inst.amountCents : 0,
+  revenueGenerated: isFirstInstalment ? fullDealRevenueCents : 0,  // ← KEY FIX
+  commissionPct: pct,
+  commissionAmount: commAmt,
+  isInstalment: true,
+  instalmentNumber: inst.instalmentNumber ?? 0,
+  totalInstalments,
+  instalmentStatus: instStatus,
+});
+This means:
 
-Build status: exit code 0
+Month 1 (instalment 1): Revenue Generated = full deal value, Cash Collected = 1 instalment
 
+Month 2+ (instalment 2, 3, 4): Revenue Generated = £0, Cash Collected = 1 instalment each
 
+Commission always = rate × cash collected (already correct from Prompt 1)
 
+Also fix the totals row
+Make sure the totals at bottom of figures page correctly sum:
 
+Total Revenue Generated = sum of all revenueGenerated values (won't double-count because only instalment 1 has the value)
+
+Total Cash Collected = sum of all cashCollected values
+
+Total Commission = sum of all commissionAmount values
+
+MODULE B4: Payment Type Column
+What Connor Said
+"We need to add one to the commission sheet where it says Type — Payment Type — and it either says Pay in Full, or Payment Plan, or Deposit."
+
+Step 1: Add paymentType to figures API response
+In app/api/performance/figures/route.ts:
+
+For regular sales rows (non-instalment):
+
+typescript
+paymentType: row.result === 'deposit' ? 'Deposit' : 'Pay in Full',
+For instalment rows:
+
+typescript
+paymentType: 'Payment Plan',
+Add paymentType to the SalesRow interface:
+
+typescript
+paymentType?: 'Pay in Full' | 'Payment Plan' | 'Deposit';
+Step 2: Add column to figures page UI
+In app/(dashboard)/dashboard/performance/figures/page.tsx:
+
+Add paymentType to the SalesRow type definition (around line 21-24).
+
+In the table header row, add a new <th> between "Prospect" and "Cash Collected":
+
+tsx
+<th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Type</th>
+In the table body row, add a new <td> in the same position:
+
+tsx
+<td className="py-2 pr-4">
+  <Badge 
+    variant="outline" 
+    className={cn(
+      'text-xs',
+      row.paymentType === 'Pay in Full' && 'border-green-500/30 text-green-400 bg-green-500/10',
+      row.paymentType === 'Payment Plan' && 'border-blue-500/30 text-blue-400 bg-blue-500/10',
+      row.paymentType === 'Deposit' && 'border-amber-500/30 text-amber-400 bg-amber-500/10',
+    )}
+  >
+    {row.paymentType ?? 'Pay in Full'}
+  </Badge>
+</td>
+MODULE B5: Replay Call in Roleplay (New Feature)
+What Connor Said
+"When we click any of these, it should have an option to 'Replay Call in Roleplay.' It needs to create a prospect based on the prospect we're reviewing — same name, same prospect difficulty, same prospect context. All it has to do is take all the details from what we've summarised on prospect difficulty."
+
+Step 1: Add "Replay in Roleplay" Button on Call Detail Page
+In app/(dashboard)/dashboard/calls/[callId]/page.tsx:
+
+Add imports:
+
+typescript
+import { Play } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+After the PhaseAnalysisTabs section (or below ActionPointCards), add:
+
+tsx
+{/* Replay in Roleplay */}
+{analysis?.prospectDifficultyJustifications && (
+  <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+    <CardContent className="py-4">
+      <Button 
+        onClick={handleReplayInRoleplay}
+        disabled={replayLoading}
+        className="w-full"
+        variant="outline"
+      >
+        {replayLoading ? (
+          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+        ) : (
+          <Play className="h-4 w-4 mr-2" />
+        )}
+        Replay This Call in Roleplay
+      </Button>
+    </CardContent>
+  </Card>
+)}
+Add state and handler:
+
+typescript
+const [replayLoading, setReplayLoading] = useState(false);
+const router = useRouter();
+
+const handleReplayInRoleplay = async () => {
+  setReplayLoading(true);
+  try {
+    const res = await fetch('/api/roleplay/replay', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callId: call.id }),
+    });
+    if (!res.ok) throw new Error('Failed to create replay session');
+    const data = await res.json();
+    router.push(`/dashboard/roleplay/${data.sessionId}`);
+  } catch (err: any) {
+    toastError(err.message || 'Failed to start replay');
+  } finally {
+    setReplayLoading(false);
+  }
+};
+Step 2: Create Replay API Endpoint
+Create app/api/roleplay/replay/route.ts:
+
+typescript
+// POST /api/roleplay/replay
+// Body: { callId: string }
+// Creates a new roleplay session using prospect data from an analyzed call
+This endpoint must:
+
+Authenticate user (same pattern as other roleplay routes).
+
+Fetch the call by callId, including its analysis JSON.
+
+Extract from the analysis:
+
+prospectName from the call
+
+prospectDifficultyJustifications (has icpAlignment, motivationIntensity, funnelContext, authorityAndCoachability, abilityToProceed, prospectContextSummary, dimensionScores)
+
+prospectDifficultyTier (easy/realistic/hard/expert)
+
+prospectDifficulty (total score /50)
+
+offerId from the call
+
+Check if a prospect avatar already exists with that name for this user. If yes, use it. If not, create a temporary one using the call data:
+
+name: prospectName from the call
+
+positionDescription: Extract from prospectContextSummary
+
+backstory: prospectContextSummary
+
+Set dimension scores: icpAlignment, motivationIntensity, funnelContext, authorityAndCoachability, abilityToProceed from dimensionScores
+
+Create a new roleplay session (same pattern as app/api/roleplay/route.ts):
+
+userId: authenticated user
+
+prospectAvatarId: the prospect found/created above
+
+offerId: from the original call
+
+inputMode: 'voice' (default)
+
+status: 'active'
+
+metadata: { replayFromCallId: callId, difficultyTier: tier }
+
+Return { sessionId: newSession.id }.
+
+Step 3: Roleplay Engine — Accept Replay Context
+In lib/ai/roleplay/roleplay-engine.ts, the system prompt already uses prospect data from the session's prospect avatar. Since we're creating a proper prospect avatar with the call's data in Step 2, the roleplay engine should work WITHOUT changes — it will read the prospect avatar's backstory, dimension scores, etc. naturally.
+
+However, verify that the roleplay engine reads prospectAvatar.backstory and includes it in the system prompt. If it doesn't, add it to the prospect context section of the prompt.
+
+BUILD VERIFICATION
+After all modules:
+
+npm run build must exit code 0
+
+Grep verification:
+
+grep -r "SKILL_CLUSTERS\|skill-clusters" --include="*.ts" --include="*.tsx" should return NO results (fully replaced)
+
+grep -r "CORE_PRINCIPLES\|core-principles" --include="*.ts" --include="*.tsx" should show imports in performance page + barrel
+
+grep -r "paymentType" --include="*.ts" --include="*.tsx" should show figures route + figures page
+
+grep -r "replay" app/api/roleplay/ --include="*.ts" should show the new replay route
+
+grep -r "priorityActionSteps" --include="*.ts" --include="*.tsx" should show performance route + page
+
+grep "revenueGenerated.*isFirstInstalment\|isFirstInstalment.*fullDealRevenue" --include="*.ts" should confirm the revenue fix

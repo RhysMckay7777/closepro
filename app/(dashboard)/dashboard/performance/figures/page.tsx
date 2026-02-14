@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 import { ArrowLeft, Loader2, Phone, CheckCircle2, TrendingUp, PoundSterling, AlertCircle, FileDown, Trash2 } from 'lucide-react';
 import { toastError, toastSuccess } from '@/lib/toast';
 import Link from 'next/link';
@@ -22,6 +24,7 @@ interface SalesListItem {
   instalmentNumber?: number;
   totalInstalments?: number;
   instalmentStatus?: string;
+  paymentType?: 'Pay in Full' | 'Payment Plan' | 'Deposit';
 }
 
 interface FiguresData {
@@ -74,11 +77,12 @@ export default function FiguresPage() {
     if (!figures?.salesList?.length) return;
     setExportingCsv(true);
     try {
-      const headers = ['Date', 'Offer', 'Prospect Name', 'Cash Collected', 'Revenue Generated', 'Commission %', 'Commission Earned'];
+      const headers = ['Date', 'Offer', 'Prospect Name', 'Type', 'Cash Collected', 'Revenue Generated', 'Commission %', 'Commission Earned'];
       const rows = figures.salesList.map((row) => [
         row.date,
         `"${(row.offerName || '').replace(/"/g, '""')}"`,
         `"${(row.prospectName || '').replace(/"/g, '""')}"`,
+        row.paymentType ?? 'Pay in Full',
         (row.cashCollected / 100).toFixed(2),
         (row.revenueGenerated / 100).toFixed(2),
         `${row.commissionPct}%`,
@@ -423,6 +427,7 @@ export default function FiguresPage() {
                         <th className="py-2 pr-4">Date</th>
                         <th className="py-2 pr-4">Offer</th>
                         <th className="py-2 pr-4">Prospect Name</th>
+                        <th className="py-2 pr-4 text-left text-xs font-medium text-muted-foreground">Type</th>
                         <th className="py-2 pr-4 text-right">Cash Collected</th>
                         <th className="py-2 pr-4 text-right">Revenue Generated</th>
                         <th className="py-2 pr-4 text-right">Commission %</th>
@@ -446,6 +451,19 @@ export default function FiguresPage() {
                           </td>
                           <td className="py-2 pr-4">{row.offerName}</td>
                           <td className="py-2 pr-4">{row.prospectName || 'Unknown'}</td>
+                          <td className="py-2 pr-4">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'text-xs',
+                                row.paymentType === 'Pay in Full' && 'border-green-500/30 text-green-400 bg-green-500/10',
+                                row.paymentType === 'Payment Plan' && 'border-blue-500/30 text-blue-400 bg-blue-500/10',
+                                row.paymentType === 'Deposit' && 'border-amber-500/30 text-amber-400 bg-amber-500/10',
+                              )}
+                            >
+                              {row.paymentType ?? 'Pay in Full'}
+                            </Badge>
+                          </td>
                           <td className="py-2 pr-4 text-right">£{(row.cashCollected / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">£{(row.revenueGenerated / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                           <td className="py-2 pr-4 text-right">{row.commissionPct}%</td>

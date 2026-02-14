@@ -49,10 +49,15 @@ export function ProspectDifficultyPanel({ justifications, sectionNumber = 2 }: P
         <CardDescription>Context on the prospect — not coaching, just what you were working with</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Prospect Context Summary */}
+        {/* Prospect Context Summary — styled like prospect selection card */}
         {contextSummary && typeof contextSummary === 'string' && (
-          <div className="p-4 rounded-lg border border-white/10 bg-white/5">
-            <p className="text-sm italic text-muted-foreground leading-relaxed">{contextSummary}</p>
+          <div className="rounded-lg border border-primary/20 bg-linear-to-br from-primary/5 to-card/40 overflow-hidden">
+            <div className="px-4 py-3 border-b border-white/10">
+              <h4 className="text-sm font-bold text-foreground">Prospect Context</h4>
+            </div>
+            <div className="px-4 py-3">
+              <p className="text-sm text-muted-foreground leading-relaxed">{contextSummary}</p>
+            </div>
           </div>
         )}
 

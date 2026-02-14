@@ -5,10 +5,10 @@ const ELEVENLABS_BASE = 'https://api.elevenlabs.io/v1';
 export const maxDuration = 60;
 
 /**
- * POST - Text to speech via ElevenLabs (when ELEVENLABS_API_KEY is set).
+ * POST - Text to speech via ElevenLabs Turbo v2.5.
  * Body: { text: string, voiceId?: string }
- * Returns: audio/mpeg stream, or 503 with fallback: true so client uses browser speech.
- * 401/403 = quota or free-tier disabled – we return 503 so client falls back to SpeechSynthesis.
+ * Returns: audio/mpeg stream, or 503 with error details.
+ * Default voice: "George" (British male, JBFqnCBsd6RMkjVDRZzb).
  */
 export async function POST(request: NextRequest) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
@@ -24,7 +24,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const text = typeof body.text === 'string' ? body.text.trim() : '';
-    const voiceId = typeof body.voiceId === 'string' ? body.voiceId.trim() : process.env.ELEVENLABS_VOICE_ID?.trim() || 'pNInz6obpgDQGcFmaJgB';
+    // Default to "George" — a warm British male voice suitable for sales roleplay prospects
+    const voiceId = typeof body.voiceId === 'string' ? body.voiceId.trim() : process.env.ELEVENLABS_VOICE_ID?.trim() || 'JBFqnCBsd6RMkjVDRZzb';
     console.log(`[TTS] Requesting voice=${voiceId}, text length=${text.length}`);
 
     if (!text) {
@@ -43,7 +44,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         text,
-        model_id: 'eleven_multilingual_v2',
+        model_id: 'eleven_turbo_v2_5',
       }),
     });
 

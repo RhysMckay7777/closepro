@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { SKILL_CLUSTERS } from '@/lib/training/skill-clusters';
+import { CORE_PRINCIPLES } from '@/lib/training/core-principles';
 
 export interface SkillCategoryData {
   category: string;
@@ -27,31 +27,37 @@ interface DetectedPattern {
   severity: 'high' | 'medium' | 'low';
 }
 
-const CLUSTER_COLORS: Record<string, string> = {
-  'Authority & Leadership': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  'Discovery & Gap Creation': 'bg-green-500/20 text-green-400 border-green-500/30',
-  'Value Stabilization': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
-  'Objection Control': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-  'Closing & Decision Leadership': 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-  'Emotional Intelligence & Adaptation': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+const PRINCIPLE_COLORS: Record<string, string> = {
+  'Authority': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  'Structure': 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+  'Communication & Listening': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+  'Gap Creation': 'bg-green-500/20 text-green-400 border-green-500/30',
+  'Value Positioning': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  'Trust Building': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+  'Adaptability': 'bg-pink-500/20 text-pink-400 border-pink-500/30',
+  'Objection Strategy': 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  'Decision Leadership': 'bg-teal-500/20 text-teal-400 border-teal-500/30',
 };
 
-function getCategoryCluster(categoryName: string): string {
+function getCategoryPrinciple(categoryName: string): string {
   const lower = categoryName.toLowerCase();
-  for (const cluster of SKILL_CLUSTERS) {
-    for (const catId of cluster.sourceCategories) {
+  for (const principle of CORE_PRINCIPLES) {
+    for (const catId of principle.relatedCategories) {
       if (lower.includes(catId.replace(/_/g, ' ')) || lower === catId.replace(/_/g, ' ')) {
-        return cluster.name;
+        return principle.name;
       }
     }
   }
   // Fallback: keyword matching
-  if (lower.includes('authority') || lower.includes('structure')) return 'Authority & Leadership';
-  if (lower.includes('discovery') || lower.includes('gap')) return 'Discovery & Gap Creation';
-  if (lower.includes('value') || lower.includes('communication')) return 'Value Stabilization';
-  if (lower.includes('objection')) return 'Objection Control';
-  if (lower.includes('closing') || lower.includes('close')) return 'Closing & Decision Leadership';
-  if (lower.includes('trust') || lower.includes('adaptation')) return 'Emotional Intelligence & Adaptation';
+  if (lower.includes('authority')) return 'Authority';
+  if (lower.includes('structure')) return 'Structure';
+  if (lower.includes('communication')) return 'Communication & Listening';
+  if (lower.includes('discovery') || lower.includes('gap')) return 'Gap Creation';
+  if (lower.includes('value')) return 'Value Positioning';
+  if (lower.includes('trust')) return 'Trust Building';
+  if (lower.includes('adaptation')) return 'Adaptability';
+  if (lower.includes('objection')) return 'Objection Strategy';
+  if (lower.includes('closing') || lower.includes('close')) return 'Decision Leadership';
   return 'General';
 }
 
@@ -59,7 +65,7 @@ function detectPatterns(skillCategories: SkillCategoryData[], totalSessions: num
   const patterns: DetectedPattern[] = [];
 
   for (const skill of skillCategories) {
-    const clusterName = getCategoryCluster(skill.category);
+    const clusterName = getCategoryPrinciple(skill.category);
 
     // Detect weaknesses that appear as recurring themes
     if (skill.weaknesses && skill.weaknesses.length > 0) {
@@ -156,7 +162,7 @@ export function InsightsPanel({ skillCategories, totalCalls, totalRoleplays }: I
               </Badge>
             </div>
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
-              <Badge className={`text-xs ${CLUSTER_COLORS[pattern.cluster] || 'bg-gray-500/20 text-gray-400'}`}>
+              <Badge className={`text-xs ${PRINCIPLE_COLORS[pattern.cluster] || 'bg-gray-500/20 text-gray-400'}`}>
                 {pattern.cluster}
               </Badge>
               <span>Seen in ~{pattern.frequency}/{pattern.totalSessions} sessions</span>

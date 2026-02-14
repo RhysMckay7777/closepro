@@ -6,7 +6,8 @@
       "Bash(cd:*)",
       "Bash(npx tsc:*)",
       "Bash(npx drizzle-kit push:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(ls:*)"
     ]
   }
 }

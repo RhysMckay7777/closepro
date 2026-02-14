@@ -6,7 +6,7 @@ import { RoleplaySessionSkeleton } from '@/components/dashboard/skeletons';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Mic, MicOff, Video, PhoneOff, MessageSquare, MoreVertical, Loader2, User, Bot, Pin, PinOff, Search } from 'lucide-react';
+import { Mic, MicOff, Video, PhoneOff, MessageSquare, Loader2, User, Bot, Pin, PinOff, Search, ChevronDown, ChevronUp } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
@@ -14,6 +14,7 @@ import { toastError } from '@/lib/toast';
 import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
 import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { getVoiceIdFromProspect } from '@/lib/ai/roleplay/voice-mapping';
+import { ElevenLabsClient } from '@/lib/tts/elevenlabs-client';
 
 interface Message {
   id?: string;
@@ -39,6 +40,15 @@ interface ProspectAvatar {
   avatarUrl?: string | null;
   positionDescription?: string | null;
   voiceStyle?: string | null;
+  backstory?: string | null;
+}
+
+interface OfferInfo {
+  id: string;
+  name: string;
+  description?: string | null;
+  price?: number | null;
+  offerType?: string | null;
 }
 
 interface UserProfile {
@@ -68,6 +78,8 @@ function RoleplaySessionContent() {
 
   const [session, setSession] = useState<Session | null>(null);
   const [prospectAvatar, setProspectAvatar] = useState<ProspectAvatar | null>(null);
+  const [offerInfo, setOfferInfo] = useState<OfferInfo | null>(null);
+  const [showRoleContext, setShowRoleContext] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -88,7 +100,7 @@ function RoleplaySessionContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const synthRef = useRef<SpeechSynthesis | null>(null);
+  const ttsProviderRef = useRef<ElevenLabsClient | null>(null);
   const activeSpeakerTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Voice consistency: lock voice ID on first TTS call so it never changes mid-session
@@ -174,6 +186,7 @@ function RoleplaySessionContent() {
       setSession(data.session);
       setMessages(data.messages || []);
       setProspectAvatar(data.prospectAvatar ?? null);
+      setOfferInfo(data.offer ?? null);
       const meta = data.session?.metadata;
       if (meta) {
         try {
@@ -343,7 +356,10 @@ function RoleplaySessionContent() {
       };
     }
 
-    synthRef.current = window.speechSynthesis;
+    // Initialize ElevenLabs TTS provider (no browser SpeechSynthesis)
+    if (!ttsProviderRef.current) {
+      ttsProviderRef.current = new ElevenLabsClient();
+    }
   };
 
   const handleSend = async (messageText?: string) => {
@@ -410,11 +426,10 @@ function RoleplaySessionContent() {
         setActiveSpeaker(null);
       }, 5000);
 
-      // Speak prospect response (ElevenLabs TTS if configured, else browser speechSynthesis)
-      if (!isMuted) {
-        if (synthRef.current) synthRef.current.cancel();
+      // Speak prospect response via ElevenLabs TTS provider
+      if (!isMuted && ttsProviderRef.current) {
+        ttsProviderRef.current.stop();
         const speakText = cleanForSpeech(data.response);
-        const onEnd = () => setActiveSpeaker(null);
         try {
           // Voice consistency: lock voice ID on first call, reuse for entire session
           if (!lockedVoiceIdRef.current && prospectAvatar) {
@@ -428,91 +443,19 @@ function RoleplaySessionContent() {
             try { recognitionRef.current.stop(); } catch { /* ignore */ }
           }
 
-          const ttsRes = await fetch('/api/tts', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: speakText,
-              voiceId: voiceId,
-            }),
-          });
+          await ttsProviderRef.current.speak(speakText, voiceId);
 
-          // Check if response is successful audio (200) or needs fallback (503 with fallback flag)
-          if (ttsRes.ok && ttsRes.headers.get('content-type')?.includes('audio')) {
-            const blob = await ttsRes.blob();
-            const url = URL.createObjectURL(blob);
-            const audio = new Audio(url);
-            audio.onended = () => {
-              URL.revokeObjectURL(url);
-              isSpeakingTTSRef.current = false;
-              // Resume mic after TTS
-              if (session?.inputMode === 'voice') startContinuousListening();
-              onEnd();
-            };
-            audio.onerror = () => {
-              URL.revokeObjectURL(url);
-              fallbackSpeak(speakText, onEnd);
-            };
-            await audio.play();
-          } else {
-            // Check for explicit fallback flag in JSON response (503 from ElevenLabs auth/quota issues)
-            try {
-              const errorData = await ttsRes.json().catch(() => null);
-              if (errorData?.fallback) {
-                // Explicit fallback requested (ElevenLabs unavailable)
-                fallbackSpeak(speakText, onEnd);
-              } else {
-                // Other error, still fallback to browser speech
-                fallbackSpeak(speakText, onEnd);
-              }
-            } catch {
-              // Response not JSON, fallback to browser speech
-              fallbackSpeak(speakText, onEnd);
-            }
-          }
-        } catch {
-          fallbackSpeak(speakText, onEnd);
-        }
-      }
-
-      function inferProspectGender(name: string): 'male' | 'female' | 'unknown' {
-        const first = name.trim().split(/\s+/)[0]?.toLowerCase() || '';
-        const FEMALE = new Set(['maria', 'sarah', 'emma', 'rachel', 'sophie', 'jessica', 'laura', 'hannah', 'charlotte', 'olivia', 'nicole', 'katie', 'amy', 'lisa', 'jennifer', 'emily', 'amanda', 'megan', 'ashley', 'brooke', 'hayley', 'lauren', 'bella']);
-        const MALE = new Set(['james', 'david', 'michael', 'robert', 'daniel', 'thomas', 'william', 'richard', 'joseph', 'marcus', 'ryan', 'nathan', 'ben', 'luke', 'adam', 'jack', 'chris', 'connor', 'john', 'brian', 'kevin', 'jason', 'josh', 'arnold', 'anthony', 'andrew', 'steven', 'matthew', 'mark', 'george']);
-        if (FEMALE.has(first)) return 'female';
-        if (MALE.has(first)) return 'male';
-        return 'unknown';
-      }
-
-      function fallbackSpeak(text: string, onEnd: () => void) {
-        if (synthRef.current) {
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.rate = 0.9;
-
-          // Pick a gender-appropriate browser voice based on prospect name
-          const gender = inferProspectGender(prospectAvatar?.name || '');
-          const voices = synthRef.current.getVoices();
-          if (voices.length > 0) {
-            const preferred = voices.find(v => {
-              const vn = v.name.toLowerCase();
-              if (gender === 'male') return /\b(male|david|mark|james|daniel|george|guy)\b/.test(vn);
-              if (gender === 'female') return /\b(female|zira|hazel|susan|samantha|karen|fiona)\b/.test(vn);
-              return false;
-            });
-            if (preferred) utterance.voice = preferred;
-          }
-          utterance.pitch = gender === 'male' ? 0.85 : 1.0;
-          utterance.onend = () => {
-            isSpeakingTTSRef.current = false;
-            // Resume mic after fallback TTS
-            if (session?.inputMode === 'voice') startContinuousListening();
-            onEnd();
-          };
-          synthRef.current.speak(utterance);
-        } else {
+          // TTS finished — resume mic
           isSpeakingTTSRef.current = false;
           if (session?.inputMode === 'voice') startContinuousListening();
-          onEnd();
+          setActiveSpeaker(null);
+        } catch (ttsErr) {
+          // TTS failed — no browser fallback, just show error and resume
+          isSpeakingTTSRef.current = false;
+          if (session?.inputMode === 'voice') startContinuousListening();
+          setActiveSpeaker(null);
+          console.error('[TTS] Voice playback failed:', ttsErr);
+          toastError('Voice playback unavailable — check your ElevenLabs configuration');
         }
       }
     } catch (error: any) {
@@ -548,10 +491,8 @@ function RoleplaySessionContent() {
 
   const handleMute = () => {
     setIsMuted(!isMuted);
-    if (synthRef.current) {
-      if (!isMuted) {
-        synthRef.current.cancel();
-      }
+    if (!isMuted && ttsProviderRef.current) {
+      ttsProviderRef.current.stop();
     }
   };
 
@@ -577,7 +518,7 @@ function RoleplaySessionContent() {
       onConfirm: async () => {
         try {
           setLoading(true);
-          if (synthRef.current) synthRef.current.cancel();
+          if (ttsProviderRef.current) ttsProviderRef.current.stop();
 
           // Mark session as completed (fast DB update)
           await fetch(`/api/roleplay/${sessionId}`, {
@@ -602,7 +543,7 @@ function RoleplaySessionContent() {
   return (
     <>
       <ConfirmDialog />
-      <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-linear-to-b from-stone-950 via-stone-900 to-stone-950">
+      <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-gradient-to-br from-indigo-950/90 via-stone-950 to-purple-950/60">
         {/* ─── Top Header Bar ─── */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-stone-950/80 backdrop-blur-md z-20 shrink-0">
           <div className="flex items-center gap-3">
@@ -644,18 +585,18 @@ function RoleplaySessionContent() {
 
         {/* ─── Main Content: Split Panels + Transcript ─── */}
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {/* ─── User & Prospect Panels (Side by Side) ─── */}
-          <div className="flex-1 flex min-h-0">
-            {/* Left Panel: User */}
-            <div className="flex-1 flex flex-col items-center justify-center p-6 border-r border-white/5">
+          {/* ─── Zoom-Style Call Layout ─── */}
+          <div className="flex-1 flex items-center justify-center gap-6 p-4 sm:p-8 min-h-0">
+            {/* LEFT: Small "You" tile */}
+            <div className="flex flex-col items-center gap-3 w-36 sm:w-44 shrink-0">
               <div
                 className={cn(
-                  "relative rounded-full overflow-hidden transition-all duration-300",
+                  "relative rounded-2xl overflow-hidden transition-all duration-300 bg-stone-800/60 border",
                   activeSpeaker === 'rep'
-                    ? "ring-4 ring-orange-500/50 shadow-2xl shadow-orange-500/20"
-                    : "ring-2 ring-white/10"
+                    ? "border-orange-500/50 shadow-lg shadow-orange-500/20"
+                    : "border-white/10"
                 )}
-                style={{ width: 'clamp(120px, 14vw, 180px)', height: 'clamp(120px, 14vw, 180px)' }}
+                style={{ width: '100%', aspectRatio: '3/4' }}
               >
                 {cameraOn ? (
                   <video
@@ -666,26 +607,31 @@ function RoleplaySessionContent() {
                     className="absolute inset-0 w-full h-full object-cover"
                   />
                 ) : userProfile?.profilePhoto ? (
-                  <Avatar className="w-full h-full">
-                    <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
-                    <AvatarFallback className="bg-orange-500/30 text-orange-300 text-2xl">
-                      {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <Avatar className="w-16 h-16 sm:w-20 sm:h-20">
+                      <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                      <AvatarFallback className="bg-orange-500/30 text-orange-300 text-xl">
+                        {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-xs text-muted-foreground">Audio Only</span>
+                  </div>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                    <User className="h-12 w-12 text-orange-400" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                    <User className="h-10 w-10 text-orange-400/70" />
+                    <span className="text-xs text-muted-foreground">Audio Only</span>
                   </div>
                 )}
                 {activeSpeaker === 'rep' && (
                   <div className="absolute top-2 right-2 w-3 h-3 bg-orange-500 rounded-full animate-pulse ring-2 ring-orange-400/50" />
                 )}
               </div>
-              <h3 className="mt-3 text-lg font-semibold text-foreground">{userProfile?.name || 'You'}</h3>
-              <p className="text-xs text-muted-foreground mt-1">Sales Rep</p>
+              <div className="text-center">
+                <p className="text-sm font-semibold text-foreground">{userProfile?.name || 'You'}</p>
+              </div>
               {/* Live mic indicator */}
               {isListening && (
-                <div className="mt-3 flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/30">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/30">
                   <div className="flex items-center gap-0.5">
                     {[0, 1, 2, 3, 4].map(i => (
                       <span
@@ -704,53 +650,107 @@ function RoleplaySessionContent() {
               )}
             </div>
 
-            {/* Right Panel: Prospect */}
-            <div className="flex-1 flex flex-col items-center justify-center p-6">
+            {/* RIGHT: Larger prospect card with context + offer */}
+            <div className="flex flex-col items-center gap-4 flex-1 max-w-md">
               <div
                 className={cn(
-                  "relative rounded-full overflow-hidden transition-all duration-300",
+                  "relative rounded-2xl overflow-hidden transition-all duration-300 bg-stone-800/40 border w-full",
                   activeSpeaker === 'prospect'
-                    ? "ring-4 ring-stone-500/50 shadow-2xl shadow-stone-500/20"
-                    : "ring-2 ring-white/10"
+                    ? "border-purple-500/50 shadow-lg shadow-purple-500/20"
+                    : "border-white/10"
                 )}
-                style={{ width: 'clamp(120px, 14vw, 180px)', height: 'clamp(120px, 14vw, 180px)' }}
               >
-                {prospectAvatar ? (
-                  <Avatar className="w-full h-full">
-                    {resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl) ? (
-                      <AvatarImage
-                        src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)!}
-                        alt={prospectAvatar.name}
-                        className="object-cover"
-                      />
-                    ) : null}
-                    <AvatarFallback className={`text-3xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
-                      {getProspectInitials(prospectAvatar.name)}
-                    </AvatarFallback>
-                  </Avatar>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                    <Bot className="h-12 w-12 text-stone-500" />
+                {/* Prospect avatar + name section */}
+                <div className="flex flex-col items-center py-6 px-4">
+                  <div
+                    className={cn(
+                      "relative rounded-full overflow-hidden transition-all duration-300",
+                      activeSpeaker === 'prospect'
+                        ? "ring-4 ring-purple-500/50 shadow-xl shadow-purple-500/20"
+                        : "ring-2 ring-white/10"
+                    )}
+                    style={{ width: 'clamp(80px, 10vw, 120px)', height: 'clamp(80px, 10vw, 120px)' }}
+                  >
+                    {prospectAvatar ? (
+                      <Avatar className="w-full h-full">
+                        {resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl) ? (
+                          <AvatarImage
+                            src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)!}
+                            alt={prospectAvatar.name}
+                            className="object-cover"
+                          />
+                        ) : null}
+                        <AvatarFallback className={`text-2xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
+                          {getProspectInitials(prospectAvatar.name)}
+                        </AvatarFallback>
+                      </Avatar>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-stone-800">
+                        <Bot className="h-10 w-10 text-stone-500" />
+                      </div>
+                    )}
+                    {loading && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
+                      </div>
+                    )}
+                    {activeSpeaker === 'prospect' && !loading && (
+                      <div className="absolute top-1 right-1 w-3 h-3 bg-purple-500 rounded-full animate-pulse ring-2 ring-purple-400/50" />
+                    )}
                   </div>
-                )}
-                {loading && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-stone-400" />
-                  </div>
-                )}
-                {activeSpeaker === 'prospect' && !loading && (
-                  <div className="absolute top-2 right-2 w-3 h-3 bg-stone-500 rounded-full animate-pulse ring-2 ring-stone-400/50" />
-                )}
+                  <h3 className="mt-3 text-lg font-bold text-foreground">{prospectAvatar?.name ?? 'AI Prospect'}</h3>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
+                  </p>
+                </div>
+
+                {/* Expandable Role Context */}
+                <div className="border-t border-white/10">
+                  <button
+                    onClick={() => setShowRoleContext(!showRoleContext)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-primary hover:bg-white/5 transition-colors"
+                  >
+                    <span>Role context</span>
+                    {showRoleContext ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </button>
+
+                  {showRoleContext && (
+                    <div className="px-4 pb-4 space-y-3">
+                      {/* Prospect Context */}
+                      {prospectAvatar?.positionDescription && (
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <h5 className="text-xs font-bold text-foreground mb-1">Prospect Context</h5>
+                          <p className="text-xs text-muted-foreground leading-relaxed">
+                            {prospectAvatar.positionDescription}
+                          </p>
+                          {prospectAvatar.backstory && (
+                            <p className="text-xs text-muted-foreground leading-relaxed mt-1.5">
+                              {prospectAvatar.backstory}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Offer Info */}
+                      {offerInfo && (
+                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                          <h5 className="text-xs font-bold text-foreground mb-1">{offerInfo.name}</h5>
+                          {offerInfo.price != null && (
+                            <p className="text-xs text-muted-foreground">
+                              {'\u00A3'}{(offerInfo.price / 100).toLocaleString()}
+                            </p>
+                          )}
+                          {offerInfo.description && (
+                            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
+                              {offerInfo.description}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-              <h3 className="mt-3 text-lg font-semibold text-foreground">{prospectAvatar?.name ?? 'AI Prospect'}</h3>
-              <p className="text-xs text-muted-foreground mt-1 max-w-xs text-center">
-                {prospectAvatar?.positionDescription ?? 'Virtual buyer'}
-              </p>
-              {prospectAvatar?.voiceStyle && (
-                <Badge variant="outline" className="mt-2 text-xs border-white/10 text-muted-foreground">
-                  {prospectAvatar.voiceStyle}
-                </Badge>
-              )}
             </div>
           </div>
 
@@ -813,7 +813,7 @@ function RoleplaySessionContent() {
                             "text-[10px] font-bold uppercase tracking-wider",
                             msg.role === 'rep' ? "text-orange-400" : "text-blue-400"
                           )}>
-                            {msg.role === 'rep' ? 'REP' : 'PRO'}
+                            {msg.role === 'rep' ? 'Closer' : 'Prospect'}
                           </span>
                           {typeof msg.timestamp === 'number' && (
                             <span className="text-[10px] text-muted-foreground/60 tabular-nums">
@@ -852,7 +852,7 @@ function RoleplaySessionContent() {
                   })()}
                   {loading && (
                     <div className="flex gap-3">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 shrink-0">PRO</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 shrink-0">Prospect</span>
                       <div className="flex items-center gap-2">
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
                         <span className="text-sm text-muted-foreground">Typing…</span>
@@ -878,7 +878,7 @@ function RoleplaySessionContent() {
                             "text-[10px] font-bold uppercase tracking-wider shrink-0",
                             msg.role === 'rep' ? "text-orange-400" : "text-blue-400"
                           )}>
-                            {msg.role === 'rep' ? 'REP' : 'PRO'}
+                            {msg.role === 'rep' ? 'Closer' : 'Prospect'}
                           </span>
                           <p className="text-sm text-white/90 whitespace-pre-wrap flex-1">{msg.role === 'prospect' ? cleanForSpeech(msg.content) : msg.content}</p>
                           <Button

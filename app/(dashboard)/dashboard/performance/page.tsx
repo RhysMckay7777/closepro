@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { TrendingUp, TrendingDown, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, FileDown, ChevronDown, ChevronUp } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { SKILL_CLUSTERS, computeClusterScores } from '@/lib/training/skill-clusters';
+import { CORE_PRINCIPLES, computePrincipleScores } from '@/lib/training/core-principles';
 import { ObjectionInsights } from '@/components/dashboard/ObjectionInsights';
 import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
 import { PerformanceSummary } from '@/components/dashboard/PerformanceSummary';
@@ -64,6 +64,23 @@ interface PerformanceData {
   aiInsight?: string;
   weeklySummary?: { overview: string; skillTrends: string; actionPlan: string[] };
   monthlySummary?: { overview: string; skillTrends: string; actionPlan: string[] };
+  principleSummaries?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    score: number;
+    trend: number;
+    summary: string;
+    strengths: string[];
+    weaknesses: string[];
+    improvements: string[];
+  }>;
+  priorityActionSteps?: Array<{
+    action: string;
+    reason: string;
+    frequency: number;
+    sources: string[];
+  }>;
   recentAnalyses: Array<{
     id: string;
     type: 'call' | 'roleplay';
@@ -581,43 +598,67 @@ export default function PerformancePage() {
         </Card>
       )}
 
-      {/* Skill Clusters (6 strategic clusters from 10 categories) */}
+      {/* Core Sales Principles (9 principles from the sales philosophy) */}
       {(() => {
-        const NAME_TO_ID: Record<string, string> = {
-          'Authority': 'authority', 'Structure': 'structure', 'Communication': 'communication',
-          'Discovery': 'discovery', 'Gap': 'gap', 'Value': 'value',
-          'Trust': 'trust', 'Adaptation': 'adaptation', 'Objection Handling': 'objection_handling', 'Closing': 'closing',
+        const PRINCIPLE_COLORS: Record<string, { bar: string; badge: string }> = {
+          authority: { bar: 'bg-blue-500', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
+          structure: { bar: 'bg-indigo-500', badge: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' },
+          communication_listening: { bar: 'bg-emerald-500', badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+          gap_creation: { bar: 'bg-green-500', badge: 'bg-green-500/20 text-green-400 border-green-500/30' },
+          value_positioning: { bar: 'bg-purple-500', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
+          trust_building: { bar: 'bg-amber-500', badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
+          adaptability: { bar: 'bg-pink-500', badge: 'bg-pink-500/20 text-pink-400 border-pink-500/30' },
+          objection_strategy: { bar: 'bg-orange-500', badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+          decision_leadership: { bar: 'bg-teal-500', badge: 'bg-teal-500/20 text-teal-400 border-teal-500/30' },
         };
-        const catScores: Record<string, number> = {};
-        for (const cat of performance.skillCategories) {
-          const id = NAME_TO_ID[cat.category] || cat.category.toLowerCase().replace(/\s+/g, '_');
-          catScores[id] = cat.averageScore;
-        }
-        const clusterScores = computeClusterScores(catScores);
-        const CLUSTER_COLORS: Record<string, { bar: string; badge: string }> = {
-          authority_leadership: { bar: 'bg-blue-500', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-          discovery_gap_creation: { bar: 'bg-green-500', badge: 'bg-green-500/20 text-green-400 border-green-500/30' },
-          value_stabilization: { bar: 'bg-purple-500', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
-          objection_control: { bar: 'bg-orange-500', badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
-          closing_decision_leadership: { bar: 'bg-teal-500', badge: 'bg-teal-500/20 text-teal-400 border-teal-500/30' },
-          emotional_intelligence: { bar: 'bg-pink-500', badge: 'bg-pink-500/20 text-pink-400 border-pink-500/30' },
-        };
+
+        // Use API-computed principleSummaries if available, otherwise compute client-side
+        const principles = performance.principleSummaries ?? (() => {
+          const NAME_TO_ID: Record<string, string> = {
+            'Authority': 'authority', 'Structure': 'structure', 'Communication': 'communication',
+            'Discovery': 'discovery', 'Gap': 'gap', 'Value': 'value',
+            'Trust': 'trust', 'Adaptation': 'adaptation', 'Objection Handling': 'objection_handling', 'Closing': 'closing',
+          };
+          const catScores: Record<string, number> = {};
+          for (const cat of performance.skillCategories) {
+            const id = NAME_TO_ID[cat.category] || cat.category.toLowerCase().replace(/\s+/g, '_');
+            catScores[id] = cat.averageScore;
+          }
+          return computePrincipleScores(catScores).map((ps) => ({
+            id: ps.principle.id,
+            name: ps.principle.name,
+            description: ps.principle.description,
+            score: ps.score,
+            trend: 0,
+            summary: ps.score === 0
+              ? `No data yet for ${ps.principle.name}.`
+              : ps.score >= 80
+                ? `Strong performance in ${ps.principle.name}.`
+                : ps.score >= 60
+                  ? `Developing competency in ${ps.principle.name}.`
+                  : `Needs focus on ${ps.principle.name}.`,
+            strengths: [] as string[],
+            weaknesses: [] as string[],
+            improvements: [] as string[],
+          }));
+        })();
+
+        const hasData = principles.some((p) => p.score > 0);
 
         return (
           <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader>
-              <CardTitle>Skill Clusters</CardTitle>
-              <CardDescription>6 strategic skill clusters aggregated from your 10 scoring categories</CardDescription>
+              <CardTitle>Core Sales Principles</CardTitle>
+              <CardDescription>Performance insights across 9 core principles from the sales philosophy</CardDescription>
             </CardHeader>
             <CardContent>
-              {clusterScores.some(c => c.score > 0) ? (
+              {hasData ? (
                 <div className="space-y-2">
-                  {clusterScores.map((cs) => {
-                    const colors = CLUSTER_COLORS[cs.cluster.id] || { bar: 'bg-gray-500', badge: 'bg-gray-500/20 text-gray-400' };
-                    const isExpanded = expandedCategories.has(SKILL_CLUSTERS.indexOf(cs.cluster));
-                    const idx = SKILL_CLUSTERS.indexOf(cs.cluster);
+                  {principles.map((p, idx) => {
+                    const colors = PRINCIPLE_COLORS[p.id] || { bar: 'bg-gray-500', badge: 'bg-gray-500/20 text-gray-400' };
+                    const isExpanded = expandedCategories.has(idx);
                     return (
-                      <div key={cs.cluster.id} className="rounded-lg bg-white/5 border border-white/10 overflow-hidden">
+                      <div key={p.id} className="rounded-lg bg-white/5 border border-white/10 overflow-hidden">
                         <button
                           onClick={() => {
                             setExpandedCategories(prev => {
@@ -628,91 +669,58 @@ export default function PerformancePage() {
                           }}
                           className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors text-left"
                         >
-                          <div className="flex items-center gap-3">
-                            <Badge className={`text-xs ${colors.badge}`}>{cs.cluster.name}</Badge>
+                          <div className="flex-1 min-w-0 mr-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-bold">{p.name}</span>
+                              {p.trend !== 0 && (
+                                <span className={`text-xs flex items-center gap-0.5 ${p.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+                                  {p.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                                  {p.trend > 0 ? '+' : ''}{p.trend}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.description}</p>
                           </div>
-                          <div className="flex items-center gap-3">
-                            <div className="w-32 bg-muted h-2.5 rounded-full overflow-hidden">
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="w-24 bg-muted h-2.5 rounded-full overflow-hidden">
                               <div
                                 className={`h-full rounded-full transition-all ${colors.bar}`}
-                                style={{ width: `${cs.score}%` }}
+                                style={{ width: `${p.score}%` }}
                               />
                             </div>
-                            <span className={`text-lg font-bold w-12 text-right ${getScoreColor(cs.score)}`}>
-                              {cs.score > 0 ? cs.score : '—'}
+                            <span className={`text-sm font-medium w-10 text-right text-muted-foreground`}>
+                              {p.score > 0 ? p.score : '—'}
                             </span>
                             {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                           </div>
                         </button>
                         {isExpanded && (
                           <div className="px-4 pb-4 pt-1 space-y-3 border-t border-white/10">
-                            <p className="text-sm text-muted-foreground">{cs.cluster.description}</p>
-                            {cs.categoryBreakdown.length > 0 && (
-                              <div className="space-y-1.5">
-                                <p className="text-xs font-semibold text-muted-foreground">Category Breakdown</p>
-                                {cs.categoryBreakdown.map((cat) => {
-                                  const catData = performance.skillCategories.find(
-                                    s => (NAME_TO_ID[s.category] || s.category.toLowerCase().replace(/\s+/g, '_')) === cat.id
-                                  );
-                                  return (
-                                    <div key={cat.id} className="flex items-center justify-between text-sm">
-                                      <span className="text-muted-foreground">{catData?.category || cat.id}</span>
-                                      <div className="flex items-center gap-2">
-                                        {typeof catData?.trend === 'number' && catData.trend !== 0 && (
-                                          <span className={`text-xs flex items-center gap-0.5 ${catData.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                            {catData.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                            {catData.trend > 0 ? '+' : ''}{catData.trend}
-                                          </span>
-                                        )}
-                                        <span className={`font-bold ${getScoreColor(cat.score)}`}>{cat.score}</span>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
+                            <p className="text-sm text-foreground/80">{p.summary}</p>
+                            {p.strengths.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-green-500 mb-1">Strengths</p>
+                                <ul className="text-sm text-muted-foreground space-y-0.5">
+                                  {p.strengths.slice(0, 3).map((s, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-green-500 mt-0.5">+</span> {s}</li>)}
+                                </ul>
                               </div>
                             )}
-                            {/* Show strengths/weaknesses/actions from constituent categories */}
-                            {(() => {
-                              const clusterStrengths: string[] = [];
-                              const clusterWeaknesses: string[] = [];
-                              const clusterActions: string[] = [];
-                              for (const cat of cs.categoryBreakdown) {
-                                const catData = performance.skillCategories.find(
-                                  s => (NAME_TO_ID[s.category] || s.category.toLowerCase().replace(/\s+/g, '_')) === cat.id
-                                );
-                                if (catData?.strengths) clusterStrengths.push(...catData.strengths);
-                                if (catData?.weaknesses) clusterWeaknesses.push(...catData.weaknesses);
-                                if (catData?.actionPoints) clusterActions.push(...catData.actionPoints);
-                              }
-                              return (
-                                <>
-                                  {clusterStrengths.length > 0 && (
-                                    <div>
-                                      <p className="text-xs font-semibold text-green-500 mb-1">Strengths</p>
-                                      <ul className="text-sm text-muted-foreground space-y-0.5">
-                                        {clusterStrengths.slice(0, 3).map((s, i) => <li key={i}>• {s}</li>)}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  {clusterWeaknesses.length > 0 && (
-                                    <div>
-                                      <p className="text-xs font-semibold text-red-500 mb-1">Weaknesses</p>
-                                      <ul className="text-sm text-muted-foreground space-y-0.5">
-                                        {clusterWeaknesses.slice(0, 3).map((w, i) => <li key={i}>• {w}</li>)}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  {clusterActions.length > 0 && (
-                                    <div>
-                                      <p className="text-xs font-semibold text-blue-500 mb-1">Action Points</p>
-                                      <ul className="text-sm text-muted-foreground space-y-0.5">
-                                        {clusterActions.slice(0, 3).map((a, i) => <li key={i}>{'\u2192'} {a}</li>)}
-                                      </ul>
-                                    </div>
-                                  )}
-                                </>
-                              );
-                            })()}
+                            {p.weaknesses.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-red-500 mb-1">Weaknesses</p>
+                                <ul className="text-sm text-muted-foreground space-y-0.5">
+                                  {p.weaknesses.slice(0, 3).map((w, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-red-500 mt-0.5">-</span> {w}</li>)}
+                                </ul>
+                              </div>
+                            )}
+                            {p.improvements.length > 0 && (
+                              <div>
+                                <p className="text-xs font-semibold text-blue-500 mb-1">How to Improve</p>
+                                <ul className="text-sm text-muted-foreground space-y-0.5">
+                                  {p.improvements.slice(0, 3).map((a, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-blue-500 mt-0.5">{'\u2192'}</span> {a}</li>)}
+                                </ul>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -722,13 +730,45 @@ export default function PerformancePage() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">No scored sessions yet.</p>
-                  <p className="text-sm text-muted-foreground mt-1">Complete a call analysis or roleplay to see your skill clusters.</p>
+                  <p className="text-sm text-muted-foreground mt-1">Complete a call analysis or roleplay to see your core principles breakdown.</p>
                 </div>
               )}
             </CardContent>
           </Card>
         );
       })()}
+
+      {/* Priority Action Steps (B2) */}
+      <Card className="border border-amber-500/20 bg-linear-to-br from-amber-500/5 to-card/40 backdrop-blur-xl shadow-xl">
+        <CardHeader>
+          <CardTitle>Priority Action Steps</CardTitle>
+          <CardDescription>Your top development focuses based on all analysed calls and roleplays</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {performance.priorityActionSteps && performance.priorityActionSteps.length > 0 ? (
+            <div className="space-y-4">
+              {performance.priorityActionSteps.map((step, idx) => (
+                <div key={idx} className="flex gap-4 items-start">
+                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
+                    <span className="text-sm font-bold text-amber-400">{idx + 1}</span>
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className="text-sm font-bold">{step.action}</p>
+                    {step.reason && <p className="text-sm text-muted-foreground">{step.reason}</p>}
+                    <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-400 bg-amber-500/10">
+                      Flagged in {step.frequency} session{step.frequency !== 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              Complete more call reviews to generate action steps.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Box 4: Average Scores By (Tabs) */}
       {((performance.byOfferType && Object.keys(performance.byOfferType).length > 0) ||
