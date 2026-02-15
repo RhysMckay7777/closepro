@@ -640,87 +640,143 @@ function RoleplaySessionContent() {
           onMuteToggle={handleMute}
           onEndCall={handleEndSession}
           onSwitchToText={handleSwitchToText}
-          onRetry={() => {
+          onRetry={async () => {
+            // Clean up existing session before retrying
+            await voiceSession.endVoice();
             setVoiceStarted(false);
-            setVoiceStarted(true);
-            voiceSession.startVoice();
+            // Small delay to ensure cleanup completes
+            setTimeout(() => {
+              setVoiceStarted(true);
+              voiceSession.startVoice();
+            }, 500);
           }}
           onToggleCamera={toggleCamera}
           error={voiceSession.error}
+          reconnectFailed={voiceSession.reconnectFailed}
         />
       </>
     );
   };
 
   const renderAvatarArea = () => (
-    <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-      <div className="relative w-full max-w-2xl rounded-xl overflow-hidden bg-gradient-to-r from-blue-900/30 via-slate-900/50 to-amber-900/30 p-6 sm:p-8">
-        <div className="flex items-center justify-center gap-8 sm:gap-12">
-          {/* User side */}
-          <div className="flex flex-col items-center gap-3">
-            <div
-              className={cn(
-                "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center",
-                activeSpeaker === 'rep'
-                  ? "border-blue-400 shadow-lg shadow-blue-500/20"
-                  : "border-blue-500/40 bg-blue-500/20"
+    <div className="flex-1 flex items-center justify-center p-3 sm:p-6">
+      <div className="w-full max-w-5xl flex flex-col md:flex-row items-stretch gap-4 md:gap-0">
+
+        {/* ── User / Closer Tile ── */}
+        <div
+          className={cn(
+            "flex-1 rounded-xl overflow-hidden border transition-all duration-300 flex flex-col",
+            activeSpeaker === 'rep'
+              ? "border-blue-400/40 shadow-lg shadow-blue-500/10"
+              : "border-white/10",
+            "bg-gradient-to-br from-blue-900/30 via-slate-900/60 to-blue-950/40"
+          )}
+        >
+          {cameraOn ? (
+            /* Large video tile when camera is on */
+            <div className="relative flex-1 min-h-[260px] md:min-h-[340px]">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 w-full h-full object-cover rounded-xl"
+              />
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4 rounded-b-xl">
+                <div className="flex items-center gap-2">
+                  {activeSpeaker === 'rep' && (
+                    <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                  )}
+                  <span className="text-sm font-semibold text-white">{userProfile?.name || 'You'}</span>
+                  <span className="text-[10px] text-blue-300/80 uppercase tracking-wider ml-auto">Closer</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Avatar tile when camera is off */
+            <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 min-h-[260px] md:min-h-[340px]">
+              <div
+                className={cn(
+                  "w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center",
+                  activeSpeaker === 'rep'
+                    ? "border-blue-400 shadow-lg shadow-blue-500/20"
+                    : "border-blue-500/40 bg-blue-500/20"
+                )}
+              >
+                {userProfile?.profilePhoto ? (
+                  <Avatar className="w-full h-full">
+                    <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                    <AvatarFallback className="bg-blue-500/30 text-blue-300 text-3xl">
+                      {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                ) : (
+                  <Mic className="h-12 w-12 text-blue-400" />
+                )}
+              </div>
+              <span className="text-base font-semibold text-blue-300 mt-4">{userProfile?.name || 'You'}</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">Closer</span>
+              {activeSpeaker === 'rep' && (
+                <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse mt-3" />
               )}
-            >
-              {cameraOn ? (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-              ) : userProfile?.profilePhoto ? (
-                <Avatar className="w-full h-full">
-                  <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
-                  <AvatarFallback className="bg-blue-500/30 text-blue-300 text-xl">
-                    {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-              ) : (
-                <Mic className="h-10 w-10 text-blue-400" />
+              {!isVoiceMode && isListening && !activeSpeaker && (
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 mt-3">
+                  <div className="flex items-center gap-0.5">
+                    {[0, 1, 2, 3, 4].map(i => (
+                      <span
+                        key={i}
+                        className="w-1 bg-blue-400 rounded-full animate-pulse"
+                        style={{
+                          height: `${6 + Math.random() * 8}px`,
+                          animationDelay: `${i * 0.1}s`,
+                          animationDuration: `${0.4 + Math.random() * 0.4}s`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="text-[10px] text-blue-400 font-medium">Listening</span>
+                </div>
               )}
             </div>
-            <span className="text-sm font-medium text-blue-300">{userProfile?.name || 'You'}</span>
-            {activeSpeaker === 'rep' && (
-              <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
-            )}
-            {!isVoiceMode && isListening && !activeSpeaker && (
-              <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
-                <div className="flex items-center gap-0.5">
-                  {[0, 1, 2, 3, 4].map(i => (
-                    <span
-                      key={i}
-                      className="w-1 bg-blue-400 rounded-full animate-pulse"
-                      style={{
-                        height: `${6 + Math.random() * 8}px`,
-                        animationDelay: `${i * 0.1}s`,
-                        animationDuration: `${0.4 + Math.random() * 0.4}s`,
-                      }}
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] text-blue-400 font-medium">Listening</span>
-              </div>
-            )}
-          </div>
+          )}
+        </div>
 
-          {/* VS / Connection line */}
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-px h-8 bg-gradient-to-b from-blue-500/50 to-amber-500/50" />
-            <span className="text-xs text-muted-foreground font-medium">LIVE</span>
-            <div className="w-px h-8 bg-gradient-to-b from-amber-500/50 to-blue-500/50" />
+        {/* ── Vertical Divider (desktop) ── */}
+        <div className="hidden md:flex flex-col items-center justify-center px-3">
+          <div className="w-px flex-1 bg-gradient-to-b from-blue-500/40 to-transparent" />
+          <div className="py-2.5 flex flex-col items-center gap-1">
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[10px] text-muted-foreground font-medium tracking-widest">LIVE</span>
           </div>
+          <div className="w-px flex-1 bg-gradient-to-b from-transparent to-amber-500/40" />
+        </div>
 
-          {/* Prospect side */}
-          <div className="flex flex-col items-center gap-3">
+        {/* ── Horizontal Divider (mobile) ── */}
+        <div className="md:hidden flex items-center gap-3 px-4">
+          <div className="flex-1 h-px bg-gradient-to-r from-blue-500/30 to-transparent" />
+          <div className="flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            <span className="text-[10px] text-muted-foreground font-medium tracking-wider">LIVE</span>
+          </div>
+          <div className="flex-1 h-px bg-gradient-to-r from-transparent to-amber-500/30" />
+        </div>
+
+        {/* ── AI Prospect Tile ── */}
+        <div
+          className={cn(
+            "flex-1 rounded-xl overflow-hidden border transition-all duration-300 flex flex-col items-center justify-center p-6 sm:p-8",
+            activeSpeaker === 'prospect'
+              ? "border-amber-400/40 shadow-lg shadow-amber-500/10"
+              : "border-white/10",
+            "bg-gradient-to-br from-amber-900/30 via-slate-900/60 to-amber-950/40",
+            "min-h-[260px] md:min-h-[340px]"
+          )}
+        >
+          {/* Prospect Avatar */}
+          <div className="relative">
             <div
               className={cn(
-                "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300",
+                "w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-2 transition-all duration-300",
                 activeSpeaker === 'prospect'
                   ? "border-amber-400 shadow-lg shadow-amber-500/20"
                   : "border-amber-500/40"
@@ -735,64 +791,71 @@ function RoleplaySessionContent() {
                       className="object-cover"
                     />
                   ) : null}
-                  <AvatarFallback className={`text-2xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
+                  <AvatarFallback className={`text-3xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
                     {getProspectInitials(prospectAvatar.name)}
                   </AvatarFallback>
                 </Avatar>
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                  <Bot className="h-10 w-10 text-stone-500" />
-                </div>
-              )}
-              {loading && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
-                  <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
+                  <Bot className="h-12 w-12 text-stone-500" />
                 </div>
               )}
             </div>
-            <span className="text-sm font-medium text-amber-300">{prospectAvatar?.name ?? 'AI Prospect'}</span>
-            {activeSpeaker === 'prospect' && (
-              <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
-            )}
-          </div>
-        </div>
-
-        {/* Prospect description */}
-        <p className="text-xs text-muted-foreground text-center mt-4 max-w-lg mx-auto">
-          {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
-        </p>
-
-        {/* Expandable Role Context */}
-        <div className="mt-3 flex justify-center">
-          <button
-            onClick={() => setShowRoleContext(!showRoleContext)}
-            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-          >
-            <span>Role context</span>
-            {showRoleContext ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-          </button>
-        </div>
-        {showRoleContext && (
-          <div className="mt-3 space-y-2 max-w-lg mx-auto">
-            {prospectAvatar?.backstory && (
-              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                <h5 className="text-xs font-bold text-foreground mb-1">Backstory</h5>
-                <p className="text-xs text-muted-foreground leading-relaxed">{prospectAvatar.backstory}</p>
-              </div>
-            )}
-            {offerInfo && (
-              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                <h5 className="text-xs font-bold text-foreground mb-1">{offerInfo.name}</h5>
-                {offerInfo.price != null && (
-                  <p className="text-xs text-muted-foreground">{'\u00A3'}{(offerInfo.price / 100).toLocaleString()}</p>
-                )}
-                {offerInfo.description && (
-                  <p className="text-xs text-muted-foreground leading-relaxed mt-1">{offerInfo.description}</p>
-                )}
+            {loading && (
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
+                <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
               </div>
             )}
           </div>
-        )}
+
+          {/* Prospect Name — larger font */}
+          <h3 className="text-lg sm:text-xl font-bold text-amber-300 mt-4">
+            {prospectAvatar?.name ?? 'AI Prospect'}
+          </h3>
+          {activeSpeaker === 'prospect' && (
+            <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse mt-2" />
+          )}
+
+          {/* Prospect Description — larger font */}
+          <p className="text-sm sm:text-base text-muted-foreground text-center mt-3 max-w-sm leading-relaxed">
+            {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
+          </p>
+
+          {/* What You're Selling — always visible */}
+          {offerInfo && (
+            <div className="mt-4 w-full max-w-sm rounded-lg border border-white/10 bg-white/5 p-3">
+              <h5 className="text-[10px] font-bold text-foreground/60 uppercase tracking-wider mb-1.5">What You{'\u2019'}re Selling</h5>
+              <p className="text-sm sm:text-base font-medium text-foreground">{offerInfo.name}</p>
+              {offerInfo.price != null && (
+                <p className="text-sm text-amber-300/80 mt-0.5">{'\u00A3'}{(offerInfo.price / 100).toLocaleString()}</p>
+              )}
+              {offerInfo.description && (
+                <p className="text-xs text-muted-foreground leading-relaxed mt-1.5 line-clamp-2">{offerInfo.description}</p>
+              )}
+            </div>
+          )}
+
+          {/* Expandable Role Context */}
+          {prospectAvatar?.backstory && (
+            <>
+              <div className="mt-3">
+                <button
+                  onClick={() => setShowRoleContext(!showRoleContext)}
+                  className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                >
+                  <span>Backstory</span>
+                  {showRoleContext ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                </button>
+              </div>
+              {showRoleContext && (
+                <div className="mt-2 w-full max-w-sm rounded-lg border border-white/10 bg-white/5 p-3">
+                  <p className="text-xs text-muted-foreground leading-relaxed">{prospectAvatar.backstory}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
       </div>
     </div>
   );

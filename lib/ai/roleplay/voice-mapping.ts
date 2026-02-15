@@ -1,14 +1,19 @@
 /**
  * Voice Mapping Utility for Prospect Avatars
- * 
+ *
  * Maps prospect voice_style (voice ID or descriptive label) to ElevenLabs voice IDs.
  * Auto-selects a voice based on prospect name if voice_style is empty.
- * 
- * Curated voice IDs are stable, natural-sounding ElevenLabs voices covering different character types.
+ *
+ * Priority for male/female voices:
+ * 1. ELEVENLABS_VOICE_MALE_ID / ELEVENLABS_VOICE_FEMALE_ID env vars (if set)
+ * 2. Curated voice IDs (hardcoded defaults)
  */
 
+// Env-configured high-quality voices — these take priority over hardcoded defaults
+const ENV_VOICE_MALE = process.env.ELEVENLABS_VOICE_MALE_ID?.trim() || '';
+const ENV_VOICE_FEMALE = process.env.ELEVENLABS_VOICE_FEMALE_ID?.trim() || '';
+
 // Curated ElevenLabs voice IDs for different character types
-// These are stable, natural-sounding voices that work well for roleplay
 const CURATED_VOICES = {
   // Professional female voices
   professionalFemale: '21m00Tcm4TlvDq8ikWAM', // Rachel - warm, expressive, professional
@@ -23,12 +28,16 @@ const CURATED_VOICES = {
   warmCasual: 'VR6AewLTigWG4xSOukaG', // Arnold - warm, casual male
 };
 
+// Resolve the primary male/female voice (env var takes priority)
+const PRIMARY_MALE_VOICE = ENV_VOICE_MALE || CURATED_VOICES.professionalMale;
+const PRIMARY_FEMALE_VOICE = ENV_VOICE_FEMALE || CURATED_VOICES.professionalFemale;
+
 // Mapping from descriptive labels to voice IDs
 const LABEL_TO_VOICE: Record<string, string> = {
   // Professional styles
-  'professional': CURATED_VOICES.professionalFemale,
-  'professional female': CURATED_VOICES.professionalFemale,
-  'professional male': CURATED_VOICES.professionalMale,
+  'professional': PRIMARY_FEMALE_VOICE,
+  'professional female': PRIMARY_FEMALE_VOICE,
+  'professional male': PRIMARY_MALE_VOICE,
 
   // Authoritative styles
   'authoritative': CURATED_VOICES.authoritativeMale,
@@ -39,7 +48,7 @@ const LABEL_TO_VOICE: Record<string, string> = {
   // Friendly styles
   'friendly': CURATED_VOICES.friendlyMale,
   'friendly male': CURATED_VOICES.friendlyMale,
-  'friendly female': CURATED_VOICES.warmFemale,
+  'friendly female': PRIMARY_FEMALE_VOICE,
   'conversational': CURATED_VOICES.friendlyMale,
 
   // Warm styles
@@ -49,20 +58,19 @@ const LABEL_TO_VOICE: Record<string, string> = {
   'casual': CURATED_VOICES.warmCasual,
 
   // Default fallbacks
-  'default': CURATED_VOICES.professionalFemale,
-  'female': CURATED_VOICES.professionalFemale,
-  'male': CURATED_VOICES.professionalMale,
+  'default': PRIMARY_FEMALE_VOICE,
+  'female': PRIMARY_FEMALE_VOICE,
+  'male': PRIMARY_MALE_VOICE,
 };
 
-// Default fallback voice (Rachel - most natural and widely available)
-const DEFAULT_VOICE_ID = CURATED_VOICES.professionalFemale;
+// Default fallback voice
+const DEFAULT_VOICE_ID = PRIMARY_FEMALE_VOICE;
 
 /**
  * Checks if a string looks like an ElevenLabs voice ID
  * Voice IDs are typically alphanumeric strings around 20 characters
  */
 function isVoiceId(str: string): boolean {
-  // ElevenLabs voice IDs are alphanumeric, typically 20-25 chars
   return /^[a-zA-Z0-9]{18,30}$/.test(str.trim());
 }
 
@@ -74,36 +82,72 @@ function hashString(str: string): number {
   for (let i = 0; i < str.length; i++) {
     const char = str.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
+    hash = hash & hash;
   }
   return Math.abs(hash);
 }
 
 // Gender-grouped voice arrays for gender-aware auto-selection
+// Env-configured voices are placed first for higher priority
 const FEMALE_VOICES = [
-  CURATED_VOICES.professionalFemale,  // Rachel
-  CURATED_VOICES.warmFemale,          // Bella
-];
+  ...(ENV_VOICE_FEMALE ? [ENV_VOICE_FEMALE] : []),
+  CURATED_VOICES.professionalFemale,
+  CURATED_VOICES.warmFemale,
+].filter((v, i, arr) => arr.indexOf(v) === i); // Deduplicate
 
 const MALE_VOICES = [
-  CURATED_VOICES.professionalMale,    // Adam
-  CURATED_VOICES.authoritativeMale,   // Antoni
-  CURATED_VOICES.friendlyMale,        // Josh
-  CURATED_VOICES.warmCasual,          // Arnold
-];
+  ...(ENV_VOICE_MALE ? [ENV_VOICE_MALE] : []),
+  CURATED_VOICES.professionalMale,
+  CURATED_VOICES.authoritativeMale,
+  CURATED_VOICES.friendlyMale,
+  CURATED_VOICES.warmCasual,
+].filter((v, i, arr) => arr.indexOf(v) === i); // Deduplicate
 
-// Common name lists for gender inference when no explicit gender is provided
+// Expanded name lists for gender inference
 const COMMON_FEMALE_NAMES = new Set([
+  // Original list
   'maria', 'sarah', 'emma', 'rachel', 'sophie', 'jessica', 'laura', 'hannah',
   'charlotte', 'olivia', 'nicole', 'katie', 'amy', 'lisa', 'jennifer', 'emily',
   'amanda', 'megan', 'ashley', 'brooke', 'hayley', 'lauren', 'bella',
+  // Expanded: common UK/US/international names
+  'anna', 'catherine', 'claire', 'chloe', 'diana', 'eleanor', 'elizabeth',
+  'fiona', 'gemma', 'grace', 'harriet', 'helen', 'holly', 'imogen', 'isabelle',
+  'jade', 'jane', 'julia', 'karen', 'kate', 'katherine', 'kelly', 'kerry',
+  'kim', 'leah', 'leeann', 'linda', 'lucy', 'lydia', 'margaret', 'mary',
+  'michelle', 'molly', 'naomi', 'natalie', 'natasha', 'paige', 'patricia',
+  'penny', 'philippa', 'poppy', 'priya', 'rebecca', 'rosie', 'ruby', 'ruth',
+  'samantha', 'sandra', 'sara', 'sienna', 'stephanie', 'susan', 'tanya',
+  'tara', 'tracy', 'victoria', 'wendy', 'zoe',
+  // International female names
+  'shreya', 'aisha', 'fatima', 'mei', 'yuki', 'ananya', 'deepika', 'kavita',
+  'neha', 'pooja', 'ritu', 'sanya', 'swati', 'tina', 'vania', 'alina',
+  'elena', 'irina', 'marina', 'nina', 'olga', 'svetlana', 'tatiana',
+  'carmen', 'gabriela', 'lucia', 'rosa', 'sofia', 'valentina',
 ]);
 
 const COMMON_MALE_NAMES = new Set([
+  // Original list
   'james', 'david', 'michael', 'robert', 'daniel', 'thomas', 'william',
   'richard', 'joseph', 'marcus', 'ryan', 'nathan', 'ben', 'luke', 'adam',
   'jack', 'chris', 'connor', 'john', 'brian', 'kevin', 'jason', 'josh',
   'arnold', 'anthony', 'andrew', 'steven', 'matthew', 'mark', 'george',
+  // Expanded: common UK/US/international names
+  'alan', 'alex', 'alfie', 'andrei', 'archie', 'barry', 'billy', 'bobby',
+  'bradley', 'brandon', 'caleb', 'cameron', 'carl', 'charlie', 'colin',
+  'conal', 'craig', 'dale', 'darren', 'dean', 'derek', 'dominic', 'douglas',
+  'dylan', 'edward', 'eric', 'ethan', 'evan', 'finley', 'frank', 'freddie',
+  'gary', 'gordon', 'graham', 'grant', 'greg', 'harry', 'harvey', 'henry',
+  'hugh', 'ian', 'ivor', 'jake', 'jamie', 'jordan', 'karl', 'keith',
+  'kenneth', 'kyle', 'lawrence', 'lee', 'leo', 'liam', 'logan', 'louis',
+  'martin', 'max', 'neil', 'nicholas', 'nigel', 'noah', 'oliver', 'oscar',
+  'owen', 'patrick', 'paul', 'peter', 'philip', 'raymond', 'roger', 'sam',
+  'scott', 'sean', 'simon', 'stephen', 'stuart', 'terry', 'tim', 'timothy',
+  'toby', 'tom', 'tony', 'trevor', 'tyler', 'victor', 'wayne', 'zachary',
+  // International male names
+  'ahmed', 'ali', 'amit', 'arjun', 'boris', 'carlos', 'chen', 'dmitri',
+  'enrique', 'fabio', 'hans', 'hiroshi', 'hussein', 'ivan', 'jorge',
+  'kai', 'kumar', 'lars', 'mikhail', 'mohammed', 'omar', 'pablo',
+  'raj', 'ravi', 'sergio', 'suresh', 'tariq', 'vikram', 'vladimir', 'wei',
 ]);
 
 /**
@@ -121,6 +165,7 @@ function inferGenderFromName(name: string): 'male' | 'female' | 'unknown' {
  * Auto-selects a voice ID based on prospect name
  * Uses consistent hashing so the same prospect always gets the same voice.
  * Filters by inferred gender so male names get male voices and vice versa.
+ * Unknown gender defaults to the env-configured neutral voice instead of male.
  */
 function autoSelectVoice(prospectName: string): string {
   const gender = inferGenderFromName(prospectName);
@@ -130,8 +175,10 @@ function autoSelectVoice(prospectName: string): string {
   } else if (gender === 'male') {
     voiceArray = MALE_VOICES;
   } else {
-    // Unknown gender: default to male voices (most of the curated set)
-    voiceArray = MALE_VOICES;
+    // Unknown gender: use env-configured voice if available, otherwise default voice
+    const envNeutral = process.env.ELEVENLABS_VOICE_ID?.trim();
+    if (envNeutral) return envNeutral;
+    return DEFAULT_VOICE_ID;
   }
   const hash = hashString(prospectName.trim().toLowerCase());
   const index = hash % voiceArray.length;
@@ -147,13 +194,13 @@ function normalizeLabel(label: string): string {
 
 /**
  * Gets the ElevenLabs voice ID for a prospect avatar
- * 
+ *
  * Priority:
- * 1. If voiceStyle is a voice ID → use it directly
- * 2. If voiceStyle matches a label → map to voice ID
- * 3. If voiceStyle is empty → auto-select based on prospect name
- * 4. Fallback → env ELEVENLABS_VOICE_ID or default voice
- * 
+ * 1. If voiceStyle is a voice ID -> use it directly
+ * 2. If voiceStyle matches a label -> map to voice ID
+ * 3. If voiceStyle is empty -> auto-select based on prospect name
+ * 4. Fallback -> env ELEVENLABS_VOICE_ID or default voice
+ *
  * @param prospectAvatar - Prospect avatar object with name and optional voiceStyle
  * @returns ElevenLabs voice ID string
  */
@@ -180,7 +227,7 @@ export function getVoiceIdFromProspect(prospectAvatar: {
     if (mappedVoice) {
       return mappedVoice;
     }
-    // If label doesn't match, try partial matches (e.g., "professional woman" → "professional")
+    // If label doesn't match, try partial matches (e.g., "professional woman" -> "professional")
     for (const [label, voiceId] of Object.entries(LABEL_TO_VOICE)) {
       if (normalized.includes(label) || label.includes(normalized)) {
         return voiceId;
@@ -251,7 +298,7 @@ const CHARACTER_VOICE_MAP: Record<string, Partial<VoiceConfig> & { voiceLabel: s
 /**
  * Get comprehensive voice configuration for a prospect avatar
  * Maps prospect profile to voice parameters for realistic TTS
- * 
+ *
  * @param prospectAvatar - Prospect avatar with profile data
  * @returns VoiceConfig with voiceId and optional parameters
  */
@@ -271,7 +318,7 @@ export function getProspectVoiceConfig(prospectAvatar: {
   const config: VoiceConfig = {
     voiceId,
     speed: 1.0,
-    stability: 0.5,
+    stability: 0.7,
     similarityBoost: 0.75,
   };
 
@@ -291,20 +338,19 @@ export function getProspectVoiceConfig(prospectAvatar: {
 
   // Adjust based on authority level
   if (prospectAvatar.authorityLevel === 'advisor') {
-    config.speed = Math.min(config.speed || 1.0, 0.95); // Slower, more measured
-    config.stability = Math.max(config.stability || 0.5, 0.75); // More stable
+    config.speed = Math.min(config.speed || 1.0, 0.95);
+    config.stability = Math.max(config.stability || 0.5, 0.75);
   } else if (prospectAvatar.authorityLevel === 'advisee') {
-    config.speed = Math.max(config.speed || 1.0, 1.05); // Slightly faster
+    config.speed = Math.max(config.speed || 1.0, 1.05);
   }
 
   // Adjust based on difficulty tier
   if (prospectAvatar.difficultyTier === 'hard' || prospectAvatar.difficultyTier === 'expert' || prospectAvatar.difficultyTier === 'elite') {
-    config.speed = Math.min((config.speed || 1.0) + 0.05, 1.25); // Slightly faster
-    config.stability = Math.min((config.stability || 0.5) + 0.1, 0.85); // More controlled
+    config.speed = Math.min((config.speed || 1.0) + 0.05, 1.25);
+    config.stability = Math.min((config.stability || 0.5) + 0.1, 0.85);
   } else if (prospectAvatar.difficultyTier === 'easy') {
-    config.stability = Math.max((config.stability || 0.5) - 0.1, 0.35); // More natural variation
+    config.stability = Math.max((config.stability || 0.5) - 0.1, 0.35);
   }
 
   return config;
 }
-

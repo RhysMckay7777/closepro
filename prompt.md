@@ -1,86 +1,135 @@
-Perform a COMPLETE codebase analysis of this project. Go through every directory and file systematically. I need a full understanding of the architecture, data flow, and current state.
+You have already implemented the voice reliability and voice‑mapping changes. Now apply Connor’s UI feedback from his Loom video.
 
-## Step 1: Project Structure
-- Run `find . -type f \( -name "*.ts" -name "*.tsx" \) | grep -v node_modules | grep -v .next | sort` to list all source files
-- Run `cat package.json` to get dependencies and scripts
-- Run `cat tsconfig.json` for TypeScript config
-- Run `cat next.config.*` for Next.js config
+Goal: On the live roleplay page (/dashboard/roleplay/[sessionId]), visually separate the user (closer) and the AI prospect into distinct tiles, and improve the camera behavior.
 
-## Step 2: Database Schema
-- Read `db/schema.ts` completely — document EVERY table, EVERY column, types, relationships, foreign keys
-- Read `db/index.ts` or `db/drizzle.ts` for DB connection setup
-- Read any migration files in `db/migrations/` or `drizzle/`
-- Document the full ERD (Entity Relationship Diagram) as text
+Important constraints:
 
-## Step 3: API Routes
-- List every file in `app/api/` recursively
-- Read EACH route.ts file and document:
-  - HTTP methods (GET/POST/PUT/DELETE)
-  - Auth requirements
-  - Input parameters (query params, body)
-  - DB queries performed
-  - Response shape (what JSON is returned)
-  - Any business logic / calculations
+Do not touch any scoring logic, API routes, or voice connection code.
 
-## Step 4: Pages & Components
-- List every file in `app/(dashboard)/` and `app/` page files
-- For each page, document:
-  - What API it calls
-  - What state it manages
-  - What components it uses
-  - User interactions available
-- List every file in `components/` and document each component's props and purpose
+Only change layout / styling / small component structure in the React files for the roleplay session.
 
-## Step 5: Library / Utils
-- Read every file in `lib/` — document:
-  - `lib/ai/` — AI analysis, scoring framework, prompts
-  - `lib/training/` — core principles, skill clusters, prospect backstories
-  - `lib/auth.*` — authentication setup
-  - `lib/roleplay-engine.ts` — roleplay AI system
-  - Any utils, helpers, types
+Keep all existing text, transcript, and control functionality intact.
 
-## Step 6: Data Flow Analysis
-For each major feature, trace the COMPLETE data flow:
+Requirements from Connor (UI/UX)
+Separate tiles for user vs prospect
 
-### A. Call Analysis Flow
-Upload/record → transcription → AI analysis → score extraction → DB storage → display on call detail page → feeds into performance page
+Left side: the user/closer tile.
 
-### B. Roleplay Flow  
-Create session (select offer + prospect) → roleplay engine builds system prompt → conversation loop → end session → AI scoring → results page
+Right side: the AI prospect tile.
 
-### C. Performance Page Flow
-API fetches all analyses → parseSkillScoresFlat / deriveSkillScoresFromPhases → computeSkillBreakdown → principleSummaries → priorityActionSteps → page renders
+They should look like two participants on a Zoom call.
 
-### D. Figures Page Flow
-API fetches sales calls + instalments → commission calculation → paymentType assignment → isFutureInstalment check → page renders with table + exports
+Keep the vertical divider concept Connor liked.
 
-### E. Replay in Roleplay Flow
-Call detail page → POST /api/roleplay/replay → extract transcript + prospect profile → create roleplay session → buildOriginalProspectPrompt → AI mimics prospect
+Prospect tile (right)
 
-## Step 7: Configuration & Environment
-- Read `.env.example` or `.env.local` for required environment variables
-- Document all external service integrations (Supabase, AI providers, etc.)
-- Check `middleware.ts` for route protection
+No video for the agent.
 
-## Step 8: Known Issues & Tech Debt
-- Find any TODO/FIXME/HACK comments: `grep -r "TODO\|FIXME\|HACK\|XXX" --include="*.ts" --include="*.tsx" | grep -v node_modules`
-- Find unused exports: any files that are defined but never imported
-- Check for `console.log` statements that should be removed: `grep -rn "console.log" app/ lib/ components/ --include="*.ts" --include="*.tsx" | grep -v node_modules | head -30`
-- Identify any dead code (old skill-clusters references, etc.)
+Show the current context card (avatar + name + context + what you’re selling) in this tile.
 
-## Step 9: Output Format
+Increase font size for:
 
-Produce a single comprehensive document with:
+Prospect name.
 
-1. **Architecture Overview** — tech stack, folder structure, deployment
-2. **Database Schema** — every table with columns and types
-3. **API Reference** — every endpoint with method, params, response
-4. **Page Map** — every page with its features and API dependencies  
-5. **Component Library** — every component with props
-6. **Data Flow Diagrams** — text-based flow for each major feature
-7. **Business Logic** — commission calculations, scoring framework, principle mappings
-8. **External Integrations** — AI providers, payment, auth
-9. **Issues & Tech Debt** — TODOs, dead code, debug logging to remove
-10. **File Index** — every source file with a one-line description
+Context paragraph.
 
-Be thorough. Read every file. Don't skip anything. This document will be used as the single source of truth for the entire project.
+“What you’re selling” / role context.
+
+Tile should be larger than the current small card, centered vertically in the right half.
+
+User tile (left)
+
+When camera is off:
+
+Show user avatar / initials as we do today.
+
+When camera is on:
+
+Replace the small circle with a larger video tile that fills most of the left half (similar to a Zoom participant tile).
+
+Under/over the tile, keep the “LIVE” label and role (“Closer” or user name) as appropriate.
+
+Overall layout
+
+Use a two‑column layout on desktop:
+
+grid grid-cols-2 or equivalent.
+
+Left = user/closer, right = prospect.
+
+Keep the background gradient and overall aesthetic.
+
+The control bar (mic, speaker, camera, end call, switch to text mode) should stay at the bottom, centered, spanning the full width.
+
+Transcript panel
+
+The transcript / pinned / notes sidebar on the right edge must remain unchanged in functionality.
+
+Ensure the new two‑tile layout fits to the left of this sidebar (so effectively a three‑column page: left user tile, center prospect tile, right transcript sidebar).
+
+If needed, you can treat “user + prospect tiles” as a single centered block, with the transcript sidebar occupying fixed width on the far right.
+
+Files to edit
+Primarily:
+
+app/dashboard/dashboard/roleplay/[sessionId]/page.tsx
+
+Where the current roleplay layout and header are defined.
+
+Any small supporting components for the prospect card (if they exist) to adjust typography.
+
+Do not change:
+
+use-voice-session.ts
+
+API routes
+
+Scoring or analysis components
+
+Implementation details
+Refactor the main content area into a container with:
+
+A flex or grid layout that places:
+
+Left: user tile.
+
+Right: prospect tile.
+
+Ensure it is responsive; on smaller screens you can stack vertically (user above prospect), but desktop should match Connor’s Loom (two tiles side‑by‑side).
+
+Prospect tile:
+
+Reuse the existing context card content (avatar, name, description, role context).
+
+Increase font size by one step (e.g. text-base → text-lg, text-sm → text-base) for name and main description.
+
+Make the card itself wider/taller to feel like a video tile.
+
+User tile:
+
+Integrate camera state:
+
+If camera off: show current avatar and name.
+
+If camera on: render the video element in a large rectangle (16:9 if possible), with rounded corners.
+
+If there is already a camera/video component, reuse it and just change its placement and size.
+
+Styling:
+
+Keep design consistent with existing ClosePro theme (colors, radii, shadows).
+
+Maintain the small “Role context” dropdown or label under the prospect tile, if present now.
+
+Testing checklist:
+
+Voice roleplay with camera off: layout shows two tiles, prospect speaking, transcript updates.
+
+Turn camera on: left side shows large video tile, right side prospect card unchanged.
+
+Resize window to smaller width: layout remains usable (tiles can stack).
+
+Text mode roleplay (if accessible from this page) still works with the new layout.
+
+After implementing, summarize the changes and show the relevant JSX/TSX diffs only, so we can review before merging.
+

@@ -1,6 +1,6 @@
 'use client';
 
-import { PhoneOff, Mic, MicOff, Volume2, VolumeX, MessageSquare, Loader2, RefreshCw, Video } from 'lucide-react';
+import { PhoneOff, Mic, MicOff, Volume2, VolumeX, MessageSquare, Loader2, RefreshCw, Video, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Status } from '@elevenlabs/react';
@@ -16,6 +16,7 @@ interface VoiceSessionControlsProps {
   onRetry: () => void;
   onToggleCamera: () => void;
   error: string | null;
+  reconnectFailed?: boolean;
 }
 
 export function VoiceSessionControls({
@@ -29,6 +30,7 @@ export function VoiceSessionControls({
   onRetry,
   onToggleCamera,
   error,
+  reconnectFailed = false,
 }: VoiceSessionControlsProps) {
   const isConnected = voiceStatus === 'connected';
   const isConnecting = voiceStatus === 'connecting';
@@ -36,6 +38,35 @@ export function VoiceSessionControls({
 
   return (
     <div className="shrink-0 flex flex-col items-center gap-2 p-3 border-t border-white/5 bg-stone-950/60">
+      {/* Reconnection failed banner */}
+      {reconnectFailed && (
+        <div className="w-full max-w-2xl rounded-xl bg-red-950/60 border border-red-500/30 p-4 flex flex-col items-center gap-3">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertTriangle className="h-5 w-5 shrink-0" />
+            <span className="text-sm font-medium">Voice connection lost after multiple retries</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onRetry}
+              className="border-red-500/30 text-red-300 hover:bg-red-500/10"
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Try Again
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={onSwitchToText}
+            >
+              <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+              Switch to Text Mode
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Status indicator */}
       <div className="flex items-center gap-2 text-xs">
         {isConnecting && (
@@ -56,7 +87,7 @@ export function VoiceSessionControls({
             <span className="text-amber-400">Prospect speaking...</span>
           </>
         )}
-        {isError && (
+        {isError && !reconnectFailed && (
           <>
             <span className="w-2 h-2 rounded-full bg-red-400" />
             <span className="text-red-400 max-w-xs truncate">{error}</span>
@@ -129,8 +160,8 @@ export function VoiceSessionControls({
           <PhoneOff className="h-5 w-5" />
         </Button>
 
-        {/* Error: retry + fallback */}
-        {isError && (
+        {/* Error: retry + fallback (only when not reconnectFailed — that has its own banner) */}
+        {isError && !reconnectFailed && (
           <>
             <div className="w-px h-6 bg-white/10 shrink-0" />
             <Button
@@ -147,12 +178,14 @@ export function VoiceSessionControls({
       </div>
 
       {/* Fallback link */}
-      <button
-        onClick={onSwitchToText}
-        className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
-      >
-        Switch to text mode
-      </button>
+      {!reconnectFailed && (
+        <button
+          onClick={onSwitchToText}
+          className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline transition-colors"
+        >
+          Switch to text mode
+        </button>
+      )}
     </div>
   );
 }

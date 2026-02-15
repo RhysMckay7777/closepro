@@ -9,7 +9,7 @@ import { OfferProfile } from '@/lib/ai/roleplay/offer-intelligence';
 import { ProspectAvatar } from '@/lib/ai/roleplay/prospect-avatar';
 import { FunnelContext } from '@/lib/ai/roleplay/funnel-context';
 import { initializeBehaviourState } from '@/lib/ai/roleplay/behaviour-rules';
-import { getVoiceIdFromProspect } from '@/lib/ai/roleplay/voice-mapping';
+import { getVoiceIdFromProspect, getProspectVoiceConfig } from '@/lib/ai/roleplay/voice-mapping';
 import { getTranscriptPatternsForUser } from '@/lib/ai/roleplay/transcript-patterns';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
@@ -195,11 +195,12 @@ export async function GET(
       offerData[0].offerCategory,
     );
 
-    // Get voice ID
-    const voiceId = getVoiceIdFromProspect({
+    // Get voice ID and voice settings
+    const voiceConfig = getProspectVoiceConfig({
       name: prospectName,
       voiceStyle: prospectVoiceStyle,
     });
+    const voiceId = voiceConfig.voiceId;
 
     // Fetch signed URL from ElevenLabs
     const signedUrlResponse = await fetch(
@@ -237,6 +238,10 @@ export async function GET(
       firstMessage: initialMessage.content,
       voiceId,
       prospectName,
+      voiceSettings: {
+        stability: voiceConfig.stability ?? 0.7,
+        similarityBoost: voiceConfig.similarityBoost ?? 0.75,
+      },
     });
   } catch (error: any) {
     console.error('[voice-token] Error:', error);
