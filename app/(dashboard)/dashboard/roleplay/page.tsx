@@ -137,6 +137,45 @@ function RoleplayPageContent() {
         replayContext = { phase: effectivePhase };
       }
 
+      // Part 2D: Extract prospect profile from the original call transcript
+      // This allows the AI prospect to mimic the real prospect's behavior
+      if (replayCallId && data?.call?.transcript) {
+        const transcript = data.call.transcript as string;
+        const prospectName = data.call.prospectName || 'Unknown';
+        // Extract prospect lines (lines after "Prospect:" or similar)
+        const prospectLines: string[] = [];
+        const lines = transcript.split('\n');
+        for (const line of lines) {
+          const lower = line.toLowerCase().trim();
+          if (lower.startsWith('prospect:') || lower.startsWith('buyer:') || lower.startsWith('client:') || lower.startsWith('lead:')) {
+            prospectLines.push(line.replace(/^(prospect|buyer|client|lead):\s*/i, '').trim());
+          }
+        }
+        // Extract communication style and key phrases (first 500 chars of prospect lines)
+        const prospectSample = prospectLines.slice(0, 15).join(' | ').slice(0, 800);
+        // Extract objections from analysis
+        const analysisObjections = phaseAnalysis?.objections?.blocks?.map(
+          (b: any) => b.quote || b.summary || ''
+        ).filter(Boolean).slice(0, 5) || [];
+        // Pain points from analysis
+        const painPoints = phaseAnalysis?.discovery?.blocks?.map(
+          (b: any) => b.summary || b.quote || ''
+        ).filter(Boolean).slice(0, 3) || [];
+
+        replayContext.originalProspectProfile = {
+          name: prospectName,
+          sampleDialogue: prospectSample,
+          objections: analysisObjections,
+          painPoints,
+          communicationStyle: prospectLines.length > 5
+            ? (prospectLines.some(l => l.length > 100) ? 'verbose' : 'brief')
+            : 'unknown',
+          warmthLevel: phaseAnalysis?.intro?.score != null
+            ? (phaseAnalysis.intro.score >= 70 ? 'warm' : phaseAnalysis.intro.score >= 40 ? 'neutral' : 'cold')
+            : 'neutral',
+        };
+      }
+
       setReplayStatus('Creating practice session...');
 
       // Create the session

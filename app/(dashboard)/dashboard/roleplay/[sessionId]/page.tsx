@@ -237,10 +237,11 @@ function RoleplaySessionContent() {
   };
 
   const formatMessageTime = (ms: number) => {
-    const s = Math.floor(ms / 1000);
+    // ms is Date.now() — make it relative to session start
+    const elapsed = Math.max(0, ms - sessionStartRef.current);
+    const s = Math.floor(elapsed / 1000);
     const m = Math.floor(s / 60);
-    if (m > 0) return `${m}:${String(s % 60).padStart(2, '0')}`;
-    return `0:${String(s).padStart(2, '0')}`;
+    return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   };
 
   const toggleCamera = async () => {
@@ -583,180 +584,243 @@ function RoleplaySessionContent() {
           </div>
         </div>
 
-        {/* ─── Main Content: Split Panels + Transcript ─── */}
-        <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-          {/* ─── Zoom-Style Call Layout ─── */}
-          <div className="flex-1 flex items-center justify-center gap-6 p-4 sm:p-8 min-h-0">
-            {/* LEFT: Small "You" tile */}
-            <div className="flex flex-col items-center gap-3 w-36 sm:w-44 shrink-0">
-              <div
-                className={cn(
-                  "relative rounded-2xl overflow-hidden transition-all duration-300 bg-stone-800/60 border",
-                  activeSpeaker === 'rep'
-                    ? "border-orange-500/50 shadow-lg shadow-orange-500/20"
-                    : "border-white/10"
-                )}
-                style={{ width: '100%', aspectRatio: '3/4' }}
-              >
-                {cameraOn ? (
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
-                ) : userProfile?.profilePhoto ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                    <Avatar className="w-16 h-16 sm:w-20 sm:h-20">
-                      <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
-                      <AvatarFallback className="bg-orange-500/30 text-orange-300 text-xl">
-                        {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <span className="text-xs text-muted-foreground">Audio Only</span>
-                  </div>
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                    <User className="h-10 w-10 text-orange-400/70" />
-                    <span className="text-xs text-muted-foreground">Audio Only</span>
-                  </div>
-                )}
-                {activeSpeaker === 'rep' && (
-                  <div className="absolute top-2 right-2 w-3 h-3 bg-orange-500 rounded-full animate-pulse ring-2 ring-orange-400/50" />
-                )}
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-semibold text-foreground">{userProfile?.name || 'You'}</p>
-              </div>
-              {/* Live mic indicator */}
-              {isListening && (
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/30">
-                  <div className="flex items-center gap-0.5">
-                    {[0, 1, 2, 3, 4].map(i => (
-                      <span
-                        key={i}
-                        className="w-1 bg-orange-400 rounded-full animate-pulse"
-                        style={{
-                          height: `${8 + Math.random() * 12}px`,
-                          animationDelay: `${i * 0.1}s`,
-                          animationDuration: `${0.4 + Math.random() * 0.4}s`,
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <span className="text-xs text-orange-400 font-medium">Listening</span>
-                </div>
-              )}
-            </div>
-
-            {/* RIGHT: Larger prospect card with context + offer */}
-            <div className="flex flex-col items-center gap-4 flex-1 max-w-md">
-              <div
-                className={cn(
-                  "relative rounded-2xl overflow-hidden transition-all duration-300 bg-stone-800/40 border w-full",
-                  activeSpeaker === 'prospect'
-                    ? "border-purple-500/50 shadow-lg shadow-purple-500/20"
-                    : "border-white/10"
-                )}
-              >
-                {/* Prospect avatar + name section */}
-                <div className="flex flex-col items-center py-6 px-4">
-                  <div
-                    className={cn(
-                      "relative rounded-full overflow-hidden transition-all duration-300",
-                      activeSpeaker === 'prospect'
-                        ? "ring-4 ring-purple-500/50 shadow-xl shadow-purple-500/20"
-                        : "ring-2 ring-white/10"
+        {/* ─── Main Content: Gradient Avatar + Sidebar Transcript ─── */}
+        <div className="flex-1 flex overflow-hidden min-h-0">
+          {/* LEFT: Avatar area + controls */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* ─── Unified Gradient Avatar Area ─── */}
+            <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+              <div className="relative w-full max-w-2xl rounded-xl overflow-hidden bg-gradient-to-r from-blue-900/30 via-slate-900/50 to-amber-900/30 p-6 sm:p-8">
+                <div className="flex items-center justify-center gap-8 sm:gap-12">
+                  {/* User side */}
+                  <div className="flex flex-col items-center gap-3">
+                    <div
+                      className={cn(
+                        "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center",
+                        activeSpeaker === 'rep'
+                          ? "border-blue-400 shadow-lg shadow-blue-500/20"
+                          : "border-blue-500/40 bg-blue-500/20"
+                      )}
+                    >
+                      {cameraOn ? (
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          muted
+                          className="w-full h-full object-cover"
+                        />
+                      ) : userProfile?.profilePhoto ? (
+                        <Avatar className="w-full h-full">
+                          <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                          <AvatarFallback className="bg-blue-500/30 text-blue-300 text-xl">
+                            {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <Mic className="h-10 w-10 text-blue-400" />
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-blue-300">{userProfile?.name || 'You'}</span>
+                    {activeSpeaker === 'rep' && (
+                      <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
                     )}
-                    style={{ width: 'clamp(80px, 10vw, 120px)', height: 'clamp(80px, 10vw, 120px)' }}
-                  >
-                    {prospectAvatar ? (
-                      <Avatar className="w-full h-full">
-                        {resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl) ? (
-                          <AvatarImage
-                            src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)!}
-                            alt={prospectAvatar.name}
-                            className="object-cover"
-                          />
-                        ) : null}
-                        <AvatarFallback className={`text-2xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
-                          {getProspectInitials(prospectAvatar.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                        <Bot className="h-10 w-10 text-stone-500" />
+                    {isListening && !activeSpeaker && (
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
+                        <div className="flex items-center gap-0.5">
+                          {[0, 1, 2, 3, 4].map(i => (
+                            <span
+                              key={i}
+                              className="w-1 bg-blue-400 rounded-full animate-pulse"
+                              style={{
+                                height: `${6 + Math.random() * 8}px`,
+                                animationDelay: `${i * 0.1}s`,
+                                animationDuration: `${0.4 + Math.random() * 0.4}s`,
+                              }}
+                            />
+                          ))}
+                        </div>
+                        <span className="text-[10px] text-blue-400 font-medium">Listening</span>
                       </div>
                     )}
-                    {loading && (
-                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
-                      </div>
-                    )}
-                    {activeSpeaker === 'prospect' && !loading && (
-                      <div className="absolute top-1 right-1 w-3 h-3 bg-purple-500 rounded-full animate-pulse ring-2 ring-purple-400/50" />
-                    )}
                   </div>
-                  <h3 className="mt-3 text-lg font-bold text-foreground">{prospectAvatar?.name ?? 'AI Prospect'}</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
-                  </p>
-                </div>
 
-                {/* Expandable Role Context */}
-                <div className="border-t border-white/10">
-                  <button
-                    onClick={() => setShowRoleContext(!showRoleContext)}
-                    className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-primary hover:bg-white/5 transition-colors"
-                  >
-                    <span>Role context</span>
-                    {showRoleContext ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </button>
+                  {/* VS / Connection line */}
+                  <div className="flex flex-col items-center gap-1">
+                    <div className="w-px h-8 bg-gradient-to-b from-blue-500/50 to-amber-500/50" />
+                    <span className="text-xs text-muted-foreground font-medium">LIVE</span>
+                    <div className="w-px h-8 bg-gradient-to-b from-amber-500/50 to-blue-500/50" />
+                  </div>
 
-                  {showRoleContext && (
-                    <div className="px-4 pb-4 space-y-3">
-                      {/* Prospect Context */}
-                      {prospectAvatar?.positionDescription && (
-                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                          <h5 className="text-xs font-bold text-foreground mb-1">Prospect Context</h5>
-                          <p className="text-xs text-muted-foreground leading-relaxed">
-                            {prospectAvatar.positionDescription}
-                          </p>
-                          {prospectAvatar.backstory && (
-                            <p className="text-xs text-muted-foreground leading-relaxed mt-1.5">
-                              {prospectAvatar.backstory}
-                            </p>
-                          )}
+                  {/* Prospect side */}
+                  <div className="flex flex-col items-center gap-3">
+                    <div
+                      className={cn(
+                        "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300",
+                        activeSpeaker === 'prospect'
+                          ? "border-amber-400 shadow-lg shadow-amber-500/20"
+                          : "border-amber-500/40"
+                      )}
+                    >
+                      {prospectAvatar ? (
+                        <Avatar className="w-full h-full">
+                          {resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl) ? (
+                            <AvatarImage
+                              src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)!}
+                              alt={prospectAvatar.name}
+                              className="object-cover"
+                            />
+                          ) : null}
+                          <AvatarFallback className={`text-2xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
+                            {getProspectInitials(prospectAvatar.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-stone-800">
+                          <Bot className="h-10 w-10 text-stone-500" />
                         </div>
                       )}
-
-                      {/* Offer Info */}
-                      {offerInfo && (
-                        <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                          <h5 className="text-xs font-bold text-foreground mb-1">{offerInfo.name}</h5>
-                          {offerInfo.price != null && (
-                            <p className="text-xs text-muted-foreground">
-                              {'\u00A3'}{(offerInfo.price / 100).toLocaleString()}
-                            </p>
-                          )}
-                          {offerInfo.description && (
-                            <p className="text-xs text-muted-foreground leading-relaxed mt-1">
-                              {offerInfo.description}
-                            </p>
-                          )}
+                      {loading && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
+                          <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
                         </div>
                       )}
                     </div>
-                  )}
+                    <span className="text-sm font-medium text-amber-300">{prospectAvatar?.name ?? 'AI Prospect'}</span>
+                    {activeSpeaker === 'prospect' && (
+                      <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
+                    )}
+                  </div>
                 </div>
+
+                {/* Prospect description */}
+                <p className="text-xs text-muted-foreground text-center mt-4 max-w-lg mx-auto">
+                  {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
+                </p>
+
+                {/* Expandable Role Context */}
+                <div className="mt-3 flex justify-center">
+                  <button
+                    onClick={() => setShowRoleContext(!showRoleContext)}
+                    className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <span>Role context</span>
+                    {showRoleContext ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                  </button>
+                </div>
+                {showRoleContext && (
+                  <div className="mt-3 space-y-2 max-w-lg mx-auto">
+                    {prospectAvatar?.backstory && (
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                        <h5 className="text-xs font-bold text-foreground mb-1">Backstory</h5>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{prospectAvatar.backstory}</p>
+                      </div>
+                    )}
+                    {offerInfo && (
+                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                        <h5 className="text-xs font-bold text-foreground mb-1">{offerInfo.name}</h5>
+                        {offerInfo.price != null && (
+                          <p className="text-xs text-muted-foreground">{'\u00A3'}{(offerInfo.price / 100).toLocaleString()}</p>
+                        )}
+                        {offerInfo.description && (
+                          <p className="text-xs text-muted-foreground leading-relaxed mt-1">{offerInfo.description}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* ─── Control Bar (inside left panel) ─── */}
+            <div className="shrink-0 flex justify-center p-3 border-t border-white/5 bg-stone-950/60">
+              <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-stone-900/95 backdrop-blur-xl border border-white/10 shadow-2xl max-w-2xl w-full">
+                <Button
+                  variant={isMuted ? 'destructive' : 'ghost'}
+                  size="icon"
+                  onClick={handleMute}
+                  className="rounded-full h-10 w-10 shrink-0"
+                  title={isMuted ? 'Unmute AI voice' : 'Mute AI voice'}
+                >
+                  {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                </Button>
+                {session?.inputMode === 'voice' && (
+                  <Button
+                    variant={isListening ? 'default' : 'ghost'}
+                    size="icon"
+                    onClick={handleVoiceInput}
+                    className={cn(
+                      "rounded-full h-10 w-10 shrink-0 transition-all",
+                      isListening && "ring-2 ring-orange-500/50 bg-orange-500/20"
+                    )}
+                    title={isListening ? 'Stop voice input' : 'Start voice input'}
+                  >
+                    {isListening ? (
+                      <span className="relative flex">
+                        <Mic className="h-5 w-5 text-orange-400" />
+                        <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-orange-500 animate-pulse ring-2 ring-background" />
+                      </span>
+                    ) : (
+                      <Mic className="h-5 w-5" />
+                    )}
+                  </Button>
+                )}
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSend();
+                    }
+                  }}
+                  placeholder={
+                    session?.inputMode === 'voice'
+                      ? (isListening ? 'Listening...' : 'Type or use mic...')
+                      : 'Type your message...'
+                  }
+                  disabled={loading || isListening}
+                  className="flex-1 h-10 rounded-full bg-stone-800/80 border-white/10 focus-visible:ring-orange-500/50"
+                />
+                <Button
+                  onClick={() => handleSend()}
+                  disabled={loading || !input.trim() || isListening}
+                  size="icon"
+                  className="rounded-full h-10 w-10 shrink-0"
+                  title="Send"
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <MessageSquare className="h-4 w-4" />
+                  )}
+                </Button>
+                <div className="w-px h-6 bg-white/10 shrink-0" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={toggleCamera}
+                  className={cn("rounded-full h-10 w-10 shrink-0", cameraOn && "bg-orange-500/20 text-orange-400")}
+                  title={cameraOn ? 'Camera on' : 'Turn on camera'}
+                >
+                  <Video className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  onClick={handleEndSession}
+                  className="rounded-full h-10 w-10 shrink-0"
+                  title="End session"
+                >
+                  <PhoneOff className="h-5 w-5" />
+                </Button>
               </div>
             </div>
           </div>
 
-          {/* ─── Live Transcript Panel (Below) ─── */}
+          {/* RIGHT: Sidebar Transcript */}
           {showTranscript && (
-            <div className="h-[280px] shrink-0 border-t border-white/10 bg-stone-900/80 backdrop-blur-xl flex flex-col">
+            <div className="w-[400px] shrink-0 border-l border-white/10 bg-stone-900/80 backdrop-blur-xl flex flex-col">
               <div className="border-b border-white/5 px-4 py-2 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-0">
                   {(['transcript', 'pinned', 'notes'] as const).map((tab) => (
@@ -913,90 +977,6 @@ function RoleplaySessionContent() {
           )}
         </div>
 
-        {/* ─── Floating Control Bar ─── */}
-        <div className="shrink-0 flex justify-center p-3 bg-stone-950/90 backdrop-blur-md border-t border-white/5">
-          <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-stone-900/95 backdrop-blur-xl border border-white/10 shadow-2xl max-w-2xl w-full">
-            <Button
-              variant={isMuted ? 'destructive' : 'ghost'}
-              size="icon"
-              onClick={handleMute}
-              className="rounded-full h-10 w-10 shrink-0"
-              title={isMuted ? 'Unmute AI voice' : 'Mute AI voice'}
-            >
-              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            </Button>
-            {session?.inputMode === 'voice' && (
-              <Button
-                variant={isListening ? 'default' : 'ghost'}
-                size="icon"
-                onClick={handleVoiceInput}
-                className={cn(
-                  "rounded-full h-10 w-10 shrink-0 transition-all",
-                  isListening && "ring-2 ring-orange-500/50 bg-orange-500/20"
-                )}
-                title={isListening ? 'Stop voice input' : 'Start voice input'}
-              >
-                {isListening ? (
-                  <span className="relative flex">
-                    <Mic className="h-5 w-5 text-orange-400" />
-                    <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-orange-500 animate-pulse ring-2 ring-background" />
-                  </span>
-                ) : (
-                  <Mic className="h-5 w-5" />
-                )}
-              </Button>
-            )}
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder={
-                session?.inputMode === 'voice'
-                  ? (isListening ? 'Listening...' : 'Type or use mic...')
-                  : 'Type your message...'
-              }
-              disabled={loading || isListening}
-              className="flex-1 h-10 rounded-full bg-stone-800/80 border-white/10 focus-visible:ring-orange-500/50"
-            />
-            <Button
-              onClick={() => handleSend()}
-              disabled={loading || !input.trim() || isListening}
-              size="icon"
-              className="rounded-full h-10 w-10 shrink-0"
-              title="Send"
-            >
-              {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <MessageSquare className="h-4 w-4" />
-              )}
-            </Button>
-            <div className="w-px h-6 bg-white/10 shrink-0" />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleCamera}
-              className={cn("rounded-full h-10 w-10 shrink-0", cameraOn && "bg-orange-500/20 text-orange-400")}
-              title={cameraOn ? 'Camera on' : 'Turn on camera'}
-            >
-              <Video className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="destructive"
-              size="icon"
-              onClick={handleEndSession}
-              className="rounded-full h-10 w-10 shrink-0"
-              title="End session"
-            >
-              <PhoneOff className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
       </div>
     </>
   );

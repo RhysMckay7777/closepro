@@ -148,6 +148,29 @@ function safeParse(raw: string | null | undefined): any {
   try { return typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return null; }
 }
 
+/** Derive 10-category skill scores from v2 phaseScores when skillScores is empty.
+ *  Phase scores are 0-100; we convert to 0-10 scale to match v1 format. */
+function deriveSkillScoresFromPhases(phaseScores: any): Record<string, number> | null {
+  if (!phaseScores || typeof phaseScores !== 'object') return null;
+  const ps = phaseScores as Record<string, number>;
+  // Only proceed if at least one phase has a score
+  const hasData = ['intro', 'discovery', 'pitch', 'close', 'objections'].some(k => typeof ps[k] === 'number' && ps[k] > 0);
+  if (!hasData) return null;
+  const toScale10 = (v: number) => Math.round(Math.max(0, Math.min(10, (v || 0) / 10)));
+  return {
+    authority: toScale10(ps.intro),
+    structure: toScale10(ps.intro),
+    communication: toScale10(ps.discovery),
+    discovery: toScale10(ps.discovery),
+    gap: toScale10(ps.discovery),
+    value: toScale10(ps.pitch),
+    trust: toScale10(ps.pitch),
+    objection_handling: toScale10(ps.objections),
+    adaptation: toScale10(ps.objections),
+    closing: toScale10(ps.close),
+  };
+}
+
 /** Parse skill scores from a single analysis record.
  *  Returns { displayName: score0to100 } map filtered to only the 10 valid categories. */
 function parseSkillScoresFlat(rawSkillScores: any): Record<string, number> {
@@ -425,6 +448,7 @@ export async function GET(request: NextRequest) {
         overallScore: callAnalysis.overallScore,
         skillScores: callAnalysis.skillScores,
         categoryFeedback: callAnalysis.categoryFeedback,
+        phaseScores: callAnalysis.phaseScores,
         objectionDetails: callAnalysis.objectionDetails,
         priorityFixes: callAnalysis.priorityFixes,
         createdAt: salesCalls.createdAt,
@@ -440,18 +464,32 @@ export async function GET(request: NextRequest) {
       )
       .orderBy(desc(salesCalls.createdAt));
 
-    // Parse JSON fields
-    const callAnalyses: AnalysisRow[] = callAnalysesRaw.map(a => ({
-      overallScore: a.overallScore,
-      skillScores: safeParse(a.skillScores as any),
-      categoryFeedback: safeParse(a.categoryFeedback as any),
-      objectionData: a.objectionDetails,
-      priorityFixesData: a.priorityFixes,
-      createdAt: a.createdAt,
-      type: 'call' as const,
-      entityId: a.callId,
-      analysisId: a.id,
-    }));
+    // Parse JSON fields — with v2 fallback chain for skillScores
+    const callAnalyses: AnalysisRow[] = callAnalysesRaw.map(a => {
+      const parsedSkillScores = safeParse(a.skillScores as any);
+      const parsedCategoryFeedback = safeParse(a.categoryFeedback as any);
+      const parsedPhaseScores = safeParse(a.phaseScores as any);
+      // Fallback chain: skillScores → categoryFeedback (has .score per cat) → derived from phaseScores
+      const isEmpty = (obj: any) => !obj || typeof obj !== 'object' || Object.keys(obj).length === 0;
+      let effectiveSkillScores = parsedSkillScores;
+      if (isEmpty(effectiveSkillScores) && !isEmpty(parsedCategoryFeedback)) {
+        effectiveSkillScores = parsedCategoryFeedback; // parseSkillScoresFlat handles { score: X } objects
+      }
+      if (isEmpty(effectiveSkillScores) && parsedPhaseScores) {
+        effectiveSkillScores = deriveSkillScoresFromPhases(parsedPhaseScores);
+      }
+      return {
+        overallScore: a.overallScore,
+        skillScores: effectiveSkillScores,
+        categoryFeedback: parsedCategoryFeedback,
+        objectionData: a.objectionDetails,
+        priorityFixesData: a.priorityFixes,
+        createdAt: a.createdAt,
+        type: 'call' as const,
+        entityId: a.callId,
+        analysisId: a.id,
+      };
+    });
 
     // ── Fetch roleplay analyses (with categoryFeedback + priorityFixes) ──
     const roleplayAnalysesRaw = await db
@@ -461,6 +499,7 @@ export async function GET(request: NextRequest) {
         overallScore: roleplayAnalysis.overallScore,
         skillScores: roleplayAnalysis.skillScores,
         categoryFeedback: roleplayAnalysis.categoryFeedback,
+        phaseScores: roleplayAnalysis.phaseScores,
         objectionAnalysis: roleplayAnalysis.objectionAnalysis,
         priorityFixes: roleplayAnalysis.priorityFixes,
         createdAt: roleplaySessions.createdAt,
@@ -482,23 +521,36 @@ export async function GET(request: NextRequest) {
       )
       .orderBy(desc(roleplaySessions.createdAt));
 
-    // Parse JSON fields
-    const roleplayAnalyses: AnalysisRow[] = roleplayAnalysesRaw.map(a => ({
-      overallScore: a.overallScore,
-      skillScores: safeParse(a.skillScores as any),
-      categoryFeedback: safeParse(a.categoryFeedback as any),
-      objectionData: a.objectionAnalysis,
-      priorityFixesData: a.priorityFixes,
-      createdAt: a.createdAt,
-      type: 'roleplay' as const,
-      offerId: a.offerId,
-      offerCategory: a.offerCategory,
-      offerName: a.offerName,
-      selectedDifficulty: a.selectedDifficulty,
-      actualDifficultyTier: a.actualDifficultyTier,
-      entityId: a.sessionId,
-      analysisId: a.id,
-    }));
+    // Parse JSON fields — with v2 fallback chain for skillScores
+    const roleplayAnalyses: AnalysisRow[] = roleplayAnalysesRaw.map(a => {
+      const parsedSkillScores = safeParse(a.skillScores as any);
+      const parsedCategoryFeedback = safeParse(a.categoryFeedback as any);
+      const parsedPhaseScores = safeParse(a.phaseScores as any);
+      const isEmpty = (obj: any) => !obj || typeof obj !== 'object' || Object.keys(obj).length === 0;
+      let effectiveSkillScores = parsedSkillScores;
+      if (isEmpty(effectiveSkillScores) && !isEmpty(parsedCategoryFeedback)) {
+        effectiveSkillScores = parsedCategoryFeedback;
+      }
+      if (isEmpty(effectiveSkillScores) && parsedPhaseScores) {
+        effectiveSkillScores = deriveSkillScoresFromPhases(parsedPhaseScores);
+      }
+      return {
+        overallScore: a.overallScore,
+        skillScores: effectiveSkillScores,
+        categoryFeedback: parsedCategoryFeedback,
+        objectionData: a.objectionAnalysis,
+        priorityFixesData: a.priorityFixes,
+        createdAt: a.createdAt,
+        type: 'roleplay' as const,
+        offerId: a.offerId,
+        offerCategory: a.offerCategory,
+        offerName: a.offerName,
+        selectedDifficulty: a.selectedDifficulty,
+        actualDifficultyTier: a.actualDifficultyTier,
+        entityId: a.sessionId,
+        analysisId: a.id,
+      };
+    });
 
     // ── Combine and sort (respect source filter) ──
     const filteredCalls = sourceParam === 'roleplays' ? [] : callAnalyses;
@@ -522,6 +574,7 @@ export async function GET(request: NextRequest) {
         skillScoresType: typeof a.skillScores,
         skillScoresKeys: a.skillScores && typeof a.skillScores === 'object' ? Object.keys(a.skillScores).slice(0, 5) : [],
         hasCategoryFeedback: !!a.categoryFeedback,
+        source: 'derived from phaseScores or categoryFeedback fallback if v2',
       })),
     });
 

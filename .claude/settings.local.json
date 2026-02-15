@@ -7,7 +7,17 @@
       "Bash(npx tsc:*)",
       "Bash(npx drizzle-kit push:*)",
       "Bash(grep:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "WebSearch",
+      "WebFetch(domain:elevenlabs.io)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:frankfu.blog)",
+      "WebFetch(domain:softcery.com)",
+      "WebFetch(domain:help.elevenlabs.io)",
+      "WebFetch(domain:flexprice.io)"
     ]
   }
 }

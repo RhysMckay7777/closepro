@@ -1,126 +1,86 @@
-FIX: Core Sales Principles Still Empty — Deep Diagnostic & Fix
-The Problem
-The Performance page still shows "No scored sessions yet" for Core Sales Principles AND "Complete more call reviews to generate action steps" for Priority Action Steps, despite the user having analyzed calls. The all_time range fix from the previous prompt did NOT resolve this.
+Perform a COMPLETE codebase analysis of this project. Go through every directory and file systematically. I need a full understanding of the architecture, data flow, and current state.
 
-Root Cause Investigation — Do ALL of these steps in order
-Step 1: Check how the performance page constructs the API fetch URL
-Read app/(dashboard)/dashboard/performance/page.tsx and find the fetch('/api/performance...') call. Check:
+## Step 1: Project Structure
+- Run `find . -type f \( -name "*.ts" -name "*.tsx" \) | grep -v node_modules | grep -v .next | sort` to list all source files
+- Run `cat package.json` to get dependencies and scripts
+- Run `cat tsconfig.json` for TypeScript config
+- Run `cat next.config.*` for Next.js config
 
-What URL parameters does it send? (range, month, year, days?)
+## Step 2: Database Schema
+- Read `db/schema.ts` completely — document EVERY table, EVERY column, types, relationships, foreign keys
+- Read `db/index.ts` or `db/drizzle.ts` for DB connection setup
+- Read any migration files in `db/migrations/` or `drizzle/`
+- Document the full ERD (Entity Relationship Diagram) as text
 
-Does it send a month param that might override the range param?
+## Step 3: API Routes
+- List every file in `app/api/` recursively
+- Read EACH route.ts file and document:
+  - HTTP methods (GET/POST/PUT/DELETE)
+  - Auth requirements
+  - Input parameters (query params, body)
+  - DB queries performed
+  - Response shape (what JSON is returned)
+  - Any business logic / calculations
 
-Log the actual fetch URL with console.log('Fetching performance:', url)
+## Step 4: Pages & Components
+- List every file in `app/(dashboard)/` and `app/` page files
+- For each page, document:
+  - What API it calls
+  - What state it manages
+  - What components it uses
+  - User interactions available
+- List every file in `components/` and document each component's props and purpose
 
-Step 2: Check the Performance API parameter routing
-Read app/api/performance/route.ts around lines 375-390. The current code is:
+## Step 5: Library / Utils
+- Read every file in `lib/` — document:
+  - `lib/ai/` — AI analysis, scoring framework, prompts
+  - `lib/training/` — core principles, skill clusters, prospect backstories
+  - `lib/auth.*` — authentication setup
+  - `lib/roleplay-engine.ts` — roleplay AI system
+  - Any utils, helpers, types
 
-typescript
-const monthParam = searchParams.get('month');
-const rangeParam = monthParam || searchParams.get('range') || searchParams.get('days') || 'this_month';
-THIS IS LIKELY THE BUG: If the page sends ?month=02&year=2026&range=all_time, then monthParam = "02" takes precedence and becomes rangeParam = "02". Then getRangeDates("02") hits the default case, parses parseInt("02") = 2, and returns "last 2 days" — missing all the user's calls!
+## Step 6: Data Flow Analysis
+For each major feature, trace the COMPLETE data flow:
 
-Fix: The month/year params should be handled SEPARATELY from the named range params. Add dedicated month/year handling:
+### A. Call Analysis Flow
+Upload/record → transcription → AI analysis → score extraction → DB storage → display on call detail page → feeds into performance page
 
-typescript
-const monthParam = searchParams.get('month');
-const yearParam = searchParams.get('year');
-const rangeParam = searchParams.get('range') || searchParams.get('days') || 'all_time';
+### B. Roleplay Flow  
+Create session (select offer + prospect) → roleplay engine builds system prompt → conversation loop → end session → AI scoring → results page
 
-let startDate: Date;
-let endDate: Date;
-let periodLabel: string;
+### C. Performance Page Flow
+API fetches all analyses → parseSkillScoresFlat / deriveSkillScoresFromPhases → computeSkillBreakdown → principleSummaries → priorityActionSteps → page renders
 
-if (monthParam && yearParam) {
-  // Specific month/year selection
-  const m = parseInt(monthParam, 10) - 1; // 0-indexed
-  const y = parseInt(yearParam, 10);
-  startDate = new Date(y, m, 1);
-  endDate = new Date(y, m + 1, 0, 23, 59, 59, 999); // Last day of month
-  periodLabel = `${new Date(y, m).toLocaleString('default', { month: 'long' })} ${y}`;
-} else {
-  const result = getRangeDates(rangeParam);
-  startDate = result.start;
-  endDate = result.end;
-  periodLabel = result.label;
-}
-Step 3: Verify allAnalyses is populated
-After the allAnalyses query, add AGGRESSIVE logging:
+### D. Figures Page Flow
+API fetches sales calls + instalments → commission calculation → paymentType assignment → isFutureInstalment check → page renders with table + exports
 
-typescript
-console.log('[Performance API] FULL DEBUG:', {
-  rangeParam,
-  monthParam,
-  yearParam,
-  startDate: startDate.toISOString(),
-  endDate: endDate.toISOString(),
-  totalAnalyses: allAnalyses.length,
-  analysesSample: allAnalyses.slice(0, 2).map(a => ({
-    id: a.id,
-    type: a.type,
-    createdAt: a.createdAt,
-    hasScores: !!a.scores,
-    hasCategoryScores: !!a.categoryScores,
-    scoreKeys: a.scores ? Object.keys(typeof a.scores === 'string' ? JSON.parse(a.scores) : a.scores).slice(0, 5) : [],
-  })),
-});
-Step 4: Check how allSkillCategories is computed from analyses
-Find the code that builds allSkillCategories from allAnalyses. The analysis JSON might store scores under a different key than what the code expects. Common mismatches:
+### E. Replay in Roleplay Flow
+Call detail page → POST /api/roleplay/replay → extract transcript + prospect profile → create roleplay session → buildOriginalProspectPrompt → AI mimics prospect
 
-Code expects analysis.scores but data has analysis.categoryScores
+## Step 7: Configuration & Environment
+- Read `.env.example` or `.env.local` for required environment variables
+- Document all external service integrations (Supabase, AI providers, etc.)
+- Check `middleware.ts` for route protection
 
-Code expects analysis.scores.authority but data has analysis.scores.Authority (case mismatch)
+## Step 8: Known Issues & Tech Debt
+- Find any TODO/FIXME/HACK comments: `grep -r "TODO\|FIXME\|HACK\|XXX" --include="*.ts" --include="*.tsx" | grep -v node_modules`
+- Find unused exports: any files that are defined but never imported
+- Check for `console.log` statements that should be removed: `grep -rn "console.log" app/ lib/ components/ --include="*.ts" --include="*.tsx" | grep -v node_modules | head -30`
+- Identify any dead code (old skill-clusters references, etc.)
 
-Code expects a parsed object but analysis.scores is a JSON string that needs JSON.parse()
+## Step 9: Output Format
 
-Add logging right after allSkillCategories is computed:
+Produce a single comprehensive document with:
 
-typescript
-console.log('[Performance API] SkillCategories debug:', {
-  count: allSkillCategories.length,
-  categories: allSkillCategories.map(c => ({ name: c.category, avg: c.averageScore })),
-});
-Step 5: Check the DISPLAY_NAME_TO_ID mapping
-In the principleSummaries computation, the DISPLAY_NAME_TO_ID mapping converts display names like "Authority" to IDs like "authority". But the DISPLAY_NAMES object at the top might have the mapping backwards. Check:
+1. **Architecture Overview** — tech stack, folder structure, deployment
+2. **Database Schema** — every table with columns and types
+3. **API Reference** — every endpoint with method, params, response
+4. **Page Map** — every page with its features and API dependencies  
+5. **Component Library** — every component with props
+6. **Data Flow Diagrams** — text-based flow for each major feature
+7. **Business Logic** — commission calculations, scoring framework, principle mappings
+8. **External Integrations** — AI providers, payment, auth
+9. **Issues & Tech Debt** — TODOs, dead code, debug logging to remove
+10. **File Index** — every source file with a one-line description
 
-typescript
-const DISPLAY_NAMES: Record<string, string> = {
-  authority: 'Authority',
-  structure: 'Structure',
-  ...
-};
-Then DISPLAY_NAME_TO_ID is built as:
-
-typescript
-for (const [id, name] of Object.entries(DISPLAY_NAMES)) {
-  DISPLAY_NAME_TO_ID[name] = id;
-}
-So DISPLAY_NAME_TO_ID['Authority'] = 'authority'. This is correct.
-
-But the matchingCats filter does:
-
-typescript
-const catId = DISPLAY_NAME_TO_ID[sc.category] ?? sc.category.toLowerCase().replace(/\s/g, '')
-return p.relatedCategories.includes(catId)
-If sc.category doesn't match any key in DISPLAY_NAME_TO_ID, it falls back to lowercase-no-spaces. Check what sc.category actually contains — it might be something unexpected.
-
-Step 6: Deploy and check Vercel function logs
-After adding all the logging, deploy to Vercel and visit the Performance page. Check the Vercel function logs at:
-https://vercel.com/[your-project]/functions → look for the /api/performance function logs.
-
-The logs will tell you EXACTLY where the data pipeline breaks:
-
-0 analyses → date range or query issue
-
-analyses exist but 0 skillCategories → score extraction issue
-
-skillCategories exist but 0 principleSummaries → mapping issue
-
-Step 7: ALSO ensure the page default is truly all_time
-Double-check the page's range state actually defaults to 'all_time' and NOT 'this_month':
-
-typescript
-const [range, setRange] = useState<string>('all_time');
-And check that the page fetch uses this range in the URL (not overridden by month/year params).
-
-CRITICAL: After diagnosing, fix whatever is broken and redeploy.
+Be thorough. Read every file. Don't skip anything. This document will be used as the single source of truth for the entire project.

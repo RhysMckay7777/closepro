@@ -284,7 +284,7 @@ ${getCondensedExamples(3)}
 
 Use these as reference for HOW prospects actually talk — their word choice, sentence length, emotional expression, and objection style.
 
-Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}`;
+Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}${buildOriginalProspectPrompt(context.replayContext)}`;
 }
 
 /**
@@ -388,6 +388,71 @@ The call should proceed normally but you should create 2-3 opportunities where t
     default:
       return '';
   }
+}
+
+/**
+ * Build prospect-mimicry prompt from original call transcript data.
+ * When a roleplay is replaying a real call, this injects the original prospect's
+ * speaking style, objections, and pain points so the AI mimics them.
+ */
+function buildOriginalProspectPrompt(contextJson?: string): string {
+  if (!contextJson) return '';
+
+  let ctx: any = {};
+  try {
+    ctx = JSON.parse(contextJson);
+  } catch {
+    return '';
+  }
+
+  const profile = ctx.originalProspectProfile;
+  if (!profile) return '';
+
+  const sections: string[] = [
+    '\n\nORIGINAL PROSPECT REPLAY — BEHAVIOR INSTRUCTIONS:',
+    'You are replaying a real prospect from an analyzed sales call. Mimic their actual behavior.',
+    '',
+    `PROSPECT PROFILE:`,
+    `- Name: ${profile.name || 'Unknown'}`,
+    `- Communication style: ${profile.communicationStyle === 'verbose' ? 'Longer, detailed responses — this prospect talks a lot' : profile.communicationStyle === 'brief' ? 'Short, terse responses — this prospect gives minimal info' : 'Normal conversational length'}`,
+    `- Opening warmth: ${profile.warmthLevel === 'warm' ? 'Starts warm and open — they came in interested' : profile.warmthLevel === 'cold' ? 'Starts cold and guarded — they are skeptical from the start' : 'Starts neutral — neither eager nor dismissive'}`,
+  ];
+
+  if (profile.objections?.length > 0) {
+    sections.push('', 'KEY OBJECTIONS THEY RAISED IN THE ORIGINAL CALL:');
+    for (const obj of profile.objections) {
+      sections.push(`- "${obj}"`);
+    }
+    sections.push('Raise these SAME objections during the conversation. Use similar wording.');
+  }
+
+  if (profile.painPoints?.length > 0) {
+    sections.push('', 'PAIN POINTS THEY MENTIONED:');
+    for (const pain of profile.painPoints) {
+      sections.push(`- ${pain}`);
+    }
+    sections.push('Reference these pain points when asked about your situation.');
+  }
+
+  if (profile.sampleDialogue) {
+    sections.push('', 'SAMPLE OF HOW THIS PROSPECT ACTUALLY TALKS:');
+    sections.push(profile.sampleDialogue);
+    sections.push('Match this tone, vocabulary, and sentence length. Do NOT sound more polished than this.');
+  }
+
+  sections.push(
+    '',
+    'REPLAY BEHAVIOR RULES:',
+    '- Mimic the original prospect\'s speaking patterns and concerns',
+    '- Raise the SAME objections they raised in the original call',
+    '- Use similar language and tone — do not upgrade their vocabulary',
+    '- Start warm/cold based on how they started the real call',
+    '- Don\'t make it easy — present the same challenges the closer faced',
+    '- If the closer handles an objection better than the original call, respond realistically to the improved technique',
+    '- If the closer makes the same mistakes, react the same way the original prospect did',
+  );
+
+  return sections.join('\n');
 }
 
 /**
