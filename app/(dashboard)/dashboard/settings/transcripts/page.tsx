@@ -14,8 +14,10 @@ import {
     AlertCircle,
     Plus,
     X,
+    FolderDown,
 } from 'lucide-react';
 import Link from 'next/link';
+import { parseTranscript, titleFromFilename, autoDetectTags } from '@/lib/training/transcript-parser';
 
 interface Transcript {
     id: string;
@@ -30,6 +32,8 @@ export default function TranscriptUploadPage() {
     const [transcripts, setTranscripts] = useState<Transcript[]>([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
+    const [seeding, setSeeding] = useState(false);
+    const [seedResult, setSeedResult] = useState<string | null>(null);
     const [dragActive, setDragActive] = useState(false);
     const [showPaste, setShowPaste] = useState(false);
     const [pasteTitle, setPasteTitle] = useState('');
@@ -68,10 +72,15 @@ export default function TranscriptUploadPage() {
         try {
             const uploads = await Promise.all(
                 files.slice(0, 10).map(async (file) => {
-                    const content = await file.text();
+                    const raw = await file.text();
+                    // Auto-detect and parse SRT/WEBVTT/custom formats
+                    const parsed = parseTranscript(raw);
+                    const title = titleFromFilename(file.name);
+                    const tags = autoDetectTags(parsed.cleanText, parsed.speakers, file.name);
                     return {
-                        title: file.name.replace(/\.(txt|csv|json|md)$/i, ''),
-                        content,
+                        title,
+                        content: parsed.format !== 'plain' ? parsed.cleanText : raw,
+                        tags: tags.length > 0 ? tags : undefined,
                     };
                 })
             );
@@ -136,6 +145,25 @@ export default function TranscriptUploadPage() {
         }
     };
 
+    const handleSeedFromFolder = async () => {
+        setSeeding(true);
+        setSeedResult(null);
+        try {
+            const res = await fetch('/api/admin/seed-transcripts', { method: 'POST' });
+            const data = await res.json();
+            if (res.ok) {
+                setSeedResult(data.message);
+                await fetchTranscripts();
+            } else {
+                setSeedResult(`Error: ${data.error}`);
+            }
+        } catch (err) {
+            setSeedResult('Error: Failed to connect');
+        } finally {
+            setSeeding(false);
+        }
+    };
+
     const handleDrag = (e: React.DragEvent) => {
         e.preventDefault();
         e.stopPropagation();
@@ -151,7 +179,7 @@ export default function TranscriptUploadPage() {
         e.stopPropagation();
         setDragActive(false);
         const files = Array.from(e.dataTransfer.files).filter((f) =>
-            /\.(txt|csv|json|md)$/i.test(f.name)
+            /\.(txt|csv|json|md|srt|vtt|webvtt)$/i.test(f.name)
         );
         if (files.length > 0) handleUpload(files);
     };
@@ -224,7 +252,7 @@ export default function TranscriptUploadPage() {
                             {uploading ? 'Uploading...' : 'Drag & drop transcript files here'}
                         </p>
                         <p className="text-sm text-muted-foreground mt-1">
-                            Supports .txt, .csv, .json, .md files — up to 10 at once
+                            Supports .txt, .csv, .json, .md, .srt, .vtt files — up to 10 at once
                         </p>
                     </div>
                     <div className="flex gap-2">
@@ -256,7 +284,7 @@ export default function TranscriptUploadPage() {
                     ref={fileInputRef}
                     type="file"
                     className="hidden"
-                    accept=".txt,.csv,.json,.md"
+                    accept=".txt,.csv,.json,.md,.srt,.vtt,.webvtt"
                     multiple
                     onChange={handleFileSelect}
                 />
@@ -357,12 +385,41 @@ export default function TranscriptUploadPage() {
                 )}
             </div>
 
+            {/* Seed from folder (dev tool) */}
+            <Card className="p-4 border-dashed">
+                <div className="flex items-center justify-between gap-4">
+                    <div>
+                        <h3 className="text-sm font-semibold">Bulk Seed from Folder</h3>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            Load all transcript files from the <code className="bg-muted px-1 rounded">transcripts/</code> project folder.
+                            SRT, WEBVTT, and custom formats are auto-parsed.
+                        </p>
+                        {seedResult && (
+                            <p className={`text-xs mt-1 ${seedResult.startsWith('Error') ? 'text-red-500' : 'text-green-600'}`}>
+                                {seedResult}
+                            </p>
+                        )}
+                    </div>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleSeedFromFolder}
+                        disabled={seeding}
+                        className="shrink-0"
+                    >
+                        {seeding ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <FolderDown className="h-4 w-4 mr-1" />}
+                        {seeding ? 'Seeding...' : 'Seed Now'}
+                    </Button>
+                </div>
+            </Card>
+
             {/* Info */}
             <Card className="p-4 bg-muted/30 border-muted">
                 <h3 className="text-sm font-semibold mb-2">How it works</h3>
                 <ul className="text-sm text-muted-foreground space-y-1">
                     <li>• Upload transcript files or paste transcript text</li>
-                    <li>• AI automatically extracts key patterns (closing techniques, objection handles, discovery questions)</li>
+                    <li>• SRT, WEBVTT, and custom timestamp formats are automatically parsed</li>
+                    <li>• AI extracts key patterns (closing techniques, objection handles, discovery questions)</li>
                     <li>• Extracted patterns are used to make AI roleplay prospects more realistic</li>
                     <li>• More transcripts = better AI training data</li>
                 </ul>

@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Loader2, ArrowLeft, Play, Phone } from 'lucide-react';
+import { Plus, Loader2, ArrowLeft, Play, Phone, Mic, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
@@ -53,6 +53,7 @@ function ProspectSelectionContent() {
   const [loadingStatus, setLoadingStatus] = useState('Loading prospects...');
   const [selectedProspect, setSelectedProspect] = useState<ProspectAvatar | null>(null);
   const [imageGenStatus, setImageGenStatus] = useState<'idle' | 'generating' | 'not_configured' | 'complete'>('idle');
+  const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
   const hasTriedGenerateRef = useRef(false);
   const avatarPollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -267,7 +268,7 @@ function ProspectSelectionContent() {
         body: JSON.stringify({
           offerId,
           prospectAvatarId: prospectId,
-          inputMode: 'voice',
+          inputMode,
           mode: 'manual',
         }),
       });
@@ -293,7 +294,7 @@ function ProspectSelectionContent() {
         body: JSON.stringify({
           offerId,
           selectedDifficulty: difficulty,
-          inputMode: 'voice',
+          inputMode,
           mode: 'manual',
         }),
       });
@@ -509,6 +510,37 @@ function ProspectSelectionContent() {
             </Button>
           </Link>
         </div>
+      </div>
+
+      {/* Mode Toggle */}
+      <div className="mb-6">
+        <p className="text-sm text-muted-foreground mb-2">Session mode:</p>
+        <div className="flex items-center gap-2">
+          <Button
+            variant={inputMode === 'voice' ? 'default' : 'outline'}
+            size="sm"
+            className="h-9 gap-2"
+            onClick={() => setInputMode('voice')}
+          >
+            <Mic className="h-4 w-4" />
+            Voice (Recommended)
+          </Button>
+          <Button
+            variant={inputMode === 'text' ? 'default' : 'outline'}
+            size="sm"
+            className="h-9 gap-2"
+            onClick={() => setInputMode('text')}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Text
+          </Button>
+        </div>
+        {inputMode === 'voice' && (
+          <p className="text-xs text-muted-foreground mt-1.5">Real-time voice conversation with the AI prospect. Requires microphone access.</p>
+        )}
+        {inputMode === 'text' && (
+          <p className="text-xs text-muted-foreground mt-1.5">Type your responses. AI prospect replies with text and optional TTS audio.</p>
+        )}
       </div>
 
       {/* Quick Start - Difficulty Presets (compact) */}

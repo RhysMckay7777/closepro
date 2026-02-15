@@ -5,54 +5,7 @@ import { db } from '@/db';
 import { trainingTranscripts } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
-import Groq from 'groq-sdk';
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const groqClient = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
-
-/**
- * Extract sales patterns from a transcript using AI.
- */
-async function extractPatterns(transcript: string): Promise<Record<string, string[]> | null> {
-    if (!groqClient) return null;
-    try {
-        const response = await groqClient.chat.completions.create({
-            model: 'llama-3.3-70b-versatile',
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are an expert sales analyst. Extract actionable patterns from sales call transcripts. Return only valid JSON.',
-                },
-                {
-                    role: 'user',
-                    content: `Analyze this sales call transcript and extract key patterns that can be used to train AI roleplay prospects.
-
-TRANSCRIPT:
-${transcript.length > 5000 ? transcript.substring(0, 5000) + '\n... (truncated)' : transcript}
-
-Return JSON with these arrays (2-5 items each, be specific with actual phrases/techniques used):
-{
-  "closingTechniques": string[] (specific closing lines or approaches used),
-  "objectionHandles": string[] (how objections were handled, with the objection and response),
-  "discoveryQuestions": string[] (effective discovery questions asked),
-  "valueStatements": string[] (compelling value propositions or reframes used),
-  "commonObjections": string[] (objections raised by the prospect)
-}`,
-                },
-            ],
-            temperature: 0.3,
-            max_tokens: 2000,
-            response_format: { type: 'json_object' },
-        });
-
-        const content = response.choices[0]?.message?.content;
-        if (!content) return null;
-        return JSON.parse(content.trim().replace(/^```json\n?/, '').replace(/\n?```$/, ''));
-    } catch (err) {
-        console.error('[training-transcripts] Pattern extraction error:', err);
-        return null;
-    }
-}
+import { extractPatterns } from '@/lib/training/pattern-extraction';
 
 /**
  * GET — List all training transcripts for the user

@@ -133,7 +133,7 @@ export async function generateProspectResponse(
 /**
  * Build comprehensive system prompt
  */
-function buildRoleplaySystemPrompt(context: RoleplayContext): string {
+export function buildRoleplaySystemPrompt(context: RoleplayContext): string {
   const { offer, prospectAvatar, funnelContext, behaviourState } = context;
   const offerSummary = generateOfferSummary(offer);
   const salesStyle = getDefaultSalesStyle(offer);
@@ -285,6 +285,30 @@ ${getCondensedExamples(3)}
 Use these as reference for HOW prospects actually talk — their word choice, sentence length, emotional expression, and objection style.
 
 Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}${buildOriginalProspectPrompt(context.replayContext)}`;
+}
+
+/**
+ * Build voice-optimized system prompt.
+ * Wraps the standard prompt with voice-specific rules for short, natural turns.
+ */
+export function buildVoiceSystemPrompt(context: RoleplayContext): string {
+  const basePrompt = buildRoleplaySystemPrompt(context);
+
+  const voiceRules = `
+
+VOICE MODE RULES (this conversation is happening via real-time voice, not text):
+1. Keep every response to 1-2 sentences MAX. Absolutely never exceed 3 sentences.
+2. Use natural speech patterns: "um", "uh", "like", "I mean", trailing off mid-sentence.
+3. Speak in a conversational cadence — short phrases, natural pauses, not full paragraphs.
+4. Mirror the closer's pacing — if they speak quickly, respond quickly. If they pause, you can pause.
+5. Never produce monologues. Voice turns must be SHORT. If you have a complex thought, spread it across multiple turns.
+6. React authentically with brief verbal cues: "Mm", "Yeah", "Right", "Hm", "I dunno".
+7. You are managing your own emotional/behavioral state internally. Track resistance, trust, and engagement based on how the closer performs. Adapt naturally.
+8. When you are genuinely convinced, agree naturally and briefly. When unconvinced, push back concisely.
+9. End the conversation naturally when the close is handled well (or maintain objections if not).
+10. Remember: this is a PHONE CALL. No visual cues, no text formatting, no markdown, no bullet points. Just spoken words.`;
+
+  return basePrompt + voiceRules;
 }
 
 /**

@@ -17,7 +17,8 @@
       "WebFetch(domain:frankfu.blog)",
       "WebFetch(domain:softcery.com)",
       "WebFetch(domain:help.elevenlabs.io)",
-      "WebFetch(domain:flexprice.io)"
+      "WebFetch(domain:flexprice.io)",
+      "Bash(npm install:*)"
     ]
   }
 }

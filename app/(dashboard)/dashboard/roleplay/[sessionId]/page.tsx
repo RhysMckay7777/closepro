@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState, useEffect, useRef } from 'react';
+import { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { RoleplaySessionSkeleton } from '@/components/dashboard/skeletons';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,9 @@ import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
 import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { getVoiceIdFromProspect } from '@/lib/ai/roleplay/voice-mapping';
 import { ElevenLabsClient } from '@/lib/tts/elevenlabs-client';
+import { useVoiceSession, type VoiceTranscriptEntry } from '@/hooks/use-voice-session';
+import { VoiceSessionControls } from '@/components/roleplay/VoiceSessionControls';
+import { VoicePermissionGate } from '@/components/roleplay/VoicePermissionGate';
 
 interface Message {
   id?: string;
@@ -93,6 +96,8 @@ function RoleplaySessionContent() {
   const [sessionNotes, setSessionNotes] = useState('');
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [cameraOn, setCameraOn] = useState(false);
+  const [voiceStarted, setVoiceStarted] = useState(false);
+  const [voicePermissionGranted, setVoicePermissionGranted] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const { openDialog, ConfirmDialog } = useConfirmDialog();
@@ -113,21 +118,55 @@ function RoleplaySessionContent() {
   const [sessionElapsed, setSessionElapsed] = useState(0);
   const sessionStartRef = useRef<number>(Date.now());
 
+  // Derive voice mode from session
+  const isVoiceMode = session?.inputMode === 'voice';
+
+  // Voice session hook (ElevenLabs Conversational AI)
+  const handleVoiceTranscriptUpdate = useCallback((entries: VoiceTranscriptEntry[]) => {
+    // Map voice transcript entries into the messages array for the transcript sidebar
+    setMessages(entries.map((e) => ({
+      role: e.role,
+      content: e.content,
+      timestamp: e.timestamp,
+      messageType: 'voice' as const,
+    })));
+  }, []);
+
+  const handleVoiceError = useCallback((message: string) => {
+    toastError('Voice error: ' + message);
+  }, []);
+
+  const voiceSession = useVoiceSession({
+    sessionId,
+    onTranscriptUpdate: handleVoiceTranscriptUpdate,
+    onError: handleVoiceError,
+  });
+
+  // Derive active speaker from voice session
+  useEffect(() => {
+    if (!isVoiceMode) return;
+    if (voiceSession.isSpeaking) {
+      setActiveSpeaker('prospect');
+    } else if (voiceSession.voiceStatus === 'connected') {
+      // When not speaking but connected, the user is likely talking
+      setActiveSpeaker('rep');
+    } else {
+      setActiveSpeaker(null);
+    }
+  }, [isVoiceMode, voiceSession.isSpeaking, voiceSession.voiceStatus]);
+
   useEffect(() => {
     fetchSession();
     fetchUserProfile();
-    initializeVoice();
 
     // Handle timestamp navigation from feedback clicks
     const timestamp = searchParams?.get('timestamp');
     if (timestamp) {
       const timestampMs = parseInt(timestamp);
       setTimeout(() => {
-        // Scroll to message at or near this timestamp
         const messageElement = document.querySelector(`[data-timestamp="${timestampMs}"]`);
         if (messageElement) {
           messageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          // Highlight the message briefly
           messageElement.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
           setTimeout(() => {
             messageElement.classList.remove('ring-2', 'ring-primary', 'ring-offset-2');
@@ -148,6 +187,26 @@ function RoleplaySessionContent() {
       }
     };
   }, [sessionId, searchParams]);
+
+  // Initialize text-mode voice (Web Speech API + TTS) only when NOT in voice mode
+  useEffect(() => {
+    if (session && !isVoiceMode) {
+      initializeTextModeVoice();
+    }
+  }, [session, isVoiceMode]);
+
+  // Auto-start voice session when permission is granted and session is loaded
+  useEffect(() => {
+    if (
+      isVoiceMode &&
+      voicePermissionGranted &&
+      !voiceStarted &&
+      session?.status === 'in_progress'
+    ) {
+      setVoiceStarted(true);
+      voiceSession.startVoice();
+    }
+  }, [isVoiceMode, voicePermissionGranted, voiceStarted, session?.status]);
 
   const fetchUserProfile = async () => {
     try {
@@ -237,8 +296,9 @@ function RoleplaySessionContent() {
   };
 
   const formatMessageTime = (ms: number) => {
-    // ms is Date.now() — make it relative to session start
-    const elapsed = Math.max(0, ms - sessionStartRef.current);
+    // For voice mode, timestamps are already relative (ms from session start)
+    // For text mode, ms is Date.now() — make it relative to session start
+    const elapsed = isVoiceMode ? Math.max(0, ms) : Math.max(0, ms - sessionStartRef.current);
     const s = Math.floor(elapsed / 1000);
     const m = Math.floor(s / 60);
     return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -261,13 +321,12 @@ function RoleplaySessionContent() {
     }
   };
 
-  // Sentence completion detection for continuous listening
+  // === TEXT MODE ONLY: Web Speech API + ElevenLabs TTS ===
+
   const shouldAutoSend = (text: string): boolean => {
     const trimmed = text.trim();
     if (!trimmed || trimmed.split(/\s+/).length < 3) return false;
-    // Ends with sentence-ending punctuation
     if (/[.!?]$/.test(trimmed)) return true;
-    // Has enough words (natural pause point)
     if (trimmed.split(/\s+/).length >= 8) return true;
     return false;
   };
@@ -294,7 +353,7 @@ function RoleplaySessionContent() {
     setIsListening(false);
   };
 
-  const initializeVoice = () => {
+  const initializeTextModeVoice = () => {
     // Initialize Web Speech API with continuous listening
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
       const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
@@ -323,10 +382,8 @@ function RoleplaySessionContent() {
           setInput((interimTranscriptRef.current + ' ' + interimText).trim());
         }
 
-        // Reset silence timer on any speech
         if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-        // Start silence timer — auto-send after 2s of silence
         silenceTimerRef.current = setTimeout(() => {
           const accumulated = interimTranscriptRef.current.trim();
           if (accumulated && shouldAutoSend(accumulated)) {
@@ -342,10 +399,8 @@ function RoleplaySessionContent() {
         }
       };
 
-      // Auto-restart if mic stops (for continuous listening)
       recognitionRef.current.onend = () => {
         if (session?.inputMode === 'voice' && !isSpeakingTTSRef.current) {
-          // Auto-restart recognition to keep mic live
           try {
             recognitionRef.current.start();
           } catch {
@@ -357,7 +412,7 @@ function RoleplaySessionContent() {
       };
     }
 
-    // Initialize ElevenLabs TTS provider (no browser SpeechSynthesis)
+    // Initialize ElevenLabs TTS provider
     if (!ttsProviderRef.current) {
       ttsProviderRef.current = new ElevenLabsClient();
     }
@@ -379,7 +434,6 @@ function RoleplaySessionContent() {
     setLoading(true);
     setActiveSpeaker('rep');
 
-    // Clear active speaker after 2 seconds
     if (activeSpeakerTimeoutRef.current) {
       clearTimeout(activeSpeakerTimeoutRef.current);
     }
@@ -419,7 +473,6 @@ function RoleplaySessionContent() {
       });
       setActiveSpeaker('prospect');
 
-      // Clear active speaker after prospect finishes
       if (activeSpeakerTimeoutRef.current) {
         clearTimeout(activeSpeakerTimeoutRef.current);
       }
@@ -427,18 +480,16 @@ function RoleplaySessionContent() {
         setActiveSpeaker(null);
       }, 5000);
 
-      // Speak prospect response via ElevenLabs TTS provider
+      // Speak prospect response via ElevenLabs TTS provider (text mode only)
       if (!isMuted && ttsProviderRef.current) {
         ttsProviderRef.current.stop();
         const speakText = cleanForSpeech(data.response);
         try {
-          // Voice consistency: lock voice ID on first call, reuse for entire session
           if (!lockedVoiceIdRef.current && prospectAvatar) {
             lockedVoiceIdRef.current = getVoiceIdFromProspect(prospectAvatar);
           }
           const voiceId = lockedVoiceIdRef.current || undefined;
 
-          // Pause mic during TTS to avoid echo
           isSpeakingTTSRef.current = true;
           if (recognitionRef.current && isListening) {
             try { recognitionRef.current.stop(); } catch { /* ignore */ }
@@ -446,12 +497,10 @@ function RoleplaySessionContent() {
 
           await ttsProviderRef.current.speak(speakText, voiceId);
 
-          // TTS finished — resume mic
           isSpeakingTTSRef.current = false;
           if (session?.inputMode === 'voice') startContinuousListening();
           setActiveSpeaker(null);
         } catch (ttsErr) {
-          // TTS failed — no browser fallback, just show error and resume
           isSpeakingTTSRef.current = false;
           if (session?.inputMode === 'voice') startContinuousListening();
           setActiveSpeaker(null);
@@ -461,7 +510,6 @@ function RoleplaySessionContent() {
       }
     } catch (error: any) {
       console.error('Error sending message:', error);
-      // Rollback the optimistically added rep message
       setMessages((prev) => prev.slice(0, -1));
       toastError('Failed to send message: ' + error.message);
       setActiveSpeaker(null);
@@ -478,7 +526,6 @@ function RoleplaySessionContent() {
 
     if (isListening) {
       stopContinuousListening();
-      // Send any accumulated text
       const accumulated = interimTranscriptRef.current.trim();
       if (accumulated) {
         interimTranscriptRef.current = '';
@@ -491,9 +538,16 @@ function RoleplaySessionContent() {
   };
 
   const handleMute = () => {
-    setIsMuted(!isMuted);
-    if (!isMuted && ttsProviderRef.current) {
-      ttsProviderRef.current.stop();
+    if (isVoiceMode) {
+      // In voice mode, mute/unmute controls ElevenLabs volume
+      const newMuted = !isMuted;
+      setIsMuted(newMuted);
+      voiceSession.setVolume({ volume: newMuted ? 0 : 1 });
+    } else {
+      setIsMuted(!isMuted);
+      if (!isMuted && ttsProviderRef.current) {
+        ttsProviderRef.current.stop();
+      }
     }
   };
 
@@ -511,6 +565,19 @@ function RoleplaySessionContent() {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const handleSwitchToText = () => {
+    // Switch current session to text mode (in-memory only)
+    if (session) {
+      // End voice if active
+      if (voiceSession.voiceStatus === 'connected') {
+        voiceSession.endVoice();
+      }
+      setSession({ ...session, inputMode: 'text' });
+      setVoiceStarted(false);
+      setVoicePermissionGranted(false);
+    }
+  };
+
   const handleEndSession = () => {
     openDialog({
       title: 'End roleplay session?',
@@ -519,17 +586,21 @@ function RoleplaySessionContent() {
       onConfirm: async () => {
         try {
           setLoading(true);
+
+          // End voice session if active (persists transcript)
+          if (isVoiceMode && voiceSession.voiceStatus === 'connected') {
+            await voiceSession.endVoice();
+          }
+
           if (ttsProviderRef.current) ttsProviderRef.current.stop();
 
-          // Mark session as completed (fast DB update)
+          // Mark session as completed
           await fetch(`/api/roleplay/${sessionId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: 'completed' }),
           });
 
-          // Navigate to results immediately — the results page will trigger scoring
-          // and show a nice "Analyzing..." loading UI while it works
           router.push(`/dashboard/roleplay/${sessionId}/results`);
         } catch (error) {
           console.error('Error ending session:', error);
@@ -540,6 +611,277 @@ function RoleplaySessionContent() {
       },
     });
   };
+
+  // Voice mode: wrap the avatar area + controls in a permission gate
+  const renderVoiceContent = () => {
+    if (!voicePermissionGranted) {
+      return (
+        <div className="flex-1 flex items-center justify-center">
+          <VoicePermissionGate
+            onFallbackToText={handleSwitchToText}
+          >
+            {/* This renders when permission is granted */}
+            <VoicePermissionGrantedTrigger
+              onGranted={() => setVoicePermissionGranted(true)}
+            />
+          </VoicePermissionGate>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {renderAvatarArea()}
+        <VoiceSessionControls
+          voiceStatus={voiceSession.voiceStatus}
+          isSpeaking={voiceSession.isSpeaking}
+          isMuted={isMuted}
+          cameraOn={cameraOn}
+          onMuteToggle={handleMute}
+          onEndCall={handleEndSession}
+          onSwitchToText={handleSwitchToText}
+          onRetry={() => {
+            setVoiceStarted(false);
+            setVoiceStarted(true);
+            voiceSession.startVoice();
+          }}
+          onToggleCamera={toggleCamera}
+          error={voiceSession.error}
+        />
+      </>
+    );
+  };
+
+  const renderAvatarArea = () => (
+    <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+      <div className="relative w-full max-w-2xl rounded-xl overflow-hidden bg-gradient-to-r from-blue-900/30 via-slate-900/50 to-amber-900/30 p-6 sm:p-8">
+        <div className="flex items-center justify-center gap-8 sm:gap-12">
+          {/* User side */}
+          <div className="flex flex-col items-center gap-3">
+            <div
+              className={cn(
+                "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center",
+                activeSpeaker === 'rep'
+                  ? "border-blue-400 shadow-lg shadow-blue-500/20"
+                  : "border-blue-500/40 bg-blue-500/20"
+              )}
+            >
+              {cameraOn ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+              ) : userProfile?.profilePhoto ? (
+                <Avatar className="w-full h-full">
+                  <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
+                  <AvatarFallback className="bg-blue-500/30 text-blue-300 text-xl">
+                    {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <Mic className="h-10 w-10 text-blue-400" />
+              )}
+            </div>
+            <span className="text-sm font-medium text-blue-300">{userProfile?.name || 'You'}</span>
+            {activeSpeaker === 'rep' && (
+              <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
+            )}
+            {!isVoiceMode && isListening && !activeSpeaker && (
+              <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
+                <div className="flex items-center gap-0.5">
+                  {[0, 1, 2, 3, 4].map(i => (
+                    <span
+                      key={i}
+                      className="w-1 bg-blue-400 rounded-full animate-pulse"
+                      style={{
+                        height: `${6 + Math.random() * 8}px`,
+                        animationDelay: `${i * 0.1}s`,
+                        animationDuration: `${0.4 + Math.random() * 0.4}s`,
+                      }}
+                    />
+                  ))}
+                </div>
+                <span className="text-[10px] text-blue-400 font-medium">Listening</span>
+              </div>
+            )}
+          </div>
+
+          {/* VS / Connection line */}
+          <div className="flex flex-col items-center gap-1">
+            <div className="w-px h-8 bg-gradient-to-b from-blue-500/50 to-amber-500/50" />
+            <span className="text-xs text-muted-foreground font-medium">LIVE</span>
+            <div className="w-px h-8 bg-gradient-to-b from-amber-500/50 to-blue-500/50" />
+          </div>
+
+          {/* Prospect side */}
+          <div className="flex flex-col items-center gap-3">
+            <div
+              className={cn(
+                "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300",
+                activeSpeaker === 'prospect'
+                  ? "border-amber-400 shadow-lg shadow-amber-500/20"
+                  : "border-amber-500/40"
+              )}
+            >
+              {prospectAvatar ? (
+                <Avatar className="w-full h-full">
+                  {resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl) ? (
+                    <AvatarImage
+                      src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)!}
+                      alt={prospectAvatar.name}
+                      className="object-cover"
+                    />
+                  ) : null}
+                  <AvatarFallback className={`text-2xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
+                    {getProspectInitials(prospectAvatar.name)}
+                  </AvatarFallback>
+                </Avatar>
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-stone-800">
+                  <Bot className="h-10 w-10 text-stone-500" />
+                </div>
+              )}
+              {loading && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
+                </div>
+              )}
+            </div>
+            <span className="text-sm font-medium text-amber-300">{prospectAvatar?.name ?? 'AI Prospect'}</span>
+            {activeSpeaker === 'prospect' && (
+              <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
+            )}
+          </div>
+        </div>
+
+        {/* Prospect description */}
+        <p className="text-xs text-muted-foreground text-center mt-4 max-w-lg mx-auto">
+          {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
+        </p>
+
+        {/* Expandable Role Context */}
+        <div className="mt-3 flex justify-center">
+          <button
+            onClick={() => setShowRoleContext(!showRoleContext)}
+            className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
+          >
+            <span>Role context</span>
+            {showRoleContext ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+        </div>
+        {showRoleContext && (
+          <div className="mt-3 space-y-2 max-w-lg mx-auto">
+            {prospectAvatar?.backstory && (
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <h5 className="text-xs font-bold text-foreground mb-1">Backstory</h5>
+                <p className="text-xs text-muted-foreground leading-relaxed">{prospectAvatar.backstory}</p>
+              </div>
+            )}
+            {offerInfo && (
+              <div className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <h5 className="text-xs font-bold text-foreground mb-1">{offerInfo.name}</h5>
+                {offerInfo.price != null && (
+                  <p className="text-xs text-muted-foreground">{'\u00A3'}{(offerInfo.price / 100).toLocaleString()}</p>
+                )}
+                {offerInfo.description && (
+                  <p className="text-xs text-muted-foreground leading-relaxed mt-1">{offerInfo.description}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderTextModeControls = () => (
+    <div className="shrink-0 flex justify-center p-3 border-t border-white/5 bg-stone-950/60">
+      <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-stone-900/95 backdrop-blur-xl border border-white/10 shadow-2xl max-w-2xl w-full">
+        <Button
+          variant={isMuted ? 'destructive' : 'ghost'}
+          size="icon"
+          onClick={handleMute}
+          className="rounded-full h-10 w-10 shrink-0"
+          title={isMuted ? 'Unmute AI voice' : 'Mute AI voice'}
+        >
+          {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+        </Button>
+        {session?.inputMode === 'voice' && (
+          <Button
+            variant={isListening ? 'default' : 'ghost'}
+            size="icon"
+            onClick={handleVoiceInput}
+            className={cn(
+              "rounded-full h-10 w-10 shrink-0 transition-all",
+              isListening && "ring-2 ring-orange-500/50 bg-orange-500/20"
+            )}
+            title={isListening ? 'Stop voice input' : 'Start voice input'}
+          >
+            {isListening ? (
+              <span className="relative flex">
+                <Mic className="h-5 w-5 text-orange-400" />
+                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-orange-500 animate-pulse ring-2 ring-background" />
+              </span>
+            ) : (
+              <Mic className="h-5 w-5" />
+            )}
+          </Button>
+        )}
+        <Input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
+          placeholder={
+            session?.inputMode === 'voice'
+              ? (isListening ? 'Listening...' : 'Type or use mic...')
+              : 'Type your message...'
+          }
+          disabled={loading || isListening}
+          className="flex-1 h-10 rounded-full bg-stone-800/80 border-white/10 focus-visible:ring-orange-500/50"
+        />
+        <Button
+          onClick={() => handleSend()}
+          disabled={loading || !input.trim() || isListening}
+          size="icon"
+          className="rounded-full h-10 w-10 shrink-0"
+          title="Send"
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <MessageSquare className="h-4 w-4" />
+          )}
+        </Button>
+        <div className="w-px h-6 bg-white/10 shrink-0" />
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleCamera}
+          className={cn("rounded-full h-10 w-10 shrink-0", cameraOn && "bg-orange-500/20 text-orange-400")}
+          title={cameraOn ? 'Camera on' : 'Turn on camera'}
+        >
+          <Video className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="destructive"
+          size="icon"
+          onClick={handleEndSession}
+          className="rounded-full h-10 w-10 shrink-0"
+          title="End session"
+        >
+          <PhoneOff className="h-5 w-5" />
+        </Button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -565,6 +907,11 @@ function RoleplaySessionContent() {
                 Live
               </span>
             )}
+            {isVoiceMode && (
+              <Badge variant="outline" className="text-[10px] h-5 border-blue-500/30 text-blue-400">
+                Voice AI
+              </Badge>
+            )}
           </div>
           {/* Session Timer */}
           <div className="flex items-center gap-3">
@@ -588,234 +935,12 @@ function RoleplaySessionContent() {
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* LEFT: Avatar area + controls */}
           <div className="flex-1 flex flex-col min-w-0">
-            {/* ─── Unified Gradient Avatar Area ─── */}
-            <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
-              <div className="relative w-full max-w-2xl rounded-xl overflow-hidden bg-gradient-to-r from-blue-900/30 via-slate-900/50 to-amber-900/30 p-6 sm:p-8">
-                <div className="flex items-center justify-center gap-8 sm:gap-12">
-                  {/* User side */}
-                  <div className="flex flex-col items-center gap-3">
-                    <div
-                      className={cn(
-                        "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center",
-                        activeSpeaker === 'rep'
-                          ? "border-blue-400 shadow-lg shadow-blue-500/20"
-                          : "border-blue-500/40 bg-blue-500/20"
-                      )}
-                    >
-                      {cameraOn ? (
-                        <video
-                          ref={videoRef}
-                          autoPlay
-                          playsInline
-                          muted
-                          className="w-full h-full object-cover"
-                        />
-                      ) : userProfile?.profilePhoto ? (
-                        <Avatar className="w-full h-full">
-                          <AvatarImage src={userProfile.profilePhoto} alt={userProfile.name} />
-                          <AvatarFallback className="bg-blue-500/30 text-blue-300 text-xl">
-                            {userProfile.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <Mic className="h-10 w-10 text-blue-400" />
-                      )}
-                    </div>
-                    <span className="text-sm font-medium text-blue-300">{userProfile?.name || 'You'}</span>
-                    {activeSpeaker === 'rep' && (
-                      <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse" />
-                    )}
-                    {isListening && !activeSpeaker && (
-                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30">
-                        <div className="flex items-center gap-0.5">
-                          {[0, 1, 2, 3, 4].map(i => (
-                            <span
-                              key={i}
-                              className="w-1 bg-blue-400 rounded-full animate-pulse"
-                              style={{
-                                height: `${6 + Math.random() * 8}px`,
-                                animationDelay: `${i * 0.1}s`,
-                                animationDuration: `${0.4 + Math.random() * 0.4}s`,
-                              }}
-                            />
-                          ))}
-                        </div>
-                        <span className="text-[10px] text-blue-400 font-medium">Listening</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* VS / Connection line */}
-                  <div className="flex flex-col items-center gap-1">
-                    <div className="w-px h-8 bg-gradient-to-b from-blue-500/50 to-amber-500/50" />
-                    <span className="text-xs text-muted-foreground font-medium">LIVE</span>
-                    <div className="w-px h-8 bg-gradient-to-b from-amber-500/50 to-blue-500/50" />
-                  </div>
-
-                  {/* Prospect side */}
-                  <div className="flex flex-col items-center gap-3">
-                    <div
-                      className={cn(
-                        "w-20 h-20 sm:w-24 sm:h-24 rounded-full overflow-hidden border-2 transition-all duration-300",
-                        activeSpeaker === 'prospect'
-                          ? "border-amber-400 shadow-lg shadow-amber-500/20"
-                          : "border-amber-500/40"
-                      )}
-                    >
-                      {prospectAvatar ? (
-                        <Avatar className="w-full h-full">
-                          {resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl) ? (
-                            <AvatarImage
-                              src={resolveProspectAvatarUrl(prospectAvatar.id, prospectAvatar.name, prospectAvatar.avatarUrl)!}
-                              alt={prospectAvatar.name}
-                              className="object-cover"
-                            />
-                          ) : null}
-                          <AvatarFallback className={`text-2xl font-bold text-white bg-gradient-to-br ${getProspectPlaceholderColor(prospectAvatar.name)}`}>
-                            {getProspectInitials(prospectAvatar.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                          <Bot className="h-10 w-10 text-stone-500" />
-                        </div>
-                      )}
-                      {loading && (
-                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-full">
-                          <Loader2 className="h-6 w-6 animate-spin text-stone-400" />
-                        </div>
-                      )}
-                    </div>
-                    <span className="text-sm font-medium text-amber-300">{prospectAvatar?.name ?? 'AI Prospect'}</span>
-                    {activeSpeaker === 'prospect' && (
-                      <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Prospect description */}
-                <p className="text-xs text-muted-foreground text-center mt-4 max-w-lg mx-auto">
-                  {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
-                </p>
-
-                {/* Expandable Role Context */}
-                <div className="mt-3 flex justify-center">
-                  <button
-                    onClick={() => setShowRoleContext(!showRoleContext)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                  >
-                    <span>Role context</span>
-                    {showRoleContext ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                  </button>
-                </div>
-                {showRoleContext && (
-                  <div className="mt-3 space-y-2 max-w-lg mx-auto">
-                    {prospectAvatar?.backstory && (
-                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                        <h5 className="text-xs font-bold text-foreground mb-1">Backstory</h5>
-                        <p className="text-xs text-muted-foreground leading-relaxed">{prospectAvatar.backstory}</p>
-                      </div>
-                    )}
-                    {offerInfo && (
-                      <div className="rounded-lg border border-white/10 bg-white/5 p-3">
-                        <h5 className="text-xs font-bold text-foreground mb-1">{offerInfo.name}</h5>
-                        {offerInfo.price != null && (
-                          <p className="text-xs text-muted-foreground">{'\u00A3'}{(offerInfo.price / 100).toLocaleString()}</p>
-                        )}
-                        {offerInfo.description && (
-                          <p className="text-xs text-muted-foreground leading-relaxed mt-1">{offerInfo.description}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* ─── Control Bar (inside left panel) ─── */}
-            <div className="shrink-0 flex justify-center p-3 border-t border-white/5 bg-stone-950/60">
-              <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-stone-900/95 backdrop-blur-xl border border-white/10 shadow-2xl max-w-2xl w-full">
-                <Button
-                  variant={isMuted ? 'destructive' : 'ghost'}
-                  size="icon"
-                  onClick={handleMute}
-                  className="rounded-full h-10 w-10 shrink-0"
-                  title={isMuted ? 'Unmute AI voice' : 'Mute AI voice'}
-                >
-                  {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-                </Button>
-                {session?.inputMode === 'voice' && (
-                  <Button
-                    variant={isListening ? 'default' : 'ghost'}
-                    size="icon"
-                    onClick={handleVoiceInput}
-                    className={cn(
-                      "rounded-full h-10 w-10 shrink-0 transition-all",
-                      isListening && "ring-2 ring-orange-500/50 bg-orange-500/20"
-                    )}
-                    title={isListening ? 'Stop voice input' : 'Start voice input'}
-                  >
-                    {isListening ? (
-                      <span className="relative flex">
-                        <Mic className="h-5 w-5 text-orange-400" />
-                        <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-orange-500 animate-pulse ring-2 ring-background" />
-                      </span>
-                    ) : (
-                      <Mic className="h-5 w-5" />
-                    )}
-                  </Button>
-                )}
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder={
-                    session?.inputMode === 'voice'
-                      ? (isListening ? 'Listening...' : 'Type or use mic...')
-                      : 'Type your message...'
-                  }
-                  disabled={loading || isListening}
-                  className="flex-1 h-10 rounded-full bg-stone-800/80 border-white/10 focus-visible:ring-orange-500/50"
-                />
-                <Button
-                  onClick={() => handleSend()}
-                  disabled={loading || !input.trim() || isListening}
-                  size="icon"
-                  className="rounded-full h-10 w-10 shrink-0"
-                  title="Send"
-                >
-                  {loading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MessageSquare className="h-4 w-4" />
-                  )}
-                </Button>
-                <div className="w-px h-6 bg-white/10 shrink-0" />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={toggleCamera}
-                  className={cn("rounded-full h-10 w-10 shrink-0", cameraOn && "bg-orange-500/20 text-orange-400")}
-                  title={cameraOn ? 'Camera on' : 'Turn on camera'}
-                >
-                  <Video className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="icon"
-                  onClick={handleEndSession}
-                  className="rounded-full h-10 w-10 shrink-0"
-                  title="End session"
-                >
-                  <PhoneOff className="h-5 w-5" />
-                </Button>
-              </div>
-            </div>
+            {isVoiceMode ? renderVoiceContent() : (
+              <>
+                {renderAvatarArea()}
+                {renderTextModeControls()}
+              </>
+            )}
           </div>
 
           {/* RIGHT: Sidebar Transcript */}
@@ -980,6 +1105,16 @@ function RoleplaySessionContent() {
       </div>
     </>
   );
+}
+
+/**
+ * Helper component: triggers onGranted callback when rendered (inside VoicePermissionGate children)
+ */
+function VoicePermissionGrantedTrigger({ onGranted }: { onGranted: () => void }) {
+  useEffect(() => {
+    onGranted();
+  }, [onGranted]);
+  return null;
 }
 
 export default function RoleplaySessionPage() {
