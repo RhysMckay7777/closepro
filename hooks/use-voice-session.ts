@@ -173,7 +173,9 @@ export function useVoiceSession({
           },
           tts: {
             voiceId,
-            ...(voiceSettings || {}),
+            stability: voiceSettings?.stability,
+            speed: voiceSettings?.speed,
+            // Do NOT pass similarityBoost — not supported in Conversational AI overrides
           },
         },
       });
@@ -337,7 +339,9 @@ export function useVoiceSession({
           },
           tts: {
             voiceId,
-            ...(voiceSettings || {}),
+            stability: voiceSettings?.stability,
+            speed: voiceSettings?.speed,
+            // Do NOT pass similarityBoost — not supported in Conversational AI overrides
           },
         },
       });
