@@ -11,7 +11,6 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils';
 import { toastError } from '@/lib/toast';
-import { useConfirmDialog } from '@/hooks/use-confirm-dialog';
 import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { getVoiceIdFromProspect } from '@/lib/ai/roleplay/voice-mapping';
 import { ElevenLabsClient } from '@/lib/tts/elevenlabs-client';
@@ -98,9 +97,9 @@ function RoleplaySessionContent() {
   const [cameraOn, setCameraOn] = useState(false);
   const [voiceStarted, setVoiceStarted] = useState(false);
   const [voicePermissionGranted, setVoicePermissionGranted] = useState(false);
+  const [showEndSessionDialog, setShowEndSessionDialog] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const { openDialog, ConfirmDialog } = useConfirmDialog();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
@@ -578,39 +577,39 @@ function RoleplaySessionContent() {
     }
   };
 
-  const handleEndSession = () => {
-    openDialog({
-      title: 'End roleplay session?',
-      description: 'This session will be analyzed and scored. You can view results afterward.',
-      confirmLabel: 'End & score',
-      onConfirm: async () => {
-        try {
-          setLoading(true);
+  // Only show the dialog — no heavy work here
+  const handleEndSession = useCallback(() => {
+    setShowEndSessionDialog(true);
+  }, []);
 
-          // End voice session if active (persists transcript)
-          if (isVoiceMode && voiceSession.voiceStatus === 'connected') {
-            await voiceSession.endVoice();
-          }
+  // Heavy work runs only when the user confirms inside the dialog
+  const confirmEndSession = useCallback(async () => {
+    setShowEndSessionDialog(false);
+    try {
+      setLoading(true);
 
-          if (ttsProviderRef.current) ttsProviderRef.current.stop();
+      // End voice session if active (persists transcript)
+      if (isVoiceMode && voiceSession.voiceStatus === 'connected') {
+        await voiceSession.endVoice();
+      }
 
-          // Mark session as completed
-          await fetch(`/api/roleplay/${sessionId}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: 'completed' }),
-          });
+      if (ttsProviderRef.current) ttsProviderRef.current.stop();
 
-          router.push(`/dashboard/roleplay/${sessionId}/results`);
-        } catch (error) {
-          console.error('Error ending session:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-          toastError('Failed to end session: ' + errorMessage);
-          setLoading(false);
-        }
-      },
-    });
-  };
+      // Mark session as completed
+      await fetch(`/api/roleplay/${sessionId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' }),
+      });
+
+      router.push(`/dashboard/roleplay/${sessionId}/results`);
+    } catch (error) {
+      console.error('Error ending session:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toastError('Failed to end session: ' + errorMessage);
+      setLoading(false);
+    }
+  }, [isVoiceMode, voiceSession, sessionId, router]);
 
   // Voice mode: wrap the avatar area + controls in a permission gate
   const renderVoiceContent = () => {
@@ -947,7 +946,6 @@ function RoleplaySessionContent() {
 
   return (
     <>
-      <ConfirmDialog />
       <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-gradient-to-br from-indigo-950/90 via-stone-950 to-purple-950/60">
         {/* ─── Top Header Bar ─── */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-stone-950/80 backdrop-blur-md z-20 shrink-0">
@@ -1164,6 +1162,44 @@ function RoleplaySessionContent() {
           )}
         </div>
 
+      </div>
+
+      {/* ─── End Session Confirmation ─── */}
+      {/* Rendered outside the main layout so it never affects tile flex sizing */}
+      <div
+        className={cn(
+          'fixed inset-0 z-[999] flex items-center justify-center',
+          showEndSessionDialog ? 'pointer-events-auto' : 'pointer-events-none'
+        )}
+      >
+        {/* Backdrop */}
+        <div
+          className={cn(
+            'absolute inset-0 bg-black/60 transition-opacity duration-200',
+            showEndSessionDialog ? 'opacity-100' : 'opacity-0'
+          )}
+          onClick={() => setShowEndSessionDialog(false)}
+        />
+        {/* Panel */}
+        <div
+          className={cn(
+            'relative z-10 bg-stone-900 border border-white/10 rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 transition-all duration-200 ease-out',
+            showEndSessionDialog ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+          )}
+        >
+          <h3 className="text-lg font-semibold text-foreground">End roleplay session?</h3>
+          <p className="text-sm text-muted-foreground mt-2">
+            This session will be analyzed and scored. You can view results afterward.
+          </p>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button variant="ghost" onClick={() => setShowEndSessionDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmEndSession}>
+              End &amp; Score
+            </Button>
+          </div>
+        </div>
       </div>
     </>
   );

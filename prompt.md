@@ -1,47 +1,39 @@
-Fix two critical bugs in the roleplay voice session — do not change any API routes or scoring logic.
+In app/(dashboard)/dashboard/roleplay/[sessionId]/page.tsx, the "End Call" confirmation dialog is stuttering and causing visible layout jank when it opens.
 
-Bug 1: Reconnection infinite loop
-In hooks/use-voice-session.ts, the reconnect logic has a loop:
+Fix this without changing behaviour:
 
-onConnect resets reconnectAttemptsRef.current = 0
+Portal the modal to the top level
 
-Connection drops immediately after reconnect
+Ensure the end-call confirmation dialog is rendered at the root of the page (outside the main tile layout), in a fixed inset-0 z-[999] container with backdrop, so opening it does not affect the flex sizing of the tiles.
 
-attemptReconnect sees attempts = 0, so it always retries
+Separate UI state from heavy work
 
-This creates an infinite connect → disconnect → reconnect cycle
+When the "End Call" button is clicked in VoiceSessionControls, only set showEndSessionDialog = true.
 
-Fix:
+Inside the dialog:
 
-Do NOT reset reconnectAttemptsRef to 0 on onConnect. Instead, reset it only when the connection has been stable for at least 10 seconds (use a timeout).
+"Cancel" just toggles showEndSessionDialog = false.
 
-Add a reconnectsInWindowRef that tracks how many reconnects happened in the last 60 seconds. If more than 5 reconnects in 60 seconds, stop trying and set status to 'error' with message "Connection unstable — please try again or switch to text mode."
+"End Session" does the heavy work: call endVoice(), trigger scoring, navigate, etc. Do not run these side effects on the same click that shows the modal.
 
-Between each reconnect attempt, add an increasing delay: attempt 1 = 2s, attempt 2 = 4s, attempt 3 = 8s (exponential backoff).
+Stabilise animations
 
-After all 3 attempts fail OR after detecting the rapid-reconnect loop, show the error state and stop retrying.
+Use Tailwind transitions only on the modal panel itself, not on the entire page:
 
-Bug 2: Control bar pushed off-screen
-In the roleplay session page (app/(dashboard)/dashboard/roleplay/[sessionId]/page.tsx), the two-tile layout + control bar exceeds viewport height.
+Backdrop: fixed inset-0 bg-black/60 transition-opacity.
 
-Fix:
+Panel: transition-all duration-200 ease-out with simple scale/opacity.
 
-Make the entire voice mode area fit within 100vh (or calc(100vh - header height)).
+Make sure the main roleplay layout container does not change any classes when the modal is open (no opacity blur or scale on the background).
 
-Use a flex column layout:
+Performance sanity checks
 
-Header bar: fixed height
+Confirm that opening/closing the dialog does not trigger extra renders of the voice tiles beyond the state change (avoid passing the entire session object into the modal if possible; pass only the callbacks and minimal data).
 
-Two tiles area: flex-1 overflow-hidden (takes remaining space, never overflows)
+After changes, clicking "End Call" should:
 
-Control bar: fixed height at the bottom, always visible
+Instantly show the dialog with a smooth fade/scale.
 
-The two tiles inside the middle area should use min-h-0 and scale to fit, not push the control bar down.
+Not cause the tiles to move or jitter.
 
-Ensure the control bar (mic, speaker, camera, end call, switch to text) is always visible and clickable at the bottom of the viewport.
-
-On the prospect tile, if the description text is too long for the available space, make it scrollable within the tile (overflow-y-auto) rather than expanding the tile height.
-
-Test: After changes, the full page (header + tiles + control bar) must fit in a 1080p browser window without any scrolling needed.
-
-
+Only run endVoice() and scoring when the user confirms, not when the dialog appears.
