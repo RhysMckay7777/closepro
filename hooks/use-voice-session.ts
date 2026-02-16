@@ -18,7 +18,10 @@ interface UseVoiceSessionOptions {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 3;
-const RECONNECT_DELAY_MS = 2000;
+const BASE_RECONNECT_DELAY_MS = 2000; // 2s, 4s, 8s (exponential)
+const STABLE_CONNECTION_THRESHOLD_MS = 10_000; // 10 seconds before resetting attempt counter
+const RAPID_RECONNECT_WINDOW_MS = 60_000; // 60 second window
+const MAX_RECONNECTS_IN_WINDOW = 5; // max reconnects in the window
 
 export function useVoiceSession({
   sessionId,
@@ -38,8 +41,13 @@ export function useVoiceSession({
   const intentionalDisconnectRef = useRef(false);
   const hasConnectedRef = useRef(false);
 
+  // Stable connection timer — only reset attempt counter after 10s of stable connection
+  const stableConnectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Rapid reconnect detection — track timestamps of recent reconnects
+  const reconnectTimestampsRef = useRef<number[]>([]);
+
   // Ref to hold the conversation instance — bridges the circular dependency
-  // between attemptReconnect (needs conversation) and useConversation (callbacks need attemptReconnect)
   const conversationRef = useRef<ReturnType<typeof useConversation> | null>(null);
 
   // Persist transcript to server
@@ -67,27 +75,67 @@ export function useVoiceSession({
     }
   }, [sessionId]);
 
-  // Reconnection logic — uses conversationRef.current (resolved at call time, not definition time)
+  /**
+   * Check if we're in a rapid-reconnect loop.
+   * Returns true if too many reconnects happened in the last 60 seconds.
+   */
+  const isRapidReconnectLoop = useCallback((): boolean => {
+    const now = Date.now();
+    // Prune old timestamps outside the window
+    reconnectTimestampsRef.current = reconnectTimestampsRef.current.filter(
+      (t) => now - t < RAPID_RECONNECT_WINDOW_MS
+    );
+    return reconnectTimestampsRef.current.length >= MAX_RECONNECTS_IN_WINDOW;
+  }, []);
+
+  /**
+   * Stop all reconnection and show error state.
+   */
+  const haltReconnection = useCallback((message: string) => {
+    console.error(`[voice] Halting reconnection: ${message}`);
+    isReconnectingRef.current = false;
+    setReconnectFailed(true);
+    setError(message);
+    setVoiceStatus('disconnected');
+    onError?.(message);
+    // Clear stable connection timer
+    if (stableConnectionTimerRef.current) {
+      clearTimeout(stableConnectionTimerRef.current);
+      stableConnectionTimerRef.current = null;
+    }
+  }, [onError]);
+
+  // Reconnection logic — exponential backoff + rapid-loop detection
   const attemptReconnect = useCallback(async () => {
     if (isReconnectingRef.current) return;
+
+    // Check rapid reconnect loop FIRST
+    if (isRapidReconnectLoop()) {
+      haltReconnection('Connection unstable — please try again or switch to text mode.');
+      return;
+    }
+
     if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
-      console.error('[voice] Max reconnect attempts reached');
-      setReconnectFailed(true);
-      setError('Connection lost after multiple retries. Switch to text mode or try again.');
-      onError?.('Connection lost after multiple retries');
+      haltReconnection('Connection lost after multiple retries. Switch to text mode or try again.');
       return;
     }
 
     isReconnectingRef.current = true;
     reconnectAttemptsRef.current += 1;
     const attempt = reconnectAttemptsRef.current;
+
+    // Record this reconnect timestamp for rapid-loop detection
+    reconnectTimestampsRef.current.push(Date.now());
+
     console.log(`[voice] Reconnecting attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS}`);
     setVoiceStatus('connecting');
     setError(null);
     onStatusChange?.('connecting');
 
-    // Wait before reconnecting
-    await new Promise((r) => setTimeout(r, RECONNECT_DELAY_MS));
+    // Exponential backoff: 2s, 4s, 8s
+    const delay = BASE_RECONNECT_DELAY_MS * Math.pow(2, attempt - 1);
+    console.log(`[voice] Waiting ${delay}ms before reconnect`);
+    await new Promise((r) => setTimeout(r, delay));
 
     try {
       const conv = conversationRef.current;
@@ -132,10 +180,10 @@ export function useVoiceSession({
     } catch (err: any) {
       console.error(`[voice] Reconnect attempt ${attempt} failed:`, err?.message);
       isReconnectingRef.current = false;
-      // Try again if attempts remain
+      // Try again if attempts remain (will re-check limits at top of function)
       attemptReconnect();
     }
-  }, [sessionId, onError, onStatusChange]);
+  }, [sessionId, onError, onStatusChange, isRapidReconnectLoop, haltReconnection]);
 
   // Initialize ElevenLabs conversation with callbacks
   const conversation = useConversation({
@@ -143,16 +191,32 @@ export function useVoiceSession({
       console.log('[voice] Connected');
       hasConnectedRef.current = true;
       isReconnectingRef.current = false;
-      reconnectAttemptsRef.current = 0;
       setReconnectFailed(false);
       setError(null);
-      // Don't set voiceStatus here — onStatusChange is the single source of truth
+
+      // DON'T reset reconnectAttemptsRef immediately — wait for stable connection.
+      // If the connection drops within 10s, we keep the current attempt count.
+      if (stableConnectionTimerRef.current) {
+        clearTimeout(stableConnectionTimerRef.current);
+      }
+      stableConnectionTimerRef.current = setTimeout(() => {
+        console.log('[voice] Connection stable for 10s — resetting attempt counter');
+        reconnectAttemptsRef.current = 0;
+        stableConnectionTimerRef.current = null;
+      }, STABLE_CONNECTION_THRESHOLD_MS);
     },
     onDisconnect: () => {
       console.log('[voice] Disconnected', {
         intentional: intentionalDisconnectRef.current,
         reconnecting: isReconnectingRef.current,
       });
+
+      // Cancel stable-connection timer (connection wasn't stable)
+      if (stableConnectionTimerRef.current) {
+        clearTimeout(stableConnectionTimerRef.current);
+        stableConnectionTimerRef.current = null;
+      }
+
       // Persist transcript on disconnect
       persistTranscript();
 
@@ -200,8 +264,7 @@ export function useVoiceSession({
     },
   });
 
-  // Keep ref in sync — this runs every render, so conversationRef.current
-  // is always the latest conversation instance when attemptReconnect runs
+  // Keep ref in sync every render
   conversationRef.current = conversation;
 
   const startVoice = useCallback(async () => {
@@ -214,9 +277,15 @@ export function useVoiceSession({
       hasConnectedRef.current = false;
       reconnectAttemptsRef.current = 0;
       isReconnectingRef.current = false;
+      reconnectTimestampsRef.current = [];
       sessionStartRef.current = Date.now();
       transcriptRef.current = [];
       lastPersistedIndexRef.current = 0;
+
+      if (stableConnectionTimerRef.current) {
+        clearTimeout(stableConnectionTimerRef.current);
+        stableConnectionTimerRef.current = null;
+      }
 
       // Fetch signed URL + overrides from our API
       const tokenRes = await fetch(`/api/roleplay/${sessionId}/voice-token`);
@@ -261,6 +330,12 @@ export function useVoiceSession({
     intentionalDisconnectRef.current = true;
     isReconnectingRef.current = false;
 
+    // Cancel stable-connection timer
+    if (stableConnectionTimerRef.current) {
+      clearTimeout(stableConnectionTimerRef.current);
+      stableConnectionTimerRef.current = null;
+    }
+
     // Stop persistence timer
     if (persistTimerRef.current) {
       clearInterval(persistTimerRef.current);
@@ -278,7 +353,7 @@ export function useVoiceSession({
     }
   }, [conversation, persistTranscript]);
 
-  // Emergency persistence on tab close
+  // Emergency persistence on tab close + cleanup timers
   useEffect(() => {
     const handleBeforeUnload = () => {
       const entries = transcriptRef.current;
@@ -300,6 +375,9 @@ export function useVoiceSession({
       window.removeEventListener('beforeunload', handleBeforeUnload);
       if (persistTimerRef.current) {
         clearInterval(persistTimerRef.current);
+      }
+      if (stableConnectionTimerRef.current) {
+        clearTimeout(stableConnectionTimerRef.current);
       }
     };
   }, [sessionId]);

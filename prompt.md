@@ -1,135 +1,47 @@
-You have already implemented the voice reliability and voice‑mapping changes. Now apply Connor’s UI feedback from his Loom video.
+Fix two critical bugs in the roleplay voice session — do not change any API routes or scoring logic.
 
-Goal: On the live roleplay page (/dashboard/roleplay/[sessionId]), visually separate the user (closer) and the AI prospect into distinct tiles, and improve the camera behavior.
+Bug 1: Reconnection infinite loop
+In hooks/use-voice-session.ts, the reconnect logic has a loop:
 
-Important constraints:
+onConnect resets reconnectAttemptsRef.current = 0
 
-Do not touch any scoring logic, API routes, or voice connection code.
+Connection drops immediately after reconnect
 
-Only change layout / styling / small component structure in the React files for the roleplay session.
+attemptReconnect sees attempts = 0, so it always retries
 
-Keep all existing text, transcript, and control functionality intact.
+This creates an infinite connect → disconnect → reconnect cycle
 
-Requirements from Connor (UI/UX)
-Separate tiles for user vs prospect
+Fix:
 
-Left side: the user/closer tile.
+Do NOT reset reconnectAttemptsRef to 0 on onConnect. Instead, reset it only when the connection has been stable for at least 10 seconds (use a timeout).
 
-Right side: the AI prospect tile.
+Add a reconnectsInWindowRef that tracks how many reconnects happened in the last 60 seconds. If more than 5 reconnects in 60 seconds, stop trying and set status to 'error' with message "Connection unstable — please try again or switch to text mode."
 
-They should look like two participants on a Zoom call.
+Between each reconnect attempt, add an increasing delay: attempt 1 = 2s, attempt 2 = 4s, attempt 3 = 8s (exponential backoff).
 
-Keep the vertical divider concept Connor liked.
+After all 3 attempts fail OR after detecting the rapid-reconnect loop, show the error state and stop retrying.
 
-Prospect tile (right)
+Bug 2: Control bar pushed off-screen
+In the roleplay session page (app/(dashboard)/dashboard/roleplay/[sessionId]/page.tsx), the two-tile layout + control bar exceeds viewport height.
 
-No video for the agent.
+Fix:
 
-Show the current context card (avatar + name + context + what you’re selling) in this tile.
+Make the entire voice mode area fit within 100vh (or calc(100vh - header height)).
 
-Increase font size for:
+Use a flex column layout:
 
-Prospect name.
+Header bar: fixed height
 
-Context paragraph.
+Two tiles area: flex-1 overflow-hidden (takes remaining space, never overflows)
 
-“What you’re selling” / role context.
+Control bar: fixed height at the bottom, always visible
 
-Tile should be larger than the current small card, centered vertically in the right half.
+The two tiles inside the middle area should use min-h-0 and scale to fit, not push the control bar down.
 
-User tile (left)
+Ensure the control bar (mic, speaker, camera, end call, switch to text) is always visible and clickable at the bottom of the viewport.
 
-When camera is off:
+On the prospect tile, if the description text is too long for the available space, make it scrollable within the tile (overflow-y-auto) rather than expanding the tile height.
 
-Show user avatar / initials as we do today.
+Test: After changes, the full page (header + tiles + control bar) must fit in a 1080p browser window without any scrolling needed.
 
-When camera is on:
-
-Replace the small circle with a larger video tile that fills most of the left half (similar to a Zoom participant tile).
-
-Under/over the tile, keep the “LIVE” label and role (“Closer” or user name) as appropriate.
-
-Overall layout
-
-Use a two‑column layout on desktop:
-
-grid grid-cols-2 or equivalent.
-
-Left = user/closer, right = prospect.
-
-Keep the background gradient and overall aesthetic.
-
-The control bar (mic, speaker, camera, end call, switch to text mode) should stay at the bottom, centered, spanning the full width.
-
-Transcript panel
-
-The transcript / pinned / notes sidebar on the right edge must remain unchanged in functionality.
-
-Ensure the new two‑tile layout fits to the left of this sidebar (so effectively a three‑column page: left user tile, center prospect tile, right transcript sidebar).
-
-If needed, you can treat “user + prospect tiles” as a single centered block, with the transcript sidebar occupying fixed width on the far right.
-
-Files to edit
-Primarily:
-
-app/dashboard/dashboard/roleplay/[sessionId]/page.tsx
-
-Where the current roleplay layout and header are defined.
-
-Any small supporting components for the prospect card (if they exist) to adjust typography.
-
-Do not change:
-
-use-voice-session.ts
-
-API routes
-
-Scoring or analysis components
-
-Implementation details
-Refactor the main content area into a container with:
-
-A flex or grid layout that places:
-
-Left: user tile.
-
-Right: prospect tile.
-
-Ensure it is responsive; on smaller screens you can stack vertically (user above prospect), but desktop should match Connor’s Loom (two tiles side‑by‑side).
-
-Prospect tile:
-
-Reuse the existing context card content (avatar, name, description, role context).
-
-Increase font size by one step (e.g. text-base → text-lg, text-sm → text-base) for name and main description.
-
-Make the card itself wider/taller to feel like a video tile.
-
-User tile:
-
-Integrate camera state:
-
-If camera off: show current avatar and name.
-
-If camera on: render the video element in a large rectangle (16:9 if possible), with rounded corners.
-
-If there is already a camera/video component, reuse it and just change its placement and size.
-
-Styling:
-
-Keep design consistent with existing ClosePro theme (colors, radii, shadows).
-
-Maintain the small “Role context” dropdown or label under the prospect tile, if present now.
-
-Testing checklist:
-
-Voice roleplay with camera off: layout shows two tiles, prospect speaking, transcript updates.
-
-Turn camera on: left side shows large video tile, right side prospect card unchanged.
-
-Resize window to smaller width: layout remains usable (tiles can stack).
-
-Text mode roleplay (if accessible from this page) still works with the new layout.
-
-After implementing, summarize the changes and show the relevant JSX/TSX diffs only, so we can review before merging.
 

@@ -659,13 +659,13 @@ function RoleplaySessionContent() {
   };
 
   const renderAvatarArea = () => (
-    <div className="flex-1 flex items-center justify-center p-3 sm:p-6">
-      <div className="w-full max-w-5xl flex flex-col md:flex-row items-stretch gap-4 md:gap-0">
+    <div className="flex-1 flex items-center justify-center p-3 sm:p-4 min-h-0 overflow-hidden">
+      <div className="w-full max-w-5xl flex flex-col md:flex-row items-stretch gap-4 md:gap-0 min-h-0 max-h-full">
 
         {/* ── User / Closer Tile ── */}
         <div
           className={cn(
-            "flex-1 rounded-xl overflow-hidden border transition-all duration-300 flex flex-col",
+            "flex-1 rounded-xl overflow-hidden border transition-all duration-300 flex flex-col min-h-0",
             activeSpeaker === 'rep'
               ? "border-blue-400/40 shadow-lg shadow-blue-500/10"
               : "border-white/10",
@@ -674,7 +674,7 @@ function RoleplaySessionContent() {
         >
           {cameraOn ? (
             /* Large video tile when camera is on */
-            <div className="relative flex-1 min-h-[260px] md:min-h-[340px]">
+            <div className="relative flex-1 min-h-0">
               <video
                 ref={videoRef}
                 autoPlay
@@ -694,10 +694,10 @@ function RoleplaySessionContent() {
             </div>
           ) : (
             /* Avatar tile when camera is off */
-            <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 min-h-[260px] md:min-h-[340px]">
+            <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 min-h-0">
               <div
                 className={cn(
-                  "w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center",
+                  "w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-2 transition-all duration-300 flex items-center justify-center shrink-0",
                   activeSpeaker === 'rep'
                     ? "border-blue-400 shadow-lg shadow-blue-500/20"
                     : "border-blue-500/40 bg-blue-500/20"
@@ -711,16 +711,16 @@ function RoleplaySessionContent() {
                     </AvatarFallback>
                   </Avatar>
                 ) : (
-                  <Mic className="h-12 w-12 text-blue-400" />
+                  <Mic className="h-10 w-10 text-blue-400" />
                 )}
               </div>
-              <span className="text-base font-semibold text-blue-300 mt-4">{userProfile?.name || 'You'}</span>
+              <span className="text-base font-semibold text-blue-300 mt-3">{userProfile?.name || 'You'}</span>
               <span className="text-[10px] text-muted-foreground uppercase tracking-wider mt-1">Closer</span>
               {activeSpeaker === 'rep' && (
-                <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse mt-3" />
+                <div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse mt-2" />
               )}
               {!isVoiceMode && isListening && !activeSpeaker && (
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 mt-3">
+                <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 mt-2">
                   <div className="flex items-center gap-0.5">
                     {[0, 1, 2, 3, 4].map(i => (
                       <span
@@ -742,7 +742,7 @@ function RoleplaySessionContent() {
         </div>
 
         {/* ── Vertical Divider (desktop) ── */}
-        <div className="hidden md:flex flex-col items-center justify-center px-3">
+        <div className="hidden md:flex flex-col items-center justify-center px-3 shrink-0">
           <div className="w-px flex-1 bg-gradient-to-b from-blue-500/40 to-transparent" />
           <div className="py-2.5 flex flex-col items-center gap-1">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -752,7 +752,7 @@ function RoleplaySessionContent() {
         </div>
 
         {/* ── Horizontal Divider (mobile) ── */}
-        <div className="md:hidden flex items-center gap-3 px-4">
+        <div className="md:hidden flex items-center gap-3 px-4 shrink-0">
           <div className="flex-1 h-px bg-gradient-to-r from-blue-500/30 to-transparent" />
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
@@ -764,19 +764,18 @@ function RoleplaySessionContent() {
         {/* ── AI Prospect Tile ── */}
         <div
           className={cn(
-            "flex-1 rounded-xl overflow-hidden border transition-all duration-300 flex flex-col items-center justify-center p-6 sm:p-8",
+            "flex-1 rounded-xl overflow-y-auto border transition-all duration-300 flex flex-col items-center p-4 sm:p-6 min-h-0",
             activeSpeaker === 'prospect'
               ? "border-amber-400/40 shadow-lg shadow-amber-500/10"
               : "border-white/10",
-            "bg-gradient-to-br from-amber-900/30 via-slate-900/60 to-amber-950/40",
-            "min-h-[260px] md:min-h-[340px]"
+            "bg-gradient-to-br from-amber-900/30 via-slate-900/60 to-amber-950/40"
           )}
         >
           {/* Prospect Avatar */}
-          <div className="relative">
+          <div className="relative shrink-0">
             <div
               className={cn(
-                "w-28 h-28 sm:w-36 sm:h-36 rounded-full overflow-hidden border-2 transition-all duration-300",
+                "w-20 h-20 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full overflow-hidden border-2 transition-all duration-300",
                 activeSpeaker === 'prospect'
                   ? "border-amber-400 shadow-lg shadow-amber-500/20"
                   : "border-amber-500/40"
@@ -797,7 +796,7 @@ function RoleplaySessionContent() {
                 </Avatar>
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-stone-800">
-                  <Bot className="h-12 w-12 text-stone-500" />
+                  <Bot className="h-10 w-10 text-stone-500" />
                 </div>
               )}
             </div>
@@ -809,21 +808,21 @@ function RoleplaySessionContent() {
           </div>
 
           {/* Prospect Name — larger font */}
-          <h3 className="text-lg sm:text-xl font-bold text-amber-300 mt-4">
+          <h3 className="text-lg sm:text-xl font-bold text-amber-300 mt-3 shrink-0">
             {prospectAvatar?.name ?? 'AI Prospect'}
           </h3>
           {activeSpeaker === 'prospect' && (
-            <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse mt-2" />
+            <div className="w-3 h-3 rounded-full bg-amber-500 animate-pulse mt-2 shrink-0" />
           )}
 
           {/* Prospect Description — larger font */}
-          <p className="text-sm sm:text-base text-muted-foreground text-center mt-3 max-w-sm leading-relaxed">
+          <p className="text-sm sm:text-base text-muted-foreground text-center mt-2 max-w-sm leading-relaxed shrink-0">
             {prospectAvatar?.positionDescription ?? 'Virtual Buyer'}
           </p>
 
           {/* What You're Selling — always visible */}
           {offerInfo && (
-            <div className="mt-4 w-full max-w-sm rounded-lg border border-white/10 bg-white/5 p-3">
+            <div className="mt-3 w-full max-w-sm rounded-lg border border-white/10 bg-white/5 p-3 shrink-0">
               <h5 className="text-[10px] font-bold text-foreground/60 uppercase tracking-wider mb-1.5">What You{'\u2019'}re Selling</h5>
               <p className="text-sm sm:text-base font-medium text-foreground">{offerInfo.name}</p>
               {offerInfo.price != null && (
@@ -838,7 +837,7 @@ function RoleplaySessionContent() {
           {/* Expandable Role Context */}
           {prospectAvatar?.backstory && (
             <>
-              <div className="mt-3">
+              <div className="mt-3 shrink-0">
                 <button
                   onClick={() => setShowRoleContext(!showRoleContext)}
                   className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
@@ -848,7 +847,7 @@ function RoleplaySessionContent() {
                 </button>
               </div>
               {showRoleContext && (
-                <div className="mt-2 w-full max-w-sm rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="mt-2 w-full max-w-sm rounded-lg border border-white/10 bg-white/5 p-3 shrink-0">
                   <p className="text-xs text-muted-foreground leading-relaxed">{prospectAvatar.backstory}</p>
                 </div>
               )}
