@@ -659,7 +659,7 @@ function RoleplaySessionContent() {
 
   const renderAvatarArea = () => (
     <div className="flex-1 flex items-center justify-center p-3 sm:p-4 min-h-0 overflow-hidden">
-      <div className="w-full max-w-5xl flex flex-col md:flex-row items-stretch gap-4 md:gap-0 min-h-0 max-h-full">
+      <div className="w-full max-w-5xl flex flex-col md:flex-row items-stretch gap-4 md:gap-0 min-h-0 max-h-full overflow-hidden">
 
         {/* ── User / Closer Tile ── */}
         <div
@@ -946,7 +946,7 @@ function RoleplaySessionContent() {
 
   return (
     <>
-      <div className="fixed inset-0 flex flex-col overflow-hidden z-50 bg-gradient-to-br from-indigo-950/90 via-stone-950 to-purple-950/60">
+      <div className="fixed inset-0 h-dvh flex flex-col overflow-hidden z-50 bg-gradient-to-br from-indigo-950/90 via-stone-950 to-purple-950/60">
         {/* ─── Top Header Bar ─── */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 bg-stone-950/80 backdrop-blur-md z-20 shrink-0">
           <div className="flex items-center gap-3">
@@ -994,7 +994,7 @@ function RoleplaySessionContent() {
         {/* ─── Main Content: Gradient Avatar + Sidebar Transcript ─── */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* LEFT: Avatar area + controls */}
-          <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
             {isVoiceMode ? renderVoiceContent() : (
               <>
                 {renderAvatarArea()}

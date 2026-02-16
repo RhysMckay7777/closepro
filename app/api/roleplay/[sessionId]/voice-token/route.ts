@@ -203,6 +203,13 @@ export async function GET(
     const voiceId = voiceConfig.voiceId;
 
     // Fetch signed URL from ElevenLabs
+    console.log('[voice-token] Requesting signed URL', {
+      agentId: ELEVENLABS_AGENT_ID,
+      endpoint: `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
+      voiceId,
+      prospectName,
+    });
+
     const signedUrlResponse = await fetch(
       `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
       {
@@ -213,24 +220,41 @@ export async function GET(
       }
     );
 
+    const signedUrlBody = await signedUrlResponse.text();
+    console.log('[voice-token] ElevenLabs response', {
+      status: signedUrlResponse.status,
+      body: signedUrlBody.slice(0, 500),
+    });
+
     if (!signedUrlResponse.ok) {
-      const errText = await signedUrlResponse.text();
-      console.error('[voice-token] ElevenLabs signed URL error:', signedUrlResponse.status, errText);
+      console.error('[voice-token] ElevenLabs signed URL error:', signedUrlResponse.status, signedUrlBody);
       return NextResponse.json(
         { error: 'Failed to get voice session URL' },
         { status: 502 }
       );
     }
 
-    const signedUrlData = await signedUrlResponse.json();
+    let signedUrlData: any;
+    try {
+      signedUrlData = JSON.parse(signedUrlBody);
+    } catch {
+      console.error('[voice-token] Failed to parse ElevenLabs response as JSON');
+      return NextResponse.json(
+        { error: 'Invalid response from voice service' },
+        { status: 502 }
+      );
+    }
     const signedUrl = signedUrlData.signed_url;
 
     if (!signedUrl) {
+      console.error('[voice-token] No signed_url in response:', signedUrlData);
       return NextResponse.json(
         { error: 'No signed URL returned from ElevenLabs' },
         { status: 502 }
       );
     }
+
+    console.log('[voice-token] Success — signed URL generated for session', sessionId);
 
     return NextResponse.json({
       signedUrl,

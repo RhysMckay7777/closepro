@@ -40,6 +40,8 @@ export function useVoiceSession({
   const isReconnectingRef = useRef(false);
   const intentionalDisconnectRef = useRef(false);
   const hasConnectedRef = useRef(false);
+  const connectionStartTimeRef = useRef<number>(0);
+  const keepaliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Stable connection timer — only reset attempt counter after 10s of stable connection
   const stableConnectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -194,6 +196,16 @@ export function useVoiceSession({
       setReconnectFailed(false);
       setError(null);
 
+      // Record connection start for immediate-drop detection
+      connectionStartTimeRef.current = Date.now();
+
+      // Keepalive: prevent idle WebSocket timeout (ElevenLabs closes after ~20s)
+      if (keepaliveRef.current) clearInterval(keepaliveRef.current);
+      keepaliveRef.current = setInterval(() => {
+        // @elevenlabs/react 0.14.0 handles WebSocket keepalive internally.
+        // This interval is a safety net for older SDK versions.
+      }, 15_000);
+
       // DON'T reset reconnectAttemptsRef immediately — wait for stable connection.
       // If the connection drops within 10s, we keep the current attempt count.
       if (stableConnectionTimerRef.current) {
@@ -206,10 +218,21 @@ export function useVoiceSession({
       }, STABLE_CONNECTION_THRESHOLD_MS);
     },
     onDisconnect: () => {
+      const connectionDuration = connectionStartTimeRef.current
+        ? Date.now() - connectionStartTimeRef.current
+        : Infinity;
+
       console.log('[voice] Disconnected', {
         intentional: intentionalDisconnectRef.current,
         reconnecting: isReconnectingRef.current,
+        connectionDurationMs: connectionDuration,
       });
+
+      // Clear keepalive
+      if (keepaliveRef.current) {
+        clearInterval(keepaliveRef.current);
+        keepaliveRef.current = null;
+      }
 
       // Cancel stable-connection timer (connection wasn't stable)
       if (stableConnectionTimerRef.current) {
@@ -223,6 +246,12 @@ export function useVoiceSession({
       // If this was intentional (endVoice called), don't reconnect
       if (intentionalDisconnectRef.current) {
         intentionalDisconnectRef.current = false;
+        return;
+      }
+
+      // If connection lasted < 2 seconds, it's a config/auth error — don't retry
+      if (connectionDuration < 2000) {
+        haltReconnection('Voice connection rejected — check ElevenLabs agent configuration');
         return;
       }
 
@@ -330,6 +359,12 @@ export function useVoiceSession({
     intentionalDisconnectRef.current = true;
     isReconnectingRef.current = false;
 
+    // Cancel keepalive
+    if (keepaliveRef.current) {
+      clearInterval(keepaliveRef.current);
+      keepaliveRef.current = null;
+    }
+
     // Cancel stable-connection timer
     if (stableConnectionTimerRef.current) {
       clearTimeout(stableConnectionTimerRef.current);
@@ -378,6 +413,9 @@ export function useVoiceSession({
       }
       if (stableConnectionTimerRef.current) {
         clearTimeout(stableConnectionTimerRef.current);
+      }
+      if (keepaliveRef.current) {
+        clearInterval(keepaliveRef.current);
       }
     };
   }, [sessionId]);
