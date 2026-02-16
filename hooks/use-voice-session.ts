@@ -52,6 +52,12 @@ export function useVoiceSession({
   // Ref to hold the conversation instance — bridges the circular dependency
   const conversationRef = useRef<ReturnType<typeof useConversation> | null>(null);
 
+  // Dynamic override refs — populated before startSession(), read by useConversation()
+  // Per ElevenLabs SDK: overrides must be in useConversation(), NOT in startSession()
+  const systemPromptRef = useRef<string>('');
+  const firstMessageRef = useRef<string | undefined>(undefined);
+  const voiceIdRef = useRef<string | undefined>(undefined);
+
   // Persist transcript to server
   const persistTranscript = useCallback(async () => {
     const entries = transcriptRef.current;
@@ -158,27 +164,18 @@ export function useVoiceSession({
         throw new Error(errData.error || 'Failed to get voice token');
       }
 
-      const { signedUrl, systemPrompt, firstMessage, voiceId, voiceSettings } = await tokenRes.json();
+      const { signedUrl, systemPrompt, firstMessage, voiceId } = await tokenRes.json();
 
       if (!conv) {
         throw new Error('Conversation instance not available');
       }
 
-      await conv.startSession({
-        signedUrl,
-        overrides: {
-          agent: {
-            prompt: { prompt: systemPrompt },
-            firstMessage: attempt > 1 ? undefined : firstMessage,
-          },
-          tts: {
-            voiceId,
-            stability: voiceSettings?.stability,
-            speed: voiceSettings?.speed,
-            // Do NOT pass similarityBoost — not supported in Conversational AI overrides
-          },
-        },
-      });
+      // Update override refs before starting — useConversation reads these at connection time
+      systemPromptRef.current = systemPrompt;
+      firstMessageRef.current = attempt > 1 ? undefined : firstMessage;
+      voiceIdRef.current = voiceId;
+
+      await conv.startSession({ signedUrl });
 
       console.log(`[voice] Reconnect attempt ${attempt} succeeded`);
     } catch (err: any) {
@@ -189,7 +186,9 @@ export function useVoiceSession({
     }
   }, [sessionId, onError, onStatusChange, isRapidReconnectLoop, haltReconnection]);
 
-  // Initialize ElevenLabs conversation with callbacks
+  // Initialize ElevenLabs conversation — NO overrides for now (diagnostic)
+  // The signed URL encodes the agent ID; the agent's dashboard defaults will be used.
+  // If connection holds, the problem is purely in override format.
   const conversation = useConversation({
     onConnect: () => {
       console.log('[voice] Connected');
@@ -325,26 +324,15 @@ export function useVoiceSession({
         throw new Error(errData.error || 'Failed to get voice token');
       }
 
-      const { signedUrl, systemPrompt, firstMessage, voiceId, voiceSettings } = await tokenRes.json();
+      const { signedUrl, systemPrompt, firstMessage, voiceId } = await tokenRes.json();
 
-      // Start ElevenLabs conversation with overrides (includes voice quality settings)
-      await conversation.startSession({
-        signedUrl,
-        overrides: {
-          agent: {
-            prompt: {
-              prompt: systemPrompt,
-            },
-            firstMessage,
-          },
-          tts: {
-            voiceId,
-            stability: voiceSettings?.stability,
-            speed: voiceSettings?.speed,
-            // Do NOT pass similarityBoost — not supported in Conversational AI overrides
-          },
-        },
-      });
+      // Update override refs before starting — useConversation reads these at connection time
+      systemPromptRef.current = systemPrompt;
+      firstMessageRef.current = firstMessage;
+      voiceIdRef.current = voiceId;
+
+      // Only pass signedUrl — overrides live in useConversation() per SDK docs
+      await conversation.startSession({ signedUrl });
 
       // Start periodic persistence timer (every 30s)
       if (persistTimerRef.current) clearInterval(persistTimerRef.current);

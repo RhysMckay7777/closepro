@@ -1,31 +1,29 @@
-Fix the TTS override field names in hooks/use-voice-session.ts. Do not change any other files.
-The ElevenLabs Conversational AI SDK (@11labs/react) expects TTS override fields in camelCase when passed through startSession:
+Critical: Strip ALL overrides from useConversation. Test bare connection first.
 
+In hooks/use-voice-session.ts:
 
-voiceId ✅ (already correct)
+Remove the entire overrides block from useConversation(). Make it:
 
+typescript
+const conversation = useConversation({
+  onConnect: () => { ... },
+  onDisconnect: () => { ... },
+  onMessage: (msg) => { ... },
+  onError: (err) => { ... },
+  onStatusChange: (status) => { ... },
+});
+No overrides at all.
 
-stability ✅ (already correct)
+startSession stays as just { signedUrl } — no overrides there either.
 
+The signed URL already encodes the agent ID. The agent has a default system prompt and first message configured on the ElevenLabs dashboard ("Okay, um, so what's this about then?"). So a bare connection WILL work — the prospect will use the dashboard defaults.
 
-speed ✅ (already correct)
+This is a diagnostic step. If the connection stays alive with zero overrides, we know:
 
+The agent config is correct ✅
 
-But the voice-token/route.ts returns voiceSettings with similarityBoost, and our code spreads it directly into the tts override object. The SDK only auto-maps voiceId → voice_id. It does NOT map similarityBoost → similarity_boost. ElevenLabs sees an unknown field and rejects the connection.
-Fix in hooks/use-voice-session.ts:
-In both startSession calls (inside startVoice and inside attemptReconnect), change the tts override from:
-tts: {
-  voiceId,
-  ...voiceSettings,  // ← BAD: spreads similarityBoost which is unknown
-},
+The signed URL works ✅
 
-To:
-tts: {
-  voiceId,
-  stability: voiceSettings?.stability,
-  speed: voiceSettings?.speed,
-  // Do NOT pass similarityBoost — not supported in Conversational AI overrides
-},
+The problem is purely in how we format overrides
 
-Only voiceId, stability, and speed are valid TTS overrides for ElevenLabs Conversational AI agents. similarity_boost is only available in the REST TTS API, not the real-time WebSocket agent API.
-After this change, the WebSocket should connect and stay connected. The "Voice connection rejected" error should disappear.
+Deploy this and test. If the connection holds, send me the result and I'll write the proper override injection using sendContextualUpdate() instead (which lets you send the system prompt AFTER connecting, avoiding the init-time problem entirely)
