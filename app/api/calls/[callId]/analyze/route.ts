@@ -6,7 +6,7 @@ import { salesCalls, callAnalysis } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { analyzeCallAsync } from '@/lib/calls/analyze-call';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * POST - Trigger analysis for a call that has a transcript but hasn't been analyzed yet.

@@ -52,12 +52,6 @@ export function useVoiceSession({
   // Ref to hold the conversation instance — bridges the circular dependency
   const conversationRef = useRef<ReturnType<typeof useConversation> | null>(null);
 
-  // Dynamic override refs — populated before startSession(), read by useConversation()
-  // Per ElevenLabs SDK: overrides must be in useConversation(), NOT in startSession()
-  const systemPromptRef = useRef<string>('');
-  const firstMessageRef = useRef<string | undefined>(undefined);
-  const voiceIdRef = useRef<string | undefined>(undefined);
-
   // Persist transcript to server
   const persistTranscript = useCallback(async () => {
     const entries = transcriptRef.current;
@@ -164,18 +158,14 @@ export function useVoiceSession({
         throw new Error(errData.error || 'Failed to get voice token');
       }
 
-      const { signedUrl, systemPrompt, firstMessage, voiceId } = await tokenRes.json();
+      const { signedUrl, dynamicVariables } = await tokenRes.json();
 
       if (!conv) {
         throw new Error('Conversation instance not available');
       }
 
-      // Update override refs before starting — useConversation reads these at connection time
-      systemPromptRef.current = systemPrompt;
-      firstMessageRef.current = attempt > 1 ? undefined : firstMessage;
-      voiceIdRef.current = voiceId;
-
-      await conv.startSession({ signedUrl });
+      // Pass dynamic variables — ElevenLabs injects into {{prospect_context}}, {{offer_info}}, {{first_message}}
+      await conv.startSession({ signedUrl, dynamicVariables });
 
       console.log(`[voice] Reconnect attempt ${attempt} succeeded`);
     } catch (err: any) {
@@ -324,15 +314,10 @@ export function useVoiceSession({
         throw new Error(errData.error || 'Failed to get voice token');
       }
 
-      const { signedUrl, systemPrompt, firstMessage, voiceId } = await tokenRes.json();
+      const { signedUrl, dynamicVariables } = await tokenRes.json();
 
-      // Update override refs before starting — useConversation reads these at connection time
-      systemPromptRef.current = systemPrompt;
-      firstMessageRef.current = firstMessage;
-      voiceIdRef.current = voiceId;
-
-      // Only pass signedUrl — overrides live in useConversation() per SDK docs
-      await conversation.startSession({ signedUrl });
+      // Pass dynamic variables — ElevenLabs injects into {{prospect_context}}, {{offer_info}}, {{first_message}}
+      await conversation.startSession({ signedUrl, dynamicVariables });
 
       // Start periodic persistence timer (every 30s)
       if (persistTimerRef.current) clearInterval(persistTimerRef.current);

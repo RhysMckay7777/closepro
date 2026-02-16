@@ -15,7 +15,7 @@ import { getTranscriptPatternsForUser } from '@/lib/ai/roleplay/transcript-patte
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 const ELEVENLABS_AGENT_ID = process.env.ELEVENLABS_AGENT_ID;
 
-export const maxDuration = 30;
+export const maxDuration = 300;
 
 /**
  * GET - Generate signed URL + overrides for ElevenLabs Conversational AI
@@ -254,18 +254,46 @@ export async function GET(
       );
     }
 
+    // Build dynamic variables for ElevenLabs agent template
+    // These get injected into {{prospect_context}}, {{offer_info}}, {{first_message}} placeholders
+    const prospect_context = [
+      `Name: ${prospectName}`,
+      prospectAvatar.positionDescription ? `Background: ${prospectAvatar.positionDescription}` : '',
+      prospectAvatar.difficulty?.difficultyTier ? `Difficulty: ${prospectAvatar.difficulty.difficultyTier}` : '',
+      prospectAvatar.difficulty?.authorityLevel ? `Authority: ${prospectAvatar.difficulty.authorityLevel}` : '',
+      prospectAvatar.difficulty?.painAmbitionIntensity ? `Motivation intensity: ${prospectAvatar.difficulty.painAmbitionIntensity}/10` : '',
+      prospectAvatar.difficulty?.funnelContext ? `Funnel warmth: ${prospectAvatar.difficulty.funnelContext}/10` : '',
+      prospectAvatar.difficulty?.executionResistance ? `Ability to proceed: ${prospectAvatar.difficulty.executionResistance}/10` : '',
+      prospectAvatar.problems?.length ? `Key objections: ${prospectAvatar.problems.join(', ')}` : '',
+      prospectAvatar.painDrivers?.length ? `Pain points: ${prospectAvatar.painDrivers.join(', ')}` : '',
+      prospectAvatar.ambitionDrivers?.length ? `Ambitions: ${prospectAvatar.ambitionDrivers.join(', ')}` : '',
+      `Trust level: ${behaviourState.trustLevel}/10`,
+      `Openness: ${behaviourState.openness}`,
+    ].filter(Boolean).join('\n');
+
+    const offer_info = [
+      offerData[0].name ? `Offer: ${offerData[0].name}` : '',
+      offerData[0].offerCategory ? `Category: ${offerData[0].offerCategory}` : '',
+      offerData[0].priceRange ? `Price range: ${offerData[0].priceRange}` : '',
+      offerData[0].coreOutcome ? `Core outcome: ${offerData[0].coreOutcome}` : '',
+      offerData[0].whoItsFor ? `Target audience: ${offerData[0].whoItsFor}` : '',
+      offerData[0].mechanismHighLevel ? `Mechanism: ${offerData[0].mechanismHighLevel}` : '',
+    ].filter(Boolean).join('\n');
+
     console.log('[voice-token] Success — signed URL generated for session', sessionId);
 
     return NextResponse.json({
       signedUrl,
+      dynamicVariables: {
+        prospect_context,
+        offer_info,
+        first_message: initialMessage.content,
+      },
+      voiceId,
+      // Keep systemPrompt and firstMessage for text-mode fallback
       systemPrompt,
       firstMessage: initialMessage.content,
-      voiceId,
       prospectName,
-      voiceSettings: {
-        stability: voiceConfig.stability ?? 0.7,
-        similarityBoost: voiceConfig.similarityBoost ?? 0.75,
-      },
     });
   } catch (error: any) {
     console.error('[voice-token] Error:', error);

@@ -12,7 +12,7 @@ import { Groq } from 'groq-sdk';
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 /**
  * POST - Extract prospect avatar from a sales call transcript or audio file

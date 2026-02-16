@@ -9,7 +9,7 @@ import { sql } from 'drizzle-orm';
 import { ROLEPLAY_FEEDBACK_PROMPT, ROLEPLAY_FEEDBACK_DIMENSIONS, ROLEPLAY_FEEDBACK_LABELS, ROLEPLAY_FEEDBACK_DESCRIPTIONS } from '@/lib/training/scoring-categories';
 import Groq from 'groq-sdk';
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const groqClient = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
