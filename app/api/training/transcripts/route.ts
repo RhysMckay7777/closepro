@@ -7,6 +7,8 @@ import { eq, and, desc } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { extractPatterns } from '@/lib/training/pattern-extraction';
 
+export const maxDuration = 60;
+
 /**
  * GET — List all training transcripts for the user
  */
