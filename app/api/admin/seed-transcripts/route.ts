@@ -33,6 +33,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Admin role check — restrict to known admin emails
+    const adminEmails = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase()).filter(Boolean);
+    if (adminEmails.length > 0 && !adminEmails.includes(session.user.email?.toLowerCase() ?? '')) {
+      return NextResponse.json({ error: 'Forbidden — admin access required' }, { status: 403 });
+    }
+
     // Ensure table exists
     try {
       await db.select({ id: trainingTranscripts.id }).from(trainingTranscripts).limit(0);

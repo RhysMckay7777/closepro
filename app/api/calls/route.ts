@@ -3,7 +3,7 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls, callAnalysis, users, organizations, userOrganizations, offers } from '@/db/schema';
-import { eq, desc, and, notInArray } from 'drizzle-orm';
+import { eq, desc, and, notInArray, sql } from 'drizzle-orm';
 
 /**
  * Get all calls for the current user.
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
           notInArray(salesCalls.status, ['pending_confirmation', 'transcribing', 'analyzing'])
         )
       )
-      .orderBy(desc(salesCalls.createdAt))
+      .orderBy(desc(sql`COALESCE(${salesCalls.callDate}, ${salesCalls.createdAt})`))
       .limit(50);
 
     return NextResponse.json({

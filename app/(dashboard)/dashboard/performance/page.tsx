@@ -1,17 +1,12 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { TrendingUp, TrendingDown, Phone, Bot, ArrowLeft, Loader2, AlertCircle, Download, FileDown, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Download, FileDown } from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { CORE_PRINCIPLES, computePrincipleScores } from '@/lib/training/core-principles';
-import { ObjectionInsights } from '@/components/dashboard/ObjectionInsights';
-import { InsightsPanel } from '@/components/dashboard/InsightsPanel';
-import { PerformanceSummary } from '@/components/dashboard/PerformanceSummary';
 
 const RANGE_OPTIONS = [
   { value: 'all_time', label: 'All Time' },
@@ -89,6 +84,27 @@ interface PerformanceData {
     createdAt: string;
     difficultyTier?: string | null;
   }>;
+  v2?: {
+    snapshot: {
+      overallScore: number;
+      closeRate: number | null;
+      avgDifficulty: number | null;
+      avgDifficultyTier: string | null;
+      objectionConversionRate: number | null;
+      totalSessions: number;
+    };
+    phases: Record<string, {
+      phase: string;
+      averageScore: number;
+      sessionCount: number;
+      summary: string;
+      strengthPatterns: Array<{ text: string; frequency: number }>;
+      weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }>;
+      scoreGuidance: string;
+    }>;
+    objectionsGrouped: Record<string, Array<{ text: string; frequency: number; howHandled?: string; whySurfaced?: string; higherLeverageAlt?: string }>>;
+    priorityActionPlan: Array<{ title: string; observedCount: number; impact: string; whatToChange: string; microDrill?: string }>;
+  };
 }
 
 const OFFER_TYPE_LABELS: Record<string, string> = {
@@ -109,7 +125,6 @@ const DIFFICULTY_LABELS: Record<string, string> = {
 };
 
 export default function PerformancePage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
@@ -119,9 +134,8 @@ export default function PerformancePage() {
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthYear.month);
   const [selectedYear, setSelectedYear] = useState(defaultMonthYear.year);
   const [selectionMode, setSelectionMode] = useState<'range' | 'month'>('range');
-  const [expandedCategories, setExpandedCategories] = useState<Set<number>>(new Set());
   const [dataSource, setDataSource] = useState<'all' | 'calls' | 'roleplays'>('all');
-  const [box4Tab, setBox4Tab] = useState<'offerType' | 'offer' | 'difficulty'>('offerType');
+  const [phaseTab, setPhaseTab] = useState<string>('overall');
 
   const years = [selectedYear - 2, selectedYear - 1, selectedYear, selectedYear + 1].filter((y) => y >= 2020 && y <= 2030);
 
@@ -322,13 +336,6 @@ export default function PerformancePage() {
     );
   }
 
-  // Calculate chart heights for separate charts
-  const callData = performance.callWeeklyData ?? performance.weeklyData;
-  const roleplayData = performance.roleplayWeeklyData ?? performance.weeklyData;
-  const callMaxScore = Math.max(...callData.map(d => d.score), 100);
-  const roleplayMaxScore = Math.max(...roleplayData.map(d => d.score), 100);
-  const chartHeight = 180;
-
   return (
     <div className="container mx-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
@@ -427,484 +434,272 @@ export default function PerformancePage() {
         </div>
       </div>
 
-      {/* ═══ SALES CALLS SECTION ═══ */}
-      {(dataSource === 'all' || dataSource === 'calls') && (
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Phone className="h-5 w-5" /> Overall Performance – Sales Calls</CardTitle>
-            <CardDescription>Based on {performance.period}. Data: analysed sales calls only.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Overall Score</p>
-                <p className={`text-4xl font-bold ${getScoreColor(performance.salesCallsSummary?.averageOverall ?? performance.averageOverall)}`}>
-                  {performance.salesCallsSummary?.averageOverall ?? performance.averageOverall}
+      {/* ═══ V2 PERFORMANCE LAYOUT ═══ */}
+      {performance.v2 ? (
+        <>
+          {/* Section 1: 4-Box Snapshot Strip */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {/* Overall Score */}
+            <Card className="border border-white/10 bg-gradient-to-br from-indigo-500/10 to-purple-500/5 backdrop-blur-xl">
+              <CardContent className="pt-5 pb-4 text-center">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Overall Score</p>
+                <p className={`text-4xl font-black ${getScoreColor(performance.v2.snapshot.overallScore)}`}>
+                  {performance.v2.snapshot.overallScore || '—'}
                 </p>
-                <p className="text-xs text-muted-foreground mt-2">Total Calls Analysed: {performance.salesCallsSummary?.totalCalls ?? performance.totalCalls}</p>
-              </div>
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Best Category</p>
-                <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category}>
-                  {performance.salesCallsSummary?.bestCategory ?? performance.strengths[0]?.category ?? '—'}
+                <p className="text-xs text-muted-foreground mt-1">{performance.v2.snapshot.totalSessions} session{performance.v2.snapshot.totalSessions !== 1 ? 's' : ''}</p>
+              </CardContent>
+            </Card>
+            {/* Close Rate */}
+            <Card className="border border-white/10 bg-gradient-to-br from-green-500/10 to-emerald-500/5 backdrop-blur-xl">
+              <CardContent className="pt-5 pb-4 text-center">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Close Rate</p>
+                <p className={`text-4xl font-black ${performance.v2.snapshot.closeRate !== null ? getScoreColor(performance.v2.snapshot.closeRate) : 'text-muted-foreground'}`}>
+                  {performance.v2.snapshot.closeRate !== null ? `${performance.v2.snapshot.closeRate}%` : '—'}
                 </p>
-                {(performance.salesCallsSummary?.bestCategoryScore ?? performance.strengths[0]?.averageScore) != null && (
-                  <p className={`text-lg font-semibold mt-1 ${getScoreColor((performance.salesCallsSummary?.bestCategoryScore ?? performance.strengths[0]?.averageScore) as number)}`}>
-                    {performance.salesCallsSummary?.bestCategoryScore ?? performance.strengths[0]?.averageScore}
-                  </p>
-                )}
-              </div>
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
-                <p className="text-2xl font-bold truncate" title={performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category}>
-                  {performance.salesCallsSummary?.improvementOpportunity ?? performance.weaknesses[0]?.category ?? '—'}
+                <p className="text-xs text-muted-foreground mt-1">closed / qualified</p>
+              </CardContent>
+            </Card>
+            {/* Avg Difficulty */}
+            <Card className="border border-white/10 bg-gradient-to-br from-amber-500/10 to-orange-500/5 backdrop-blur-xl">
+              <CardContent className="pt-5 pb-4 text-center">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Avg Difficulty</p>
+                <p className="text-4xl font-black text-amber-400">
+                  {performance.v2.snapshot.avgDifficulty ?? '—'}
                 </p>
-                {(performance.salesCallsSummary?.improvementOpportunityScore ?? performance.weaknesses[0]?.averageScore) != null && (
-                  <p className={`text-lg font-semibold mt-1 ${getScoreColor((performance.salesCallsSummary?.improvementOpportunityScore ?? performance.weaknesses[0]?.averageScore) as number)}`}>
-                    {performance.salesCallsSummary?.improvementOpportunityScore ?? performance.weaknesses[0]?.averageScore}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Sales Calls Trend Chart */}
-            <div>
-              <h4 className="text-sm font-medium text-muted-foreground mb-3">Sales Calls – Weekly Trend</h4>
-              <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
-                <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
-                  <span>{callMaxScore}</span>
-                  <span>{Math.round(callMaxScore * 0.75)}</span>
-                  <span>{Math.round(callMaxScore * 0.5)}</span>
-                  <span>{Math.round(callMaxScore * 0.25)}</span>
-                  <span>0</span>
-                </div>
-                <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
-                  <div className="absolute inset-0 flex flex-col justify-between">
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <div key={i} className="border-t border-border/30" />
-                    ))}
-                  </div>
-                  <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
-                    {callData.map((data, index) => {
-                      const height = callMaxScore > 0 ? (data.score / callMaxScore) * 100 : 0;
-                      return (
-                        <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
-                          <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
-                            <div
-                              className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
-                                data.score >= 60 ? 'bg-blue-500' :
-                                  data.score >= 40 ? 'bg-orange-500' :
-                                    data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
-                                }`}
-                              style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
-                              title={`Week ${data.week}: ${data.score} (${data.count} calls)`}
-                            />
-                          </div>
-                          <div className="text-xs text-muted-foreground text-center">
-                            <div className="font-medium">{data.score || '–'}</div>
-                            <div className="text-[10px]">{data.week}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ═══ ROLEPLAYS SECTION ═══ */}
-      {(dataSource === 'all' || dataSource === 'roleplays') && (
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><Bot className="h-5 w-5" /> Overall Performance – Roleplays</CardTitle>
-            <CardDescription>Based on {performance.period}. Data: roleplay sessions only.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Average Roleplay Score</p>
-                <p className={`text-4xl font-bold ${getScoreColor(performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0)}`}>
-                  {performance.roleplaysSummary?.averageRoleplayScore ?? performance.averageRoleplayScore ?? 0}
+                <p className="text-xs text-muted-foreground mt-1">
+                  {performance.v2.snapshot.avgDifficultyTier ? performance.v2.snapshot.avgDifficultyTier.charAt(0).toUpperCase() + performance.v2.snapshot.avgDifficultyTier.slice(1) : 'No data'}
                 </p>
-                <p className="text-xs text-muted-foreground mt-2">Total Roleplays: {performance.roleplaysSummary?.totalRoleplays ?? performance.totalRoleplays}</p>
-              </div>
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Best Category</p>
-                <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.bestCategory ?? '—'}</p>
-                {performance.roleplaysSummary?.bestCategoryScore != null && (
-                  <p className={`text-lg font-semibold mt-1 ${getScoreColor(performance.roleplaysSummary.bestCategoryScore)}`}>
-                    {performance.roleplaysSummary.bestCategoryScore}
-                  </p>
-                )}
-              </div>
-              <div className="text-center p-4 rounded-lg bg-muted/30">
-                <p className="text-sm text-muted-foreground mb-2">Biggest Improvement Opportunity</p>
-                <p className="text-2xl font-bold truncate">{performance.roleplaysSummary?.improvementOpportunity ?? '—'}</p>
-                {performance.roleplaysSummary?.improvementOpportunityScore != null && (
-                  <p className={`text-lg font-semibold mt-1 ${getScoreColor(performance.roleplaysSummary.improvementOpportunityScore)}`}>
-                    {performance.roleplaysSummary.improvementOpportunityScore}
-                  </p>
-                )}
-              </div>
-            </div>
+              </CardContent>
+            </Card>
+            {/* Objection Conversion */}
+            <Card className="border border-white/10 bg-gradient-to-br from-rose-500/10 to-pink-500/5 backdrop-blur-xl">
+              <CardContent className="pt-5 pb-4 text-center">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-1">Objection Conversion</p>
+                <p className={`text-4xl font-black ${performance.v2.snapshot.objectionConversionRate !== null ? getScoreColor(performance.v2.snapshot.objectionConversionRate) : 'text-muted-foreground'}`}>
+                  {performance.v2.snapshot.objectionConversionRate !== null ? `${performance.v2.snapshot.objectionConversionRate}%` : '—'}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">objections → close</p>
+              </CardContent>
+            </Card>
+          </div>
 
-            {/* Roleplays Trend Chart */}
-            <div>
-              <h4 className="text-sm font-medium text-muted-foreground mb-3">Roleplays – Weekly Trend</h4>
-              <div className="relative" style={{ height: `${chartHeight + 60}px` }}>
-                <div className="absolute left-0 top-0 bottom-12 flex flex-col justify-between text-xs text-muted-foreground pr-2">
-                  <span>{roleplayMaxScore}</span>
-                  <span>{Math.round(roleplayMaxScore * 0.75)}</span>
-                  <span>{Math.round(roleplayMaxScore * 0.5)}</span>
-                  <span>{Math.round(roleplayMaxScore * 0.25)}</span>
-                  <span>0</span>
-                </div>
-                <div className="ml-12 relative" style={{ height: `${chartHeight}px` }}>
-                  <div className="absolute inset-0 flex flex-col justify-between">
-                    {[0, 1, 2, 3, 4].map((i) => (
-                      <div key={i} className="border-t border-border/30" />
-                    ))}
-                  </div>
-                  <div className="absolute inset-0 flex items-end justify-between gap-2 px-2">
-                    {roleplayData.map((data, index) => {
-                      const height = roleplayMaxScore > 0 ? (data.score / roleplayMaxScore) * 100 : 0;
-                      return (
-                        <div key={index} className="flex-1 flex flex-col items-center gap-2 group">
-                          <div className="relative w-full flex items-end justify-center" style={{ height: `${chartHeight}px` }}>
-                            <div
-                              className={`w-full rounded-t transition-all hover:opacity-80 ${data.score >= 80 ? 'bg-green-500' :
-                                data.score >= 60 ? 'bg-blue-500' :
-                                  data.score >= 40 ? 'bg-orange-500' :
-                                    data.score > 0 ? 'bg-red-500' : 'bg-muted/20'
-                                }`}
-                              style={{ height: `${height}%`, minHeight: data.score > 0 ? '4px' : '0px' }}
-                              title={`Week ${data.week}: ${data.score} (${data.count} roleplays)`}
-                            />
-                          </div>
-                          <div className="text-xs text-muted-foreground text-center">
-                            <div className="font-medium">{data.score || '–'}</div>
-                            <div className="text-[10px]">{data.week}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Core Sales Principles (9 principles from the sales philosophy) */}
-      {(() => {
-        const PRINCIPLE_COLORS: Record<string, { bar: string; badge: string }> = {
-          authority: { bar: 'bg-blue-500', badge: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-          structure: { bar: 'bg-indigo-500', badge: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' },
-          communication_listening: { bar: 'bg-emerald-500', badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
-          gap_creation: { bar: 'bg-green-500', badge: 'bg-green-500/20 text-green-400 border-green-500/30' },
-          value_positioning: { bar: 'bg-purple-500', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
-          trust_building: { bar: 'bg-amber-500', badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-          adaptability: { bar: 'bg-pink-500', badge: 'bg-pink-500/20 text-pink-400 border-pink-500/30' },
-          objection_strategy: { bar: 'bg-orange-500', badge: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
-          decision_leadership: { bar: 'bg-teal-500', badge: 'bg-teal-500/20 text-teal-400 border-teal-500/30' },
-        };
-
-        // Use API-computed principleSummaries if available, otherwise compute client-side
-        const principles = performance.principleSummaries ?? (() => {
-          const NAME_TO_ID: Record<string, string> = {
-            'Authority': 'authority', 'Structure': 'structure', 'Communication': 'communication',
-            'Discovery': 'discovery', 'Gap': 'gap', 'Value': 'value',
-            'Trust': 'trust', 'Adaptation': 'adaptation', 'Objection Handling': 'objection_handling', 'Closing': 'closing',
-          };
-          const catScores: Record<string, number> = {};
-          for (const cat of performance.skillCategories) {
-            const id = NAME_TO_ID[cat.category] || cat.category.toLowerCase().replace(/\s+/g, '_');
-            catScores[id] = cat.averageScore;
-          }
-          return computePrincipleScores(catScores).map((ps) => ({
-            id: ps.principle.id,
-            name: ps.principle.name,
-            description: ps.principle.description,
-            score: ps.score,
-            trend: 0,
-            summary: ps.score === 0
-              ? `No data yet for ${ps.principle.name}.`
-              : ps.score >= 80
-                ? `Strong performance in ${ps.principle.name}.`
-                : ps.score >= 60
-                  ? `Developing competency in ${ps.principle.name}.`
-                  : `Needs focus on ${ps.principle.name}.`,
-            strengths: [] as string[],
-            weaknesses: [] as string[],
-            improvements: [] as string[],
-          }));
-        })();
-
-        const hasData = principles.some((p) => p.score > 0);
-
-        return (
-          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-            <CardHeader>
-              <CardTitle>Core Sales Principles</CardTitle>
-              <CardDescription>Performance insights across 9 core principles from the sales philosophy</CardDescription>
+          {/* Section 2: Phase Analysis Tabs */}
+          <Card className="border border-white/10 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader className="pb-3">
+              <CardTitle>Phase Analysis</CardTitle>
+              <CardDescription>Deep-dive into each call phase across your sessions</CardDescription>
             </CardHeader>
             <CardContent>
-              {hasData ? (
-                <div className="space-y-2">
-                  {principles.map((p, idx) => {
-                    const colors = PRINCIPLE_COLORS[p.id] || { bar: 'bg-gray-500', badge: 'bg-gray-500/20 text-gray-400' };
-                    const isExpanded = expandedCategories.has(idx);
-                    return (
-                      <div key={p.id} className="rounded-lg bg-white/5 border border-white/10 overflow-hidden">
-                        <button
-                          onClick={() => {
-                            setExpandedCategories(prev => {
-                              const next = new Set(prev);
-                              next.has(idx) ? next.delete(idx) : next.add(idx);
-                              return next;
-                            });
-                          }}
-                          className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-colors text-left"
-                        >
-                          <div className="flex-1 min-w-0 mr-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-bold">{p.name}</span>
-                              {p.trend !== 0 && (
-                                <span className={`text-xs flex items-center gap-0.5 ${p.trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
-                                  {p.trend > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                                  {p.trend > 0 ? '+' : ''}{p.trend}
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground mt-0.5 truncate">{p.description}</p>
-                          </div>
-                          <div className="flex items-center gap-3 shrink-0">
-                            <div className="w-24 bg-muted h-2.5 rounded-full overflow-hidden">
-                              <div
-                                className={`h-full rounded-full transition-all ${colors.bar}`}
-                                style={{ width: `${p.score}%` }}
-                              />
-                            </div>
-                            <span className={`text-sm font-medium w-10 text-right text-muted-foreground`}>
-                              {p.score > 0 ? p.score : '—'}
-                            </span>
-                            {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
-                          </div>
-                        </button>
-                        {isExpanded && (
-                          <div className="px-4 pb-4 pt-1 space-y-3 border-t border-white/10">
-                            <p className="text-sm text-foreground/80">{p.summary}</p>
-                            {p.strengths.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-green-500 mb-1">Strengths</p>
-                                <ul className="text-sm text-muted-foreground space-y-0.5">
-                                  {p.strengths.slice(0, 3).map((s, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-green-500 mt-0.5">+</span> {s}</li>)}
-                                </ul>
-                              </div>
-                            )}
-                            {p.weaknesses.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-red-500 mb-1">Weaknesses</p>
-                                <ul className="text-sm text-muted-foreground space-y-0.5">
-                                  {p.weaknesses.slice(0, 3).map((w, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-red-500 mt-0.5">-</span> {w}</li>)}
-                                </ul>
-                              </div>
-                            )}
-                            {p.improvements.length > 0 && (
-                              <div>
-                                <p className="text-xs font-semibold text-blue-500 mb-1">How to Improve</p>
-                                <ul className="text-sm text-muted-foreground space-y-0.5">
-                                  {p.improvements.slice(0, 3).map((a, i) => <li key={i} className="flex items-start gap-1.5"><span className="text-blue-500 mt-0.5">{'\u2192'}</span> {a}</li>)}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">No scored sessions yet.</p>
-                  <p className="text-sm text-muted-foreground mt-1">Complete a call analysis or roleplay to see your core principles breakdown.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      })()}
-
-      {/* Priority Action Steps (B2) */}
-      <Card className="border border-amber-500/20 bg-linear-to-br from-amber-500/5 to-card/40 backdrop-blur-xl shadow-xl">
-        <CardHeader>
-          <CardTitle>Priority Action Steps</CardTitle>
-          <CardDescription>Your top development focuses based on all analysed calls and roleplays</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {performance.priorityActionSteps && performance.priorityActionSteps.length > 0 ? (
-            <div className="space-y-4">
-              {performance.priorityActionSteps.map((step, idx) => (
-                <div key={idx} className="flex gap-4 items-start">
-                  <div className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center">
-                    <span className="text-sm font-bold text-amber-400">{idx + 1}</span>
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <p className="text-sm font-bold">{step.action}</p>
-                    {step.reason && <p className="text-sm text-muted-foreground">{step.reason}</p>}
-                    <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-400 bg-amber-500/10">
-                      Flagged in {step.frequency} session{step.frequency !== 1 ? 's' : ''}
-                    </Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Complete more call reviews to generate action steps.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Box 4: Average Scores By (Tabs) */}
-      {((performance.byOfferType && Object.keys(performance.byOfferType).length > 0) ||
-        (performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0) ||
-        (performance.byOffer && performance.byOffer.length > 0)) && (
-          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-            <CardHeader>
-              <CardTitle>Average Scores By</CardTitle>
-              <CardDescription>Performance breakdown by offer type, specific offer, and prospect difficulty</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {/* Tab buttons */}
-              <div className="flex rounded-lg border border-white/10 overflow-hidden mb-4">
-                {[
-                  { key: 'offerType' as const, label: 'By Offer Type' },
-                  { key: 'offer' as const, label: 'By Specific Offer' },
-                  { key: 'difficulty' as const, label: 'By Prospect Difficulty' },
-                ].map((tab) => (
+              {/* Phase tab buttons */}
+              <div className="flex flex-wrap rounded-lg border border-white/10 overflow-hidden mb-6">
+                {['overall', 'intro', 'discovery', 'pitch', 'close', 'objections'].map((tab) => (
                   <button
-                    key={tab.key}
-                    className={`flex-1 px-3 py-2 text-xs font-medium transition-colors ${box4Tab === tab.key
+                    key={tab}
+                    className={`flex-1 min-w-[80px] px-3 py-2.5 text-xs font-medium transition-colors ${phaseTab === tab
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted/20 hover:bg-muted/40 text-muted-foreground'
                       }`}
-                    onClick={() => setBox4Tab(tab.key)}
+                    onClick={() => setPhaseTab(tab)}
                   >
-                    {tab.label}
+                    {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                    {performance.v2!.phases[tab] && (
+                      <span className="ml-1.5 opacity-70">{performance.v2!.phases[tab].averageScore || '—'}</span>
+                    )}
                   </button>
                 ))}
               </div>
 
-              {/* Tab content */}
-              {box4Tab === 'offerType' && (
-                performance.byOfferType && Object.keys(performance.byOfferType).length > 0 ? (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border/40">
-                        <th className="text-left py-2 font-medium text-muted-foreground">Offer Type</th>
-                        <th className="text-right py-2 font-medium text-muted-foreground">Avg Score</th>
-                        <th className="text-right py-2 font-medium text-muted-foreground">Sessions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(performance.byOfferType).map(([k, v]) => (
-                        <tr key={k} className="border-b border-border/20">
-                          <td className="py-2">{OFFER_TYPE_LABELS[k] ?? k}</td>
-                          <td className={`py-2 text-right font-medium ${getScoreColor(v.averageScore)}`}>{v.averageScore}</td>
-                          <td className="py-2 text-right text-muted-foreground">{v.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No offer type data available</p>
-                )
-              )}
+              {/* Active phase content */}
+              {(() => {
+                const phase = performance.v2!.phases[phaseTab];
+                if (!phase) return <p className="text-muted-foreground text-sm text-center py-6">No data for this phase yet.</p>;
 
-              {box4Tab === 'offer' && (
-                performance.byOffer && performance.byOffer.length > 0 ? (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border/40">
-                        <th className="text-left py-2 font-medium text-muted-foreground">Offer</th>
-                        <th className="text-right py-2 font-medium text-muted-foreground">Avg Score</th>
-                        <th className="text-right py-2 font-medium text-muted-foreground">Sessions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {performance.byOffer.slice(0, 10).map((o) => (
-                        <tr key={o.offerId} className="border-b border-border/20">
-                          <td className="py-2 truncate max-w-[200px]" title={o.offerName}>{o.offerName}</td>
-                          <td className={`py-2 text-right font-medium ${getScoreColor(o.averageScore)}`}>{o.averageScore}</td>
-                          <td className="py-2 text-right text-muted-foreground">{o.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No specific offer data available</p>
-                )
-              )}
+                // For objections tab, show grouped objections instead
+                if (phaseTab === 'objections') {
+                  const groups = performance.v2!.objectionsGrouped;
+                  const hasAny = Object.values(groups).some(arr => arr.length > 0);
+                  return (
+                    <div className="space-y-6">
+                      {/* Score + guidance row */}
+                      <div className="flex items-center gap-6">
+                        <div className="flex-shrink-0">
+                          <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center ${phase.averageScore >= 80 ? 'border-green-500 text-green-500' :
+                            phase.averageScore >= 60 ? 'border-blue-500 text-blue-500' :
+                              phase.averageScore >= 40 ? 'border-orange-500 text-orange-500' :
+                                'border-red-500 text-red-500'
+                            }`}>
+                            <span className="text-2xl font-black">{phase.averageScore || '—'}</span>
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm text-muted-foreground">{phase.scoreGuidance}</p>
+                          {phase.summary && <p className="text-sm mt-2">{phase.summary}</p>}
+                        </div>
+                      </div>
 
-              {box4Tab === 'difficulty' && (
-                performance.byDifficulty && Object.keys(performance.byDifficulty).length > 0 ? (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border/40">
-                        <th className="text-left py-2 font-medium text-muted-foreground">Difficulty</th>
-                        <th className="text-right py-2 font-medium text-muted-foreground">Avg Score</th>
-                        <th className="text-right py-2 font-medium text-muted-foreground">Sessions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(performance.byDifficulty).map(([k, v]) => (
-                        <tr key={k} className="border-b border-border/20">
-                          <td className="py-2">{DIFFICULTY_LABELS[k] ?? k}</td>
-                          <td className={`py-2 text-right font-medium ${getScoreColor(v.averageScore)}`}>{v.averageScore}</td>
-                          <td className="py-2 text-right text-muted-foreground">{v.count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <p className="text-sm text-muted-foreground text-center py-4">No difficulty data available</p>
-                )
+                      {/* Grouped objections by category */}
+                      {hasAny ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {(['value', 'trust', 'fit', 'logistics'] as const).map(cat => {
+                            const items = groups[cat] || [];
+                            if (items.length === 0) return null;
+                            const catColors: Record<string, string> = {
+                              value: 'border-purple-500/30 bg-purple-500/5',
+                              trust: 'border-amber-500/30 bg-amber-500/5',
+                              fit: 'border-blue-500/30 bg-blue-500/5',
+                              logistics: 'border-emerald-500/30 bg-emerald-500/5',
+                            };
+                            return (
+                              <div key={cat} className={`rounded-lg border p-4 ${catColors[cat]}`}>
+                                <h4 className="text-sm font-bold capitalize mb-3">{cat} Objections ({items.length})</h4>
+                                <div className="space-y-3">
+                                  {items.slice(0, 3).map((obj, i) => (
+                                    <div key={i} className="space-y-1">
+                                      <p className="text-sm font-medium">"{obj.text}"</p>
+                                      {obj.frequency > 1 && <Badge variant="outline" className="text-xs">×{obj.frequency}</Badge>}
+                                      {obj.whySurfaced && <p className="text-xs text-muted-foreground"><span className="font-semibold">Root cause:</span> {obj.whySurfaced}</p>}
+                                      {obj.higherLeverageAlt && <p className="text-xs text-green-400"><span className="font-semibold">Better approach:</span> {obj.higherLeverageAlt}</p>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground text-center py-4">No objections recorded in this period.</p>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Standard phase tab (Overall / Intro / Discovery / Pitch / Close)
+                return (
+                  <div className="space-y-6">
+                    {/* Score ring + guidance */}
+                    <div className="flex items-center gap-6">
+                      <div className="flex-shrink-0">
+                        <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center ${phase.averageScore >= 80 ? 'border-green-500 text-green-500' :
+                          phase.averageScore >= 60 ? 'border-blue-500 text-blue-500' :
+                            phase.averageScore >= 40 ? 'border-orange-500 text-orange-500' :
+                              'border-red-500 text-red-500'
+                          }`}>
+                          <span className="text-2xl font-black">{phase.averageScore || '—'}</span>
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-muted-foreground">{phase.scoreGuidance}</p>
+                        {phase.sessionCount > 0 && <p className="text-xs text-muted-foreground mt-1">Based on {phase.sessionCount} session{phase.sessionCount !== 1 ? 's' : ''}</p>}
+                      </div>
+                    </div>
+
+                    {/* Summary */}
+                    {phase.summary && (
+                      <div className="rounded-lg bg-muted/20 p-4 border border-white/5">
+                        <p className="text-sm">{phase.summary}</p>
+                      </div>
+                    )}
+
+                    {/* Strength patterns */}
+                    {phase.strengthPatterns.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-bold text-green-400 mb-2">Strength Patterns</h4>
+                        <div className="space-y-2">
+                          {phase.strengthPatterns.map((p, i) => (
+                            <div key={i} className="flex items-start gap-2 text-sm">
+                              <span className="text-green-500 mt-0.5 shrink-0">+</span>
+                              <span className="flex-1">{p.text}</span>
+                              {p.frequency > 1 && <Badge variant="outline" className="text-xs border-green-500/30 text-green-400 bg-green-500/10 shrink-0">×{p.frequency}</Badge>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Weakness patterns */}
+                    {phase.weaknessPatterns.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-bold text-red-400 mb-2">Repeating Weaknesses</h4>
+                        <div className="space-y-3">
+                          {phase.weaknessPatterns.map((w, i) => (
+                            <div key={i} className="rounded-lg bg-red-500/5 border border-red-500/10 p-3 space-y-1">
+                              <div className="flex items-start gap-2">
+                                <span className="text-red-500 mt-0.5 shrink-0">−</span>
+                                <span className="text-sm font-medium flex-1">{w.text}</span>
+                                {w.frequency > 1 && <Badge variant="outline" className="text-xs border-red-500/30 text-red-400 bg-red-500/10 shrink-0">×{w.frequency}</Badge>}
+                              </div>
+                              {w.whyItMatters && <p className="text-xs text-muted-foreground pl-5"><span className="font-semibold">Why:</span> {w.whyItMatters}</p>}
+                              {w.whatToChange && <p className="text-xs text-blue-400 pl-5"><span className="font-semibold">Change:</span> {w.whatToChange}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Empty state */}
+                    {phase.strengthPatterns.length === 0 && phase.weaknessPatterns.length === 0 && !phase.summary && (
+                      <p className="text-sm text-muted-foreground text-center py-6">Complete more sessions to see patterns for {phaseTab}.</p>
+                    )}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* Section 3: Priority Action Plan */}
+          <Card className="border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardHeader>
+              <CardTitle>Priority Action Plan</CardTitle>
+              <CardDescription>Your top behavioral changes ranked by impact — max 3 at a time</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {performance.v2.priorityActionPlan.length > 0 ? (
+                <div className="space-y-4">
+                  {performance.v2.priorityActionPlan.map((action, idx) => (
+                    <div key={idx} className="flex gap-4 items-start">
+                      <div className="flex-shrink-0 w-9 h-9 rounded-full bg-amber-500/20 flex items-center justify-center">
+                        <span className="text-sm font-black text-amber-400">{idx + 1}</span>
+                      </div>
+                      <div className="flex-1 space-y-1.5">
+                        <p className="text-sm font-bold">{action.title}</p>
+                        {action.impact && <p className="text-sm text-muted-foreground">{action.impact}</p>}
+                        {action.whatToChange && <p className="text-sm text-blue-400">→ {action.whatToChange}</p>}
+                        {action.microDrill && (
+                          <div className="rounded bg-primary/5 border border-primary/10 p-2 mt-1">
+                            <p className="text-xs text-primary"><span className="font-bold">Drill:</span> {action.microDrill}</p>
+                          </div>
+                        )}
+                        {action.observedCount > 1 && (
+                          <Badge variant="outline" className="text-xs border-amber-500/30 text-amber-400 bg-amber-500/10">
+                            Flagged in {action.observedCount} session{action.observedCount !== 1 ? 's' : ''}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Complete more sessions to generate your action plan.
+                </p>
               )}
             </CardContent>
           </Card>
-        )}
-
-      {/* Objection Handling Intelligence */}
-      {performance.objectionInsights && (
-        <ObjectionInsights
-          topObjections={performance.objectionInsights.topObjections}
-          pillarBreakdown={performance.objectionInsights.pillarBreakdown}
-          weakestArea={performance.objectionInsights.weakestArea}
-          guidance={performance.objectionInsights.guidance}
-          improvementActions={performance.objectionInsights.improvementActions}
-        />
+        </>
+      ) : (
+        /* Fallback: Legacy layout for users without v2 data */
+        <Card className="border border-white/10 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+          <CardContent className="pt-6">
+            <div className="text-center py-8">
+              <p className="text-lg font-bold">Overall Score: {performance.averageOverall || '—'}</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                {performance.totalAnalyses} session{performance.totalAnalyses !== 1 ? 's' : ''} analysed ({performance.totalCalls} calls, {performance.totalRoleplays} roleplays)
+              </p>
+              <p className="text-xs text-muted-foreground mt-4">Phase-based analysis is available for sessions analysed with the latest engine.</p>
+            </div>
+          </CardContent>
+        </Card>
       )}
-
-      {/* Pattern Insights */}
-      <InsightsPanel
-        skillCategories={performance.skillCategories}
-        totalCalls={performance.totalCalls}
-        totalRoleplays={performance.totalRoleplays}
-      />
-
-      {/* Performance Summary & Coaching */}
-      <PerformanceSummary
-        skillCategories={performance.skillCategories}
-        aiInsight={performance.aiInsight}
-        weeklySummary={performance.weeklySummary}
-        monthlySummary={performance.monthlySummary}
-      />
 
       {/* Export buttons */}
       <div className="flex items-center gap-2 justify-end">

@@ -250,6 +250,11 @@ interface AnalysisRow {
   // IDs for recent analyses
   entityId?: string | null;
   analysisId?: string | null;
+  // V2 phase-based data
+  phaseScoresData?: any;
+  phaseAnalysisData?: any;
+  actionPointsData?: any;
+  prospectDifficultyScore?: number | null;
 }
 
 /** Compute per-category averages, trends, and text summaries from a set of analyses. */
@@ -440,7 +445,7 @@ export async function GET(request: NextRequest) {
 
     const userId = session.user.id;
 
-    // ── Fetch call analyses (with categoryFeedback + priorityFixes) ──
+    // ── Fetch call analyses (with categoryFeedback + priorityFixes + v2 phase data) ──
     const callAnalysesRaw = await db
       .select({
         id: callAnalysis.id,
@@ -449,9 +454,13 @@ export async function GET(request: NextRequest) {
         skillScores: callAnalysis.skillScores,
         categoryFeedback: callAnalysis.categoryFeedback,
         phaseScores: callAnalysis.phaseScores,
+        phaseAnalysis: callAnalysis.phaseAnalysis,
+        actionPoints: callAnalysis.actionPoints,
         objectionDetails: callAnalysis.objectionDetails,
         priorityFixes: callAnalysis.priorityFixes,
+        prospectDifficulty: callAnalysis.prospectDifficulty,
         createdAt: salesCalls.createdAt,
+        callResult: salesCalls.result,
       })
       .from(callAnalysis)
       .innerJoin(salesCalls, eq(callAnalysis.callId, salesCalls.id))
@@ -488,10 +497,15 @@ export async function GET(request: NextRequest) {
         type: 'call' as const,
         entityId: a.callId,
         analysisId: a.id,
+        phaseScoresData: parsedPhaseScores,
+        phaseAnalysisData: safeParse(a.phaseAnalysis as any),
+        actionPointsData: safeParse(a.actionPoints as any),
+        prospectDifficultyScore: a.prospectDifficulty ?? null,
+        callResult: (a as any).callResult ?? null,
       };
     });
 
-    // ── Fetch roleplay analyses (with categoryFeedback + priorityFixes) ──
+    // ── Fetch roleplay analyses (with categoryFeedback + priorityFixes + v2 phase data) ──
     const roleplayAnalysesRaw = await db
       .select({
         id: roleplayAnalysis.id,
@@ -500,8 +514,11 @@ export async function GET(request: NextRequest) {
         skillScores: roleplayAnalysis.skillScores,
         categoryFeedback: roleplayAnalysis.categoryFeedback,
         phaseScores: roleplayAnalysis.phaseScores,
+        phaseAnalysis: roleplayAnalysis.phaseAnalysis,
+        actionPoints: roleplayAnalysis.actionPoints,
         objectionAnalysis: roleplayAnalysis.objectionAnalysis,
         priorityFixes: roleplayAnalysis.priorityFixes,
+        prospectDifficulty: roleplayAnalysis.prospectDifficulty,
         createdAt: roleplaySessions.createdAt,
         offerId: roleplaySessions.offerId,
         offerCategory: offers.offerCategory,
@@ -549,6 +566,10 @@ export async function GET(request: NextRequest) {
         actualDifficultyTier: a.actualDifficultyTier,
         entityId: a.sessionId,
         analysisId: a.id,
+        phaseScoresData: parsedPhaseScores,
+        phaseAnalysisData: safeParse(a.phaseAnalysis as any),
+        actionPointsData: safeParse(a.actionPoints as any),
+        prospectDifficultyScore: a.prospectDifficulty ?? null,
       };
     });
 
@@ -1074,6 +1095,292 @@ export async function GET(request: NextRequest) {
       trend: computeTrend(roleplayOnlyForSummary),
     };
 
+    // ══════════════════════════════════════════════════════════
+    // V2: Phase-based aggregation engine
+    // ══════════════════════════════════════════════════════════
+
+    const PHASE_KEYS = ['intro', 'discovery', 'pitch', 'close', 'objections'] as const;
+    type PhaseKey = typeof PHASE_KEYS[number];
+
+    // ── V2 Snapshot ─────────────────────────────────────────
+    // Close rate: calls with result='closed' / total calls with a result
+    const callsWithResult = allAnalyses.filter(a => a.type === 'call' && (a as any).callResult);
+    const closedCalls = callsWithResult.filter(a => (a as any).callResult === 'closed');
+    const closeRate = callsWithResult.length > 0
+      ? Math.round((closedCalls.length / callsWithResult.length) * 100)
+      : null;
+
+    // Avg difficulty
+    const diffScores = allAnalyses.filter(a => typeof a.prospectDifficultyScore === 'number' && a.prospectDifficultyScore > 0).map(a => a.prospectDifficultyScore!);
+    const avgDifficulty = diffScores.length > 0 ? Math.round(diffScores.reduce((s, d) => s + d, 0) / diffScores.length) : null;
+    const avgDifficultyTier = avgDifficulty !== null
+      ? (avgDifficulty >= 41 ? 'easy' : avgDifficulty >= 32 ? 'realistic' : avgDifficulty >= 20 ? 'hard' : 'expert')
+      : null;
+
+    // Objection conversion rate: calls WITH objections that still closed
+    const analysesWithObjections = allAnalyses.filter(a => {
+      const objs = parseObjections(a.objectionData);
+      return objs.length > 0;
+    });
+    const objectionCallsThatClosed = analysesWithObjections.filter(a => a.type === 'call' && (a as any).callResult === 'closed');
+    const objectionConversionRate = analysesWithObjections.length > 0
+      ? Math.round((objectionCallsThatClosed.length / analysesWithObjections.length) * 100)
+      : null;
+
+    const v2Snapshot = {
+      overallScore: averageOverall,
+      closeRate,
+      avgDifficulty,
+      avgDifficultyTier,
+      objectionConversionRate,
+      totalSessions: totalAnalyses,
+    };
+
+    // ── V2 Phase tabs ───────────────────────────────────────
+    interface V2PhaseTab {
+      phase: string;
+      averageScore: number;
+      sessionCount: number;
+      summary: string;
+      strengthPatterns: Array<{ text: string; frequency: number }>;
+      weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }>;
+      scoreGuidance: string;
+    }
+
+    function buildPhaseTab(phase: PhaseKey | 'overall', analyses: AnalysisRow[]): V2PhaseTab {
+      // Collect scores for this phase
+      const scores: number[] = [];
+      const summaries: string[] = [];
+      const strengths: string[] = [];
+      const weaknesses: Array<{ text: string; why?: string; change?: string }> = [];
+
+      for (const a of analyses) {
+        const ps = a.phaseScoresData;
+        const pa = a.phaseAnalysisData;
+        if (!ps && !pa) continue;
+
+        // Score
+        if (ps && typeof ps === 'object') {
+          const score = phase === 'overall' ? (ps.overall ?? a.overallScore) : ps[phase];
+          if (typeof score === 'number' && score > 0) scores.push(score);
+        }
+
+        // Phase analysis
+        if (pa && typeof pa === 'object') {
+          const phaseDetail = phase === 'overall' ? pa.overall : pa[phase];
+          if (!phaseDetail) continue;
+
+          if (phase === 'overall') {
+            // Overall has callOutcomeAndWhy, whatLimited, primaryImprovementFocus
+            if (phaseDetail.primaryImprovementFocus) {
+              weaknesses.push({ text: phaseDetail.primaryImprovementFocus });
+            }
+            if (phaseDetail.summary) summaries.push(phaseDetail.summary);
+          } else if (phase === 'objections') {
+            // Objections have blocks
+            if (phaseDetail.blocks && Array.isArray(phaseDetail.blocks)) {
+              for (const block of phaseDetail.blocks) {
+                if (block.higherLeverageAlternative) {
+                  weaknesses.push({ text: block.howHandled || 'Objection handling', why: block.whySurfaced, change: block.higherLeverageAlternative });
+                }
+              }
+            }
+          } else {
+            // Intro/Discovery/Pitch/Close have whatWorked, whatLimitedImpact, summary
+            if (phaseDetail.summary) summaries.push(phaseDetail.summary);
+
+            if (Array.isArray(phaseDetail.whatWorked)) {
+              for (const item of phaseDetail.whatWorked) {
+                if (typeof item === 'string' && item.length > 10) strengths.push(item);
+              }
+            }
+
+            if (Array.isArray(phaseDetail.whatLimitedImpact)) {
+              for (const item of phaseDetail.whatLimitedImpact) {
+                if (typeof item === 'string') {
+                  weaknesses.push({ text: item });
+                } else if (item && typeof item === 'object') {
+                  weaknesses.push({
+                    text: item.description || '',
+                    change: item.whatShouldHaveDone || '',
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const avgScore = scores.length > 0 ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
+
+      // Frequency-count strength patterns (group by semantic similarity using keyword overlap)
+      const strengthGroups = groupByKeywords(strengths);
+      const weaknessGroups = groupWeaknessByKeywords(weaknesses);
+
+      // Generate guidance
+      let scoreGuidance = '';
+      if (avgScore === 0) {
+        scoreGuidance = `No data yet for ${phase === 'overall' ? 'overall performance' : phase}. Complete more sessions to see insights.`;
+      } else if (avgScore >= 80) {
+        scoreGuidance = `Strong ${phase} performance averaging ${avgScore}/100. Focus on consistency and marginal gains.`;
+      } else if (avgScore >= 60) {
+        scoreGuidance = `Developing ${phase} skills at ${avgScore}/100. Address the top weakness pattern to push above 80.`;
+      } else {
+        scoreGuidance = `${phase === 'overall' ? 'Overall' : phase.charAt(0).toUpperCase() + phase.slice(1)} needs focused practice at ${avgScore}/100. Prioritize the most frequent weakness below.`;
+      }
+
+      // Pick best summary (most recent non-empty)
+      const bestSummary = summaries.filter(s => s.length > 20)[0] || '';
+
+      return {
+        phase,
+        averageScore: avgScore,
+        sessionCount: scores.length,
+        summary: bestSummary,
+        strengthPatterns: strengthGroups.slice(0, 5),
+        weaknessPatterns: weaknessGroups.slice(0, 5),
+        scoreGuidance,
+      };
+    }
+
+    // Keyword grouping helpers
+    const V2_STOP = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'it', 'its', 'you', 'your', 'they', 'their', 'not', 'so', 'if', 'from']);
+    const getKW = (text: string) => new Set(text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !V2_STOP.has(w)));
+
+    function groupByKeywords(items: string[]): Array<{ text: string; frequency: number }> {
+      const groups: Array<{ text: string; frequency: number }> = [];
+      for (const item of items) {
+        if (!item || item.length < 10) continue;
+        const kw = getKW(item);
+        let matched = false;
+        for (const g of groups) {
+          const gkw = getKW(g.text);
+          let common = 0;
+          for (const k of kw) { if (gkw.has(k)) common++; }
+          if (common >= 3) {
+            g.frequency++;
+            if (item.length > g.text.length) g.text = item;
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) groups.push({ text: item, frequency: 1 });
+      }
+      return groups.sort((a, b) => b.frequency - a.frequency);
+    }
+
+    function groupWeaknessByKeywords(items: Array<{ text: string; why?: string; change?: string }>): Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }> {
+      const groups: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }> = [];
+      for (const item of items) {
+        if (!item.text || item.text.length < 10) continue;
+        const kw = getKW(item.text);
+        let matched = false;
+        for (const g of groups) {
+          const gkw = getKW(g.text);
+          let common = 0;
+          for (const k of kw) { if (gkw.has(k)) common++; }
+          if (common >= 3) {
+            g.frequency++;
+            if (item.text.length > g.text.length) g.text = item.text;
+            if (item.why && (!g.whyItMatters || item.why.length > g.whyItMatters.length)) g.whyItMatters = item.why;
+            if (item.change && (!g.whatToChange || item.change.length > g.whatToChange.length)) g.whatToChange = item.change;
+            matched = true;
+            break;
+          }
+        }
+        if (!matched) groups.push({ text: item.text, frequency: 1, whyItMatters: item.why, whatToChange: item.change });
+      }
+      return groups.sort((a, b) => b.frequency - a.frequency);
+    }
+
+    // Build phase tabs
+    const v2Phases: Record<string, V2PhaseTab> = {};
+    v2Phases['overall'] = buildPhaseTab('overall', allAnalyses);
+    for (const phase of PHASE_KEYS) {
+      v2Phases[phase] = buildPhaseTab(phase, allAnalyses);
+    }
+
+    // ── V2 Objections tab (grouped by category) ─────────────
+    const v2ObjGrouped: Record<string, Array<{ text: string; frequency: number; howHandled?: string; whySurfaced?: string; higherLeverageAlt?: string }>> = {
+      value: [], trust: [], fit: [], logistics: [],
+    };
+    for (const a of allAnalyses) {
+      const pa = a.phaseAnalysisData;
+      if (!pa?.objections?.blocks) continue;
+      for (const block of pa.objections.blocks) {
+        const cat = block.type || 'value';
+        if (!v2ObjGrouped[cat]) v2ObjGrouped[cat] = [];
+
+        // Try to group with existing
+        const existing = v2ObjGrouped[cat].find(o => {
+          const ok = getKW(o.text);
+          const bk = getKW(block.quote || '');
+          let common = 0;
+          for (const k of bk) { if (ok.has(k)) common++; }
+          return common >= 2;
+        });
+        if (existing) {
+          existing.frequency++;
+          if (block.higherLeverageAlternative && (!existing.higherLeverageAlt || block.higherLeverageAlternative.length > existing.higherLeverageAlt.length)) {
+            existing.higherLeverageAlt = block.higherLeverageAlternative;
+          }
+        } else {
+          v2ObjGrouped[cat].push({
+            text: block.quote || 'Unnamed objection',
+            frequency: 1,
+            howHandled: block.howHandled,
+            whySurfaced: block.whySurfaced,
+            higherLeverageAlt: block.higherLeverageAlternative,
+          });
+        }
+      }
+    }
+    // Sort each category by frequency
+    for (const cat of Object.keys(v2ObjGrouped)) {
+      v2ObjGrouped[cat].sort((a, b) => b.frequency - a.frequency);
+    }
+
+    // ── V2 Priority Action Plan (max 3, deduped across all calls) ──
+    const v2ActionPlan: Array<{ title: string; observedCount: number; impact: string; whatToChange: string; microDrill?: string }> = [];
+    const actionSeen = new Set<string>();
+    for (const a of allAnalyses) {
+      const ap = Array.isArray(a.actionPointsData) ? a.actionPointsData : [];
+      for (const point of ap) {
+        const label = point.label || point.thePattern?.slice(0, 60) || 'Unnamed';
+        const labelKey = label.toLowerCase().replace(/[^a-z]/g, '').slice(0, 30);
+        if (actionSeen.has(labelKey)) continue;
+        actionSeen.add(labelKey);
+        v2ActionPlan.push({
+          title: label,
+          observedCount: 1,
+          impact: point.whyItsCostingYou || '',
+          whatToChange: point.whatToDoInstead || '',
+          microDrill: point.microDrill || undefined,
+        });
+        if (v2ActionPlan.length >= 3) break;
+      }
+      if (v2ActionPlan.length >= 3) break;
+    }
+
+    // Fallback: if no v2 actionPoints, fall back to existing priorityActionSteps
+    if (v2ActionPlan.length === 0 && priorityActionSteps.length > 0) {
+      for (const step of priorityActionSteps.slice(0, 3)) {
+        v2ActionPlan.push({
+          title: step.action.slice(0, 80),
+          observedCount: step.frequency,
+          impact: step.reason,
+          whatToChange: step.action,
+        });
+      }
+    }
+
+    const v2Data = {
+      snapshot: v2Snapshot,
+      phases: v2Phases,
+      objectionsGrouped: v2ObjGrouped,
+      priorityActionPlan: v2ActionPlan,
+    };
+
     return NextResponse.json({
       range: rangeLabel ?? rangeParam,
       period: periodLabel,
@@ -1107,6 +1414,8 @@ export async function GET(request: NextRequest) {
         createdAt: a.createdAt,
         difficultyTier: a.actualDifficultyTier ?? a.selectedDifficulty ?? null,
       })),
+      // V2 Performance data — phase-based analysis engine
+      v2: v2Data,
     });
   } catch (error) {
     console.error('Error fetching performance:', error);

@@ -31,8 +31,6 @@ const offerSchema = z.object({
 
   // Section 3 - Desired Outcome
   desiredOutcome: z.string().min(1, 'Desired outcome is required'),
-  tangibleOutcomes: z.string().optional(),
-  emotionalOutcomes: z.string().optional(),
 
   // Section 4 - Deliverables
   deliverables: z.string().optional(),
@@ -73,8 +71,6 @@ export default function NewOfferPage() {
       customerStage: '',
       coreProblems: '',
       desiredOutcome: '',
-      tangibleOutcomes: '',
-      emotionalOutcomes: '',
       deliverables: '',
       paymentOptions: '',
       timePerWeek: '',
@@ -112,8 +108,6 @@ export default function NewOfferPage() {
           customerStage: data.customerStage,
           coreProblems: data.coreProblems,
           desiredOutcome: data.desiredOutcome,
-          tangibleOutcomes: data.tangibleOutcomes,
-          emotionalOutcomes: data.emotionalOutcomes,
           deliverables: data.deliverables,
           paymentOptions: data.paymentOptions,
           timePerWeek: data.timePerWeek,
@@ -334,26 +328,6 @@ export default function NewOfferPage() {
               {form.formState.errors.desiredOutcome && (
                 <p className="text-sm text-destructive">{form.formState.errors.desiredOutcome.message}</p>
               )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tangibleOutcomes">Tangible Outcomes</Label>
-              <Textarea
-                id="tangibleOutcomes"
-                {...form.register('tangibleOutcomes')}
-                placeholder={"Measurable or concrete results\n\nExample: Weight loss, revenue increase, specific metrics"}
-                rows={3}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="emotionalOutcomes">Emotional Outcomes</Label>
-              <Textarea
-                id="emotionalOutcomes"
-                {...form.register('emotionalOutcomes')}
-                placeholder={"Confidence, relief, certainty, identity shift, etc."}
-                rows={2}
-              />
             </div>
           </div>
 

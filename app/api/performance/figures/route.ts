@@ -344,9 +344,10 @@ export async function GET(request: NextRequest) {
     }
 
     // Remove parent salesCalls rows that have payment plan instalments (avoid double-counting)
-    const filteredSalesList = callIdsWithInstalments.size > 0
+    const filteredSalesList = (callIdsWithInstalments.size > 0
       ? salesList.filter((r) => !callIdsWithInstalments.has(r.callId) || r.isInstalment)
-      : salesList;
+      : salesList
+    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     const totalCommission = filteredSalesList.reduce((s, row) => s + row.commissionAmount, 0);
 

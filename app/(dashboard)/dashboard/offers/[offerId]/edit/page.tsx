@@ -297,40 +297,18 @@ export default function EditOfferPage() {
             </div>
           </div>
 
-          {/* Section 3 – Desired Outcome & Transformation */}
+          {/* Section 3 – Goals */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Section 3 - Desired Outcome &amp; Transformation</h2>
+            <h2 className="text-xl font-semibold">Section 3 - Goals</h2>
 
             <div className="space-y-2">
-              <Label htmlFor="desiredOutcome">Core Outcome &amp; Timeline *</Label>
+              <Label htmlFor="desiredOutcome">Goals *</Label>
               <Textarea
                 id="desiredOutcome"
                 value={formData.desiredOutcome}
                 onChange={(e) => setFormData({ ...formData, desiredOutcome: e.target.value })}
-                placeholder="What result does the prospect achieve and in what timeframe?"
-                rows={2}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tangibleOutcomes">Tangible Outcomes</Label>
-              <Textarea
-                id="tangibleOutcomes"
-                value={formData.tangibleOutcomes}
-                onChange={(e) => setFormData({ ...formData, tangibleOutcomes: e.target.value })}
-                placeholder="Measurable or concrete results (e.g., weight loss, revenue increase)"
-                rows={2}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="emotionalOutcomes">Emotional Outcomes</Label>
-              <Textarea
-                id="emotionalOutcomes"
-                value={formData.emotionalOutcomes}
-                onChange={(e) => setFormData({ ...formData, emotionalOutcomes: e.target.value })}
-                placeholder="Confidence, relief, certainty, identity shift, etc."
-                rows={2}
+                placeholder="What position do they want to be in? What result does the prospect achieve?"
+                rows={4}
               />
             </div>
           </div>

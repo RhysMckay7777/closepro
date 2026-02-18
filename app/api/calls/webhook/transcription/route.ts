@@ -5,15 +5,34 @@ import { eq } from 'drizzle-orm';
 import { getTranscriptionStatus } from '@/lib/ai/transcription';
 import { analyzeCall } from '@/lib/ai/analysis';
 import { callAnalysis } from '@/db/schema';
+import crypto from 'crypto';
 
 /**
- * Webhook endpoint for AssemblyAI transcription completion
- * This should be called by AssemblyAI when transcription is complete
+ * Webhook endpoint for AssemblyAI transcription completion.
+ * Verifies HMAC-SHA256 signature when ASSEMBLYAI_WEBHOOK_SECRET is configured.
  */
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    
+    // ── Signature verification ──────────────────────────────────
+    const webhookSecret = process.env.ASSEMBLYAI_WEBHOOK_SECRET;
+    const rawBody = await request.text();
+
+    if (webhookSecret) {
+      const signature = request.headers.get('x-assemblyai-signature') || '';
+      const expectedSig = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(rawBody)
+        .digest('hex');
+      if (signature !== expectedSig) {
+        console.error('[transcription-webhook] Invalid signature — rejecting request');
+        return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
+      }
+    } else {
+      console.warn('[transcription-webhook] ⚠️ ASSEMBLYAI_WEBHOOK_SECRET not set — skipping signature verification');
+    }
+
+    const body = JSON.parse(rawBody);
+
     // AssemblyAI webhook format
     const { transcript_id, status } = body;
 
@@ -27,7 +46,7 @@ export async function POST(request: NextRequest) {
     // Find call by transcript ID (we'll need to store this mapping)
     // For now, this is a simplified version
     // In production, you'd want to store transcriptId -> callId mapping
-    
+
     // Get transcription result
     const transcriptionStatus = await getTranscriptionStatus(transcript_id);
 
