@@ -99,7 +99,7 @@ interface PerformanceData {
       sessionCount: number;
       summary: string;
       strengthPatterns: Array<{ text: string; frequency: number }>;
-      weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }>;
+      weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string; exampleDates?: string[] }>;
       scoreGuidance: string;
       scoreImprovementSummary?: string;
       handlingImprovements?: string;
@@ -450,7 +450,7 @@ export default function PerformancePage() {
                 <p className={`text-4xl font-black ${getScoreColor(performance.v2.snapshot.overallScore)}`}>
                   {performance.v2.snapshot.overallScore || '—'}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">{performance.v2.snapshot.totalSessions} session{performance.v2.snapshot.totalSessions !== 1 ? 's' : ''}</p>
+                <p className="text-xs text-muted-foreground mt-1">Total Calls Analysed: {performance.totalCalls}</p>
               </CardContent>
             </Card>
             {/* Close Rate */}
@@ -490,7 +490,7 @@ export default function PerformancePage() {
           {/* Section 2: Phase Analysis Tabs */}
           <Card className="border border-white/10 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader className="pb-3">
-              <CardTitle>Phase Analysis</CardTitle>
+              <CardTitle>Phase Performance Analysis</CardTitle>
               <CardDescription>Deep-dive into each call phase across your sessions</CardDescription>
             </CardHeader>
             <CardContent>
@@ -679,6 +679,11 @@ export default function PerformancePage() {
                               </div>
                               {w.whyItMatters && <p className="text-xs text-muted-foreground pl-5"><span className="font-semibold">Why:</span> {w.whyItMatters}</p>}
                               {w.whatToChange && <p className="text-xs text-blue-400 pl-5"><span className="font-semibold">Change:</span> {w.whatToChange}</p>}
+                              {w.exampleDates && w.exampleDates.length > 0 && (
+                                <p className="text-xs text-muted-foreground/60 pl-5">
+                                  Observed: {w.exampleDates.slice(0, 3).map(d => new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })).join(', ')}
+                                </p>
+                              )}
                             </div>
                           ))}
                         </div>

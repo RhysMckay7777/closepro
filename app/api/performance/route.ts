@@ -1122,7 +1122,7 @@ export async function GET(request: NextRequest) {
     const diffScores = allAnalyses.filter(a => typeof a.prospectDifficultyScore === 'number' && a.prospectDifficultyScore > 0).map(a => a.prospectDifficultyScore!);
     const avgDifficulty = diffScores.length > 0 ? Math.round(diffScores.reduce((s, d) => s + d, 0) / diffScores.length) : null;
     const avgDifficultyTier = avgDifficulty !== null
-      ? (avgDifficulty >= 41 ? 'easy' : avgDifficulty >= 32 ? 'realistic' : avgDifficulty >= 20 ? 'hard' : 'expert')
+      ? (avgDifficulty >= 41 ? 'expert' : avgDifficulty >= 32 ? 'hard' : avgDifficulty >= 20 ? 'realistic' : 'easy')
       : null;
 
     // Objection conversion rate: calls WITH objections that still closed
@@ -1159,7 +1159,7 @@ export async function GET(request: NextRequest) {
       sessionCount: number;
       summary: string;
       strengthPatterns: Array<{ text: string; frequency: number }>;
-      weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }>;
+      weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string; exampleDates?: string[] }>;
       scoreGuidance: string;
       scoreImprovementSummary?: string;
       handlingImprovements?: string;
@@ -1172,7 +1172,7 @@ export async function GET(request: NextRequest) {
       const scores: number[] = [];
       const summaries: string[] = [];
       const strengths: string[] = [];
-      const weaknesses: Array<{ text: string; why?: string; change?: string }> = [];
+      const weaknesses: Array<{ text: string; why?: string; change?: string; date?: string }> = [];
 
       for (const a of analyses) {
         const ps = a.phaseScoresData;
@@ -1193,7 +1193,7 @@ export async function GET(request: NextRequest) {
           if (phase === 'overall') {
             // Overall has callOutcomeAndWhy, whatLimited, primaryImprovementFocus
             if (phaseDetail.primaryImprovementFocus) {
-              weaknesses.push({ text: phaseDetail.primaryImprovementFocus });
+              weaknesses.push({ text: phaseDetail.primaryImprovementFocus, date: a.createdAt?.toISOString?.() || '' });
             }
             if (phaseDetail.summary) summaries.push(phaseDetail.summary);
           } else if (phase === 'objections') {
@@ -1201,7 +1201,7 @@ export async function GET(request: NextRequest) {
             if (phaseDetail.blocks && Array.isArray(phaseDetail.blocks)) {
               for (const block of phaseDetail.blocks) {
                 if (block.higherLeverageAlternative) {
-                  weaknesses.push({ text: block.howHandled || 'Objection handling', why: block.whySurfaced, change: block.higherLeverageAlternative });
+                  weaknesses.push({ text: block.howHandled || 'Objection handling', why: block.whySurfaced, change: block.higherLeverageAlternative, date: a.createdAt?.toISOString?.() || '' });
                 }
               }
             }
@@ -1218,11 +1218,12 @@ export async function GET(request: NextRequest) {
             if (Array.isArray(phaseDetail.whatLimitedImpact)) {
               for (const item of phaseDetail.whatLimitedImpact) {
                 if (typeof item === 'string') {
-                  weaknesses.push({ text: item });
+                  weaknesses.push({ text: item, date: a.createdAt?.toISOString?.() || '' });
                 } else if (item && typeof item === 'object') {
                   weaknesses.push({
                     text: item.description || '',
                     change: item.whatShouldHaveDone || '',
+                    date: a.createdAt?.toISOString?.() || '',
                   });
                 }
               }
@@ -1289,8 +1290,8 @@ export async function GET(request: NextRequest) {
       return groups.sort((a, b) => b.frequency - a.frequency);
     }
 
-    function groupWeaknessByKeywords(items: Array<{ text: string; why?: string; change?: string }>): Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }> {
-      const groups: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }> = [];
+    function groupWeaknessByKeywords(items: Array<{ text: string; why?: string; change?: string; date?: string }>): Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string; exampleDates?: string[] }> {
+      const groups: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string; exampleDates: string[] }> = [];
       for (const item of items) {
         if (!item.text || item.text.length < 10) continue;
         const kw = getKW(item.text);
@@ -1304,11 +1305,18 @@ export async function GET(request: NextRequest) {
             if (item.text.length > g.text.length) g.text = item.text;
             if (item.why && (!g.whyItMatters || item.why.length > g.whyItMatters.length)) g.whyItMatters = item.why;
             if (item.change && (!g.whatToChange || item.change.length > g.whatToChange.length)) g.whatToChange = item.change;
+            if (item.date && g.exampleDates.length < 3) g.exampleDates.push(item.date);
             matched = true;
             break;
           }
         }
-        if (!matched) groups.push({ text: item.text, frequency: 1, whyItMatters: item.why, whatToChange: item.change });
+        if (!matched) groups.push({ text: item.text, frequency: 1, whyItMatters: item.why, whatToChange: item.change, exampleDates: item.date ? [item.date] : [] });
+      }
+      // Fix 4: Auto-generate whyItMatters fallback for items lacking it
+      for (const g of groups) {
+        if (!g.whyItMatters && g.frequency > 0) {
+          g.whyItMatters = `This pattern appeared ${g.frequency > 1 ? `across ${g.frequency} sessions` : 'in your recent session'} and is likely reducing your effectiveness in this phase.`;
+        }
       }
       return groups.sort((a, b) => b.frequency - a.frequency);
     }
@@ -1362,6 +1370,7 @@ export async function GET(request: NextRequest) {
       discovery: {
         urgencyRate: ['urgency', 'urgent', 'timeline', 'deadline'],
         financialDepthRate: ['financial', 'budget', 'money', 'investment', 'cost'],
+        partnerAuthorityRate: ['partner', 'authority', 'decision', 'stakeholder', 'spouse'],
         goalExplorationRate: ['goal', 'gap', 'aspiration', 'outcome'],
       },
       pitch: {
