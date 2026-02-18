@@ -35,8 +35,49 @@ const ALLOWED_TYPES = [
   'text/plain',
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'text/vtt',
 ];
-const ALLOWED_EXT = ['.txt', '.pdf', '.docx', '.doc'];
+const ALLOWED_EXT = ['.txt', '.pdf', '.docx', '.doc', '.vtt'];
+
+/**
+ * Parse WebVTT transcript: strip WEBVTT header, timestamps, cue IDs, and inline tags.
+ */
+function parseVttTranscript(content: string): string {
+  // Strip BOM (common in Windows-generated VTT files)
+  const cleaned = content.replace(/^\uFEFF/, '');
+  const lines = cleaned.split('\n');
+  const textLines: string[] = [];
+  let inBlock = false; // Track STYLE/REGION blocks
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Skip empty lines (but end STYLE/REGION blocks)
+    if (!trimmed) {
+      inBlock = false;
+      continue;
+    }
+
+    // Skip STYLE/REGION blocks entirely
+    if (trimmed === 'STYLE' || trimmed === 'REGION') {
+      inBlock = true;
+      continue;
+    }
+    if (inBlock) continue;
+
+    if (trimmed === 'WEBVTT' || trimmed.startsWith('WEBVTT ')) continue;
+    if (trimmed.startsWith('NOTE')) continue;
+    if (/^\d+$/.test(trimmed)) continue;          // Numeric cue IDs
+    if (trimmed.includes('-->')) continue;          // Timestamp lines
+    // Skip positioning metadata lines (line:X position:Y% size:Z% align:W)
+    if (/^(line|position|size|align):/i.test(trimmed)) continue;
+
+    // Strip inline VTT tags including <v SpeakerName>...</v> voice tags
+    const stripped = trimmed.replace(/<[^>]+>/g, '').trim();
+    if (stripped) textLines.push(stripped);
+  }
+  return textLines.join('\n');
+}
 
 export function isAllowedTranscriptFile(name: string, type?: string): boolean {
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase();
@@ -96,5 +137,9 @@ export async function extractTextFromTranscriptFile(
     }
   }
 
-  throw new Error(`Unsupported transcript file type: ${fileName}. Use .txt, .pdf, or .docx`);
+  if (ext === '.vtt' || type === 'text/vtt') {
+    return parseVttTranscript(buffer.toString('utf-8'));
+  }
+
+  throw new Error(`Unsupported transcript file type: ${fileName}. Use .txt, .pdf, .docx, or .vtt`);
 }

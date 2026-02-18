@@ -113,6 +113,8 @@ export async function POST(request: NextRequest) {
               logisticsScore: null,
               skillScores: JSON.stringify(analysisResult.categoryScores),
               objectionDetails: JSON.stringify(analysisResult.objections ?? []),
+              objectionPresent: (analysisResult.objections ?? []).length > 0,
+              objectionResolved: false, // Webhook path doesn't have outcome context
               prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
               prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
               coachingRecommendations: JSON.stringify(enhancedRecommendations),

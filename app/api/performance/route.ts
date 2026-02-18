@@ -1103,11 +1103,19 @@ export async function GET(request: NextRequest) {
     type PhaseKey = typeof PHASE_KEYS[number];
 
     // ── V2 Snapshot ─────────────────────────────────────────
-    // Close rate: calls with result='closed' / total calls with a result
-    const callsWithResult = allAnalyses.filter(a => a.type === 'call' && (a as any).callResult);
-    const closedCalls = callsWithResult.filter(a => (a as any).callResult === 'closed');
-    const closeRate = callsWithResult.length > 0
-      ? Math.round((closedCalls.length / callsWithResult.length) * 100)
+    // Close rate: Connor formula — Closed Calls / Total Qualified Calls
+    const CLOSED_RESULTS = ['closed', 'deposit', 'payment_plan'];
+    const UNQUALIFIED_RESULTS = ['no_show', 'unqualified'];
+
+    const qualifiedCalls = allAnalyses.filter(a => {
+      const result = (a as any).callResult;
+      return a.type === 'call' && result && !UNQUALIFIED_RESULTS.includes(result);
+    });
+    const closedCalls = qualifiedCalls.filter(a =>
+      CLOSED_RESULTS.includes((a as any).callResult)
+    );
+    const closeRate = qualifiedCalls.length > 0
+      ? Math.round((closedCalls.length / qualifiedCalls.length) * 100)
       : null;
 
     // Avg difficulty
@@ -1118,13 +1126,21 @@ export async function GET(request: NextRequest) {
       : null;
 
     // Objection conversion rate: calls WITH objections that still closed
-    const analysesWithObjections = allAnalyses.filter(a => {
-      const objs = parseObjections(a.objectionData);
-      return objs.length > 0;
+    // Computed from existing objectionDetails JSON — works for all historical calls
+    const callsWithObjDetails = allAnalyses.filter(a => {
+      if (a.type !== 'call') return false;
+      try {
+        const details = typeof a.objectionData === 'string'
+          ? JSON.parse(a.objectionData)
+          : a.objectionData;
+        return Array.isArray(details) && details.length > 0;
+      } catch { return false; }
     });
-    const objectionCallsThatClosed = analysesWithObjections.filter(a => a.type === 'call' && (a as any).callResult === 'closed');
-    const objectionConversionRate = analysesWithObjections.length > 0
-      ? Math.round((objectionCallsThatClosed.length / analysesWithObjections.length) * 100)
+    const resolvedObjectionCalls = callsWithObjDetails.filter(a =>
+      CLOSED_RESULTS.includes((a as any).callResult)
+    );
+    const objectionConversionRate = callsWithObjDetails.length > 0
+      ? Math.round((resolvedObjectionCalls.length / callsWithObjDetails.length) * 100)
       : null;
 
     const v2Snapshot = {
@@ -1145,6 +1161,10 @@ export async function GET(request: NextRequest) {
       strengthPatterns: Array<{ text: string; frequency: number }>;
       weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }>;
       scoreGuidance: string;
+      scoreImprovementSummary?: string;
+      handlingImprovements?: string;
+      preEmptionImprovements?: string;
+      structuralMetrics?: Record<string, number | string>;
     }
 
     function buildPhaseTab(phase: PhaseKey | 'overall', analyses: AnalysisRow[]): V2PhaseTab {
@@ -1298,6 +1318,102 @@ export async function GET(request: NextRequest) {
     v2Phases['overall'] = buildPhaseTab('overall', allAnalyses);
     for (const phase of PHASE_KEYS) {
       v2Phases[phase] = buildPhaseTab(phase, allAnalyses);
+    }
+
+    // ── calculatePatternRate helper ────────────────────────────
+    function calculatePatternRate(
+      phaseData: any[],
+      keywords: string[]
+    ): number {
+      const matches = phaseData.filter(d => {
+        const text = [...(d.whatWorked || []), ...(d.whatLimitedImpact || []).map((i: any) => typeof i === 'string' ? i : i?.description || ''), d.summary || '']
+          .join(' ').toLowerCase();
+        return keywords.some(k => text.includes(k));
+      });
+      return phaseData.length > 0
+        ? Math.round((matches.length / phaseData.length) * 100)
+        : 0;
+    }
+
+    // ── FIX 1: Overall tab — scoreImprovementSummary ───────────
+    {
+      const tab = v2Phases['overall'];
+      const topWeaknesses = tab.weaknessPatterns.slice(0, 2).map(w => w.text.slice(0, 80));
+      const weaknessCount = tab.weaknessPatterns.reduce((s, w) => s + w.frequency, 0);
+      let rangeAdvice = '';
+      if (tab.averageScore < 50) rangeAdvice = 'Fundamental structural changes are needed.';
+      else if (tab.averageScore < 65) rangeAdvice = 'Focus on consistency improvements.';
+      else if (tab.averageScore < 80) rangeAdvice = 'Refinement and depth will push you higher.';
+      else rangeAdvice = 'You\'re in the top tier — focus on maintaining and edge-case mastery.';
+
+      if (topWeaknesses.length > 0 && tab.averageScore > 0) {
+        tab.scoreImprovementSummary = `To raise your overall score into the ${tab.averageScore < 65 ? '65+' : tab.averageScore < 80 ? '80+' : '90+'} range, focus on: ${topWeaknesses.join(' and ')}. These patterns appeared across ${weaknessCount} call${weaknessCount !== 1 ? 's' : ''} and are directly impacting your close rate. ${rangeAdvice}`;
+      } else if (tab.averageScore > 0) {
+        tab.scoreImprovementSummary = `Your overall average is ${tab.averageScore}/100. ${rangeAdvice}`;
+      }
+    }
+
+    // ── FIX 3: Structural keyword metrics per phase ───────────
+    const PHASE_KEYWORDS: Record<string, Record<string, string[]>> = {
+      intro: {
+        agendaSetRate: ['agenda', 'framework', 'structure', 'outline'],
+        authorityFramingRate: ['authority', 'positioning', 'frame', 'credibility', 'expert'],
+      },
+      discovery: {
+        urgencyRate: ['urgency', 'urgent', 'timeline', 'deadline'],
+        financialDepthRate: ['financial', 'budget', 'money', 'investment', 'cost'],
+        goalExplorationRate: ['goal', 'gap', 'aspiration', 'outcome'],
+      },
+      pitch: {
+        transformationRate: ['transformation', 'result', 'outcome', 'success'],
+        caseStudyRate: ['case study', 'testimonial', 'client', 'story'],
+        tonalityRate: ['tonality', 'tone', 'delivery', 'energy'],
+      },
+      close: {
+        valueConfirmRate: ['value confirmation', 'value', 'worth', 'roi'],
+        assumptiveRate: ['assumptive', 'assumption', 'next step'],
+        temperatureRate: ['temperature', 'check', 'scale', 'ready'],
+      },
+    };
+
+    for (const [phase, keywordMap] of Object.entries(PHASE_KEYWORDS)) {
+      if (!v2Phases[phase]) continue;
+      const allPhaseData = allAnalyses
+        .map(a => a.phaseAnalysisData?.[phase as PhaseKey])
+        .filter(Boolean);
+
+      if (allPhaseData.length > 0) {
+        const metrics: Record<string, number | string> = { callsAnalysed: allPhaseData.length };
+        for (const [metricName, keywords] of Object.entries(keywordMap)) {
+          metrics[metricName] = calculatePatternRate(allPhaseData, keywords);
+        }
+        v2Phases[phase].structuralMetrics = metrics;
+      }
+    }
+
+    // ── FIX 2: Objections tab — handlingImprovements ──────────
+    {
+      const allObjBlocks: any[] = [];
+      for (const a of allAnalyses) {
+        const pa = a.phaseAnalysisData;
+        if (!pa?.objections?.blocks) continue;
+        allObjBlocks.push(...pa.objections.blocks);
+      }
+      const handlingArr = allObjBlocks
+        .filter((b: any) => b.howHandled)
+        .map((b: any) => b.howHandled as string);
+      const preEmptionArr = allObjBlocks
+        .filter((b: any) => b.higherLeverageAlternative)
+        .map((b: any) => b.higherLeverageAlternative as string);
+
+      if (v2Phases['objections']) {
+        if (handlingArr.length > 0) {
+          v2Phases['objections'].handlingImprovements = `Across ${handlingArr.length} objections, handling patterns include: ${[...new Set(handlingArr.slice(0, 3))].join('; ')}. Focus on improving response depth and conviction.`;
+        }
+        if (preEmptionArr.length > 0) {
+          v2Phases['objections'].preEmptionImprovements = `Higher-leverage alternatives identified: ${[...new Set(preEmptionArr.slice(0, 3))].join('; ')}. Pre-empting these objections earlier in the call will reduce resistance.`;
+        }
+      }
     }
 
     // ── V2 Objections tab (grouped by category) ─────────────

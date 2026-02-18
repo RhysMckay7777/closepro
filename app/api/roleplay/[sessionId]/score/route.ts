@@ -230,39 +230,10 @@ export async function POST(
       roleplayFeedback: roleplayFeedback ? JSON.stringify(roleplayFeedback) : null,
     };
 
-    let analysis;
-    try {
-      [analysis] = await db
-        .insert(roleplayAnalysis)
-        .values(insertValues)
-        .returning();
-    } catch (insertErr: any) {
-      if (insertErr?.message?.includes('column') && insertErr?.message?.includes('does not exist')) {
-        console.log('[roleplay-score] Missing columns detected — running auto-migration…');
-        // v2 analysis columns
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS phase_scores TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS phase_analysis TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p1 TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p2 TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS closer_effectiveness TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS prospect_difficulty_justifications TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS action_points TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_analysis ADD COLUMN IF NOT EXISTS roleplay_feedback TEXT`);
-        // Replay context columns on sessions table
-        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_phase TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_source_call_id TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_source_session_id TEXT`);
-        await db.execute(sql`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS replay_context TEXT`);
-        console.log('[roleplay-score] Auto-migration complete. Retrying insert…');
-        [analysis] = await db
-          .insert(roleplayAnalysis)
-          .values(insertValues)
-          .returning();
-        console.log('[roleplay-score] Analysis row inserted after migration');
-      } else {
-        throw insertErr;
-      }
-    }
+    const [analysis] = await db
+      .insert(roleplayAnalysis)
+      .values(insertValues)
+      .returning();
 
     // Update session with score and analysis
     await db

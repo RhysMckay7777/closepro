@@ -31,8 +31,7 @@ export default function EditOfferPage() {
     coreProblems: '',
     // Section 3 – Desired Outcome & Transformation
     desiredOutcome: '',
-    tangibleOutcomes: '',
-    emotionalOutcomes: '',
+    goals: '',
     // Section 4 – Deliverables
     deliverables: '',
     // Section 5 – Cost Profile
@@ -83,8 +82,7 @@ export default function EditOfferPage() {
         customerStage: o.customerStage || '',
         coreProblems,
         desiredOutcome: o.desiredOutcome || o.coreOutcome || '',
-        tangibleOutcomes: o.tangibleOutcomes || '',
-        emotionalOutcomes: o.emotionalOutcomes || '',
+        goals: o.goals || [o.tangibleOutcomes, o.emotionalOutcomes].filter(Boolean).join('\n\n') || '',
         deliverables: o.deliverables || o.mechanismHighLevel || '',
         paymentOptions: o.paymentOptions || '',
         timePerWeek: o.timePerWeek || '',

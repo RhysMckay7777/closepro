@@ -114,7 +114,7 @@ export async function PATCH(
 
     // Build update object
     const updateData: any = {};
-    
+
     if (body.name !== undefined) updateData.name = body.name;
     if (body.offerCategory !== undefined) updateData.offerCategory = body.offerCategory;
     if (body.whoItsFor !== undefined) updateData.whoItsFor = body.whoItsFor;
@@ -141,6 +141,22 @@ export async function PATCH(
     if (body.bestFitNotes !== undefined) updateData.bestFitNotes = body.bestFitNotes;
     if (body.isTemplate !== undefined) updateData.isTemplate = body.isTemplate;
     if (body.isActive !== undefined) updateData.isActive = body.isActive;
+    // New-schema fields
+    if (body.coreOfferPrice !== undefined) updateData.coreOfferPrice = body.coreOfferPrice;
+    if (body.customerStage !== undefined) updateData.customerStage = body.customerStage;
+    if (body.coreProblems !== undefined) updateData.coreProblems = body.coreProblems;
+    if (body.desiredOutcome !== undefined) updateData.desiredOutcome = body.desiredOutcome;
+    if (body.tangibleOutcomes !== undefined) updateData.tangibleOutcomes = body.tangibleOutcomes;
+    if (body.emotionalOutcomes !== undefined) updateData.emotionalOutcomes = body.emotionalOutcomes;
+    if (body.goals !== undefined) updateData.goals = body.goals;
+    if (body.deliverables !== undefined) updateData.deliverables = body.deliverables;
+    if (body.paymentOptions !== undefined) updateData.paymentOptions = body.paymentOptions;
+    if (body.timePerWeek !== undefined) updateData.timePerWeek = body.timePerWeek;
+    if (body.estimatedTimeToResults !== undefined) updateData.estimatedTimeToResults = body.estimatedTimeToResults;
+    if (body.caseStudyStrength !== undefined) updateData.caseStudyStrength = body.caseStudyStrength;
+    if (body.guaranteesRefundTerms !== undefined) updateData.guaranteesRefundTerms = body.guaranteesRefundTerms;
+    if (body.primaryFunnelSource !== undefined) updateData.primaryFunnelSource = body.primaryFunnelSource;
+    if (body.funnelContextAdditional !== undefined) updateData.funnelContextAdditional = body.funnelContextAdditional;
 
     updateData.updatedAt = new Date();
 

@@ -186,6 +186,7 @@ export async function POST(request: NextRequest) {
       desiredOutcome,
       tangibleOutcomes,
       emotionalOutcomes,
+      goals,
       deliverables,
       paymentOptions,
       timePerWeek,
@@ -285,6 +286,7 @@ export async function POST(request: NextRequest) {
           desiredOutcome: desiredOutcome || coreOutcome || null,
           tangibleOutcomes: tangibleOutcomes || null,
           emotionalOutcomes: emotionalOutcomes || null,
+          goals: goals || null,
           deliverables: deliverables || mechanismHighLevel || null,
           paymentOptions: paymentOptions || null,
           timePerWeek: timePerWeek || null,
@@ -362,17 +364,17 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating offer:', error);
-    
+
     // Check if it's a missing column error
     if (error.message && error.message.includes('does not exist')) {
       return NextResponse.json(
-        { 
-          error: `Database schema error: ${error.message}. Please run the migration: ALTER TABLE "offers" ADD COLUMN IF NOT EXISTS "core_offer_price" text;` 
+        {
+          error: `Database schema error: ${error.message}. Please run the migration: ALTER TABLE "offers" ADD COLUMN IF NOT EXISTS "core_offer_price" text;`
         },
         { status: 500 }
       );
     }
-    
+
     return NextResponse.json(
       { error: error.message || 'Failed to create offer' },
       { status: 500 }

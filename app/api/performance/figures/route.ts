@@ -327,20 +327,8 @@ export async function GET(request: NextRequest) {
         });
       }
     } catch (instErr: unknown) {
-      // Auto-migrate: add new columns if they don't exist
-      if (isMissingColumnError(instErr)) {
-        try {
-          await db.execute(sql`ALTER TABLE payment_plan_instalments ADD COLUMN IF NOT EXISTS instalment_number INTEGER`);
-          await db.execute(sql`ALTER TABLE payment_plan_instalments ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending'`);
-          await db.execute(sql`ALTER TABLE payment_plan_instalments ADD COLUMN IF NOT EXISTS collected_date TIMESTAMP`);
-          console.log('Figures API: auto-migrated payment_plan_instalments columns');
-        } catch {
-          // non-fatal
-        }
-      } else {
-        // paymentPlanInstalments table may not exist yet — gracefully skip
-        console.error('Figures API: instalment query failed (may need migration):', instErr);
-      }
+      // paymentPlanInstalments table or columns may not exist yet — gracefully skip
+      console.error('Figures API: instalment query failed (run drizzle-kit push to migrate):', instErr);
     }
 
     // Remove parent salesCalls rows that have payment plan instalments (avoid double-counting)

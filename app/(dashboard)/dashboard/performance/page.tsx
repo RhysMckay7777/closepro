@@ -101,6 +101,10 @@ interface PerformanceData {
       strengthPatterns: Array<{ text: string; frequency: number }>;
       weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string }>;
       scoreGuidance: string;
+      scoreImprovementSummary?: string;
+      handlingImprovements?: string;
+      preEmptionImprovements?: string;
+      structuralMetrics?: Record<string, number | string>;
     }>;
     objectionsGrouped: Record<string, Array<{ text: string; frequency: number; howHandled?: string; whySurfaced?: string; higherLeverageAlt?: string }>>;
     priorityActionPlan: Array<{ title: string; observedCount: number; impact: string; whatToChange: string; microDrill?: string }>;
@@ -537,6 +541,20 @@ export default function PerformancePage() {
                         </div>
                       </div>
 
+                      {/* Handling & Pre-emption Improvements */}
+                      {phase.handlingImprovements && (
+                        <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-3">
+                          <p className="text-xs font-bold text-amber-400 mb-1">Handling Improvements</p>
+                          <p className="text-sm">{phase.handlingImprovements}</p>
+                        </div>
+                      )}
+                      {phase.preEmptionImprovements && (
+                        <div className="rounded-lg bg-blue-500/5 border border-blue-500/20 p-3">
+                          <p className="text-xs font-bold text-blue-400 mb-1">Pre-emption Opportunities</p>
+                          <p className="text-sm">{phase.preEmptionImprovements}</p>
+                        </div>
+                      )}
+
                       {/* Grouped objections by category */}
                       {hasAny ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -599,6 +617,37 @@ export default function PerformancePage() {
                         <p className="text-sm">{phase.summary}</p>
                       </div>
                     )}
+
+                    {/* Score Improvement Summary (Overall tab only) */}
+                    {phaseTab === 'overall' && phase.scoreImprovementSummary && (
+                      <div className="rounded-lg bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 p-4">
+                        <p className="text-xs font-bold text-primary mb-1">Score Improvement Summary</p>
+                        <p className="text-sm">{phase.scoreImprovementSummary}</p>
+                      </div>
+                    )}
+
+                    {/* Structural Metrics (Intro / Discovery / Pitch / Close) */}
+                    {phase.structuralMetrics && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {Object.entries(phase.structuralMetrics)
+                          .filter(([k]) => k !== 'callsAnalysed')
+                          .map(([key, value]) => {
+                            // Convert camelCase to readable label
+                            const label = key.replace(/Rate$/, '').replace(/([A-Z])/g, ' $1').trim();
+                            return (
+                              <div key={key} className="rounded-lg bg-muted/30 border border-white/5 p-3 text-center">
+                                <p className="text-2xl font-black">{String(value)}%</p>
+                                <p className="text-xs text-muted-foreground capitalize">{label}</p>
+                              </div>
+                            );
+                          })}
+                        <div className="rounded-lg bg-muted/10 border border-white/5 p-3 text-center">
+                          <p className="text-2xl font-black text-muted-foreground">{phase.structuralMetrics.callsAnalysed}</p>
+                          <p className="text-xs text-muted-foreground">Calls Analysed</p>
+                        </div>
+                      </div>
+                    )
+                    }
 
                     {/* Strength patterns */}
                     {phase.strengthPatterns.length > 0 && (
@@ -699,7 +748,8 @@ export default function PerformancePage() {
             </div>
           </CardContent>
         </Card>
-      )}
+      )
+      }
 
       {/* Export buttons */}
       <div className="flex items-center gap-2 justify-end">
@@ -712,6 +762,6 @@ export default function PerformancePage() {
           Download PDF
         </Button>
       </div>
-    </div>
+    </div >
   );
 }

@@ -86,6 +86,10 @@ export async function analyzeCallAsync(
     // Use phaseScores.overall for overallScore if v2 and overallScore is missing
     const effectiveOverallScore = analysisResult.overallScore || analysisResult.phaseScores?.overall || 0;
 
+    // Compute objection booleans from analysis result
+    const objections = analysisResult.objections ?? [];
+    const hasObjections = objections.length > 0;
+
     const insertValues: Record<string, unknown> = {
       callId,
       overallScore: effectiveOverallScore,
@@ -94,7 +98,9 @@ export async function analyzeCallAsync(
       fitScore: null,
       logisticsScore: null,
       skillScores: JSON.stringify(analysisResult.categoryScores),
-      objectionDetails: JSON.stringify(analysisResult.objections ?? []),
+      objectionDetails: JSON.stringify(objections),
+      objectionPresent: hasObjections,
+      objectionResolved: false, // Updated after outcome is determined below
       prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore ?? null,
       prospectDifficultyTier: analysisResult.prospectDifficulty?.difficultyTier ?? null,
       coachingRecommendations: JSON.stringify(enhancedRecommendations),
@@ -114,33 +120,8 @@ export async function analyzeCallAsync(
     };
 
     console.log('[analyze-call] Inserting analysis row into DB...');
-    try {
-      await db.insert(callAnalysis).values(insertValues);
-      console.log('[analyze-call] Analysis row inserted successfully');
-    } catch (insertErr) {
-      if (isMissingColumnError(insertErr)) {
-        // Auto-migrate: add missing columns
-        console.log('[analyze-call] Missing columns detected — running auto-migration…');
-        // v1 columns
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS category_feedback TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS moment_coaching TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS priority_fixes TEXT`);
-        // v2 columns
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS phase_scores TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS phase_analysis TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p1 TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS outcome_diagnostic_p2 TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS closer_effectiveness TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS prospect_difficulty_justifications TEXT`);
-        await db.execute(sql`ALTER TABLE call_analysis ADD COLUMN IF NOT EXISTS action_points TEXT`);
-        console.log('[analyze-call] Auto-migration complete. Retrying insert…');
-        await db.insert(callAnalysis).values(insertValues);
-        console.log('[analyze-call] Analysis row inserted after migration');
-      } else {
-        throw insertErr;
-      }
-    }
+    await db.insert(callAnalysis).values(insertValues as any);
+    console.log('[analyze-call] Analysis row inserted successfully');
 
     let callRow: { analysisIntent: string | null } | null = null;
     try {
@@ -201,6 +182,17 @@ export async function analyzeCallAsync(
         if (outcome!.reasonForOutcome?.trim()) updatePayload.reasonForOutcome = outcome!.reasonForOutcome.trim();
         await db.update(salesCalls).set(updatePayload as any).where(eq(salesCalls.id, callId));
         console.log('[analyze-call] ✅ Call updated with outcome + completed status');
+
+        // Update objectionResolved if objections were present and call closed successfully
+        const CLOSED_RESULTS = ['closed', 'deposit', 'payment_plan'];
+        if (hasObjections && outcome!.result && CLOSED_RESULTS.includes(outcome!.result)) {
+          try {
+            await db.update(callAnalysis)
+              .set({ objectionResolved: true } as any)
+              .where(eq(callAnalysis.callId, callId));
+            console.log('[analyze-call] objectionResolved set to true (objections present + closed)');
+          } catch { /* non-fatal */ }
+        }
       } catch (err) {
         if (isMissingColumnError(err)) {
           console.log('[analyze-call] Missing column during outcome update, falling back to setCallStatusCompleted');

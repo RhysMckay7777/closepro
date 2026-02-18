@@ -306,6 +306,10 @@ export const callAnalysis = pgTable('call_analysis', {
   // Objection breakdown (pillar classification only) - JSON array of { objection, pillar, handling }
   objectionDetails: text('objection_details'),
 
+  // Objection tracking booleans (v2 — nullable for backward compat)
+  objectionPresent: boolean('objection_present'),   // true if ANY objection was raised
+  objectionResolved: boolean('objection_resolved'),  // true if objectionPresent AND call resulted in closed/deposit/payment_plan
+
   // Prospect difficulty (from AI analysis, for call list and reporting)
   prospectDifficulty: integer('prospect_difficulty'), // 0-50
   prospectDifficultyTier: text('prospect_difficulty_tier'), // easy | realistic | hard | expert
@@ -372,8 +376,9 @@ export const offers = pgTable('offers', {
   customerStage: customerStageEnum('customer_stage'), // 'aspiring', 'current', 'mixed'
   coreProblems: text('core_problems'), // Free text (replaces primaryProblemsSolved structure)
   desiredOutcome: text('desired_outcome'), // Core Outcome & Timeline
-  tangibleOutcomes: text('tangible_outcomes'), // Measurable results
-  emotionalOutcomes: text('emotional_outcomes'), // Confidence, relief, etc.
+  tangibleOutcomes: text('tangible_outcomes'), // Measurable results (legacy — use goals)
+  emotionalOutcomes: text('emotional_outcomes'), // Confidence, relief, etc. (legacy — use goals)
+  goals: text('goals'), // Consolidated goals field (replaces tangible + emotional)
   deliverables: text('deliverables'), // What customer receives
   paymentOptions: text('payment_options'), // Descriptive text (not JSON)
   timePerWeek: text('time_per_week'), // Number or range
