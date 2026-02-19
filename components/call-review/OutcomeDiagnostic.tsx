@@ -10,11 +10,11 @@ export interface OutcomeDiagnosticProps {
   sectionNumber?: number;
 }
 
-function getParagraph2Title(outcome?: string | null, overallScore?: number | null): string {
-  if (outcome === 'closed' && (overallScore ?? 0) >= 70) return 'Optimization Opportunities';
-  if (outcome === 'deposit' || outcome === 'payment_plan') return 'Path to Full Close';
-  if (outcome === 'lost') return 'What Needed to Happen';
-  return 'Additional Context';
+function getParagraph2Title(outcome?: string | null, overallScore?: number | null): { title: string; color: string } {
+  if (outcome === 'closed' && (overallScore ?? 0) >= 70) return { title: 'Optimization Opportunities', color: 'text-blue-400' };
+  if (outcome === 'deposit' || outcome === 'payment_plan') return { title: 'Path to Full Close', color: 'text-emerald-400' };
+  if (outcome === 'lost') return { title: 'What Needed to Happen', color: 'text-red-400' };
+  return { title: 'Additional Context', color: 'text-blue-400' };
 }
 
 export function OutcomeDiagnostic({ paragraph1, paragraph2, outcome, overallScore, sectionNumber = 3 }: OutcomeDiagnosticProps) {
@@ -29,13 +29,13 @@ export function OutcomeDiagnostic({ paragraph1, paragraph2, outcome, overallScor
       <CardContent className="space-y-4">
         {paragraph1 && (
           <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-1">Why This Result Occurred</p>
+            <p className="text-sm font-semibold text-amber-400 mb-1">Why This Result Occurred</p>
             <p className="text-base leading-relaxed">{paragraph1}</p>
           </div>
         )}
         {paragraph2 && (
           <div>
-            <p className="text-xs font-semibold text-muted-foreground mb-1">{getParagraph2Title(outcome, overallScore)}</p>
+            <p className={`text-sm font-semibold ${getParagraph2Title(outcome, overallScore).color} mb-1`}>{getParagraph2Title(outcome, overallScore).title}</p>
             <p className="text-base leading-relaxed text-muted-foreground">{paragraph2}</p>
           </div>
         )}

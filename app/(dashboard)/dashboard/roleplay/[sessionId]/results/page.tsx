@@ -25,7 +25,7 @@ import { MomentFeedbackList } from '@/components/roleplay/MomentFeedbackList';
 import { ObjectionAnalysis } from '@/components/roleplay/ObjectionAnalysis';
 import { CategoryFeedbackSection } from '@/components/roleplay/CategoryFeedbackSection';
 import { extractMomentFeedback } from '@/lib/roleplayApi';
-import { ProspectDifficultyPanel, PhaseAnalysisTabs, ActionPointCards } from '@/components/call-review';
+import { ProspectDifficultyPanel, PhaseAnalysisTabs, ActionPointCards, OutcomeDiagnostic } from '@/components/call-review';
 import {
   parseStagesCompleted,
   parseCategoryFeedback,
@@ -95,9 +95,10 @@ export default function RoleplayResultsPage() {
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
   const scoringTriggeredRef = useRef(false);
 
-  // Stop polling
+  // Stop polling (handles both setInterval and setTimeout)
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
+      clearTimeout(pollingRef.current);
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
@@ -156,15 +157,22 @@ export default function RoleplayResultsPage() {
     // No analysis yet — trigger scoring in background and start polling
     triggerScoring(); // Fire and forget
 
-    // Poll every 3 seconds to check if analysis is ready
-    pollingRef.current = setInterval(async () => {
+    // Exponential backoff polling: 2s → 4s → 6s → 8s → 10s (max)
+    let pollInterval = 2000;
+    const POLL_MAX = 10000;
+    const pollWithBackoff = async () => {
       const ready = await checkForAnalysis();
       if (ready) {
         stopPolling();
+        return;
       }
-    }, 3000);
+      // Increase interval up to max
+      pollInterval = Math.min(pollInterval + 2000, POLL_MAX);
+      pollingRef.current = setTimeout(pollWithBackoff, pollInterval);
+    };
+    pollingRef.current = setTimeout(pollWithBackoff, pollInterval);
 
-    // Safety: stop polling after 90 seconds
+    // Safety: stop polling after 120 seconds
     setTimeout(() => {
       if (pollingRef.current) {
         stopPolling();
@@ -173,7 +181,7 @@ export default function RoleplayResultsPage() {
           setLoading(false);
         }
       }
-    }, 90000);
+    }, 120000);
   }, [sessionId, checkForAnalysis, triggerScoring, stopPolling, analysis]);
 
   useEffect(() => {
@@ -464,8 +472,8 @@ export default function RoleplayResultsPage() {
         <div className="bg-orange-500/10 border border-orange-500/50 rounded-lg p-4 flex items-start gap-3">
           <AlertTriangle className="h-5 w-5 text-orange-500 flex-shrink-0 mt-0.5" />
           <div>
-            <p className="font-medium text-orange-700">Roleplay Incomplete</p>
-            <p className="text-sm text-orange-600">
+            <p className="font-medium text-orange-400">Roleplay Incomplete</p>
+            <p className="text-sm text-orange-300">
               This roleplay ended before a full sales conversation was completed.
               Score is partial and not comparable to full-call scores.
             </p>
@@ -543,10 +551,18 @@ export default function RoleplayResultsPage() {
             sectionNumber={3}
             defaultTab={isReplay && session?.replayPhase && session.replayPhase !== 'skill' ? session.replayPhase : undefined}
           />
+          {(analysis.outcomeDiagnosticP1 || analysis.outcomeDiagnosticP2) && (
+            <OutcomeDiagnostic
+              paragraph1={analysis.outcomeDiagnosticP1}
+              paragraph2={analysis.outcomeDiagnosticP2}
+              overallScore={analysis.overallScore}
+              sectionNumber={4}
+            />
+          )}
           <ActionPointCards
             actionPoints={v2ActionPoints}
             sessionId={sessionId}
-            sectionNumber={4}
+            sectionNumber={5}
           />
 
           {/* Roleplay Coaching Feedback — 5 Dimensions */}
@@ -571,8 +587,8 @@ export default function RoleplayResultsPage() {
                   const d = roleplayFeedbackData.dimensions?.[dim];
                   if (!d) return null;
                   const labels: Record<string, string> = { pre_set: 'Pre-Set', authority: 'Authority', objection_handling: 'Objection Handling', close_attempt: 'Close Attempt', overall: 'Overall' };
-                  const scoreColor = d.score >= 8 ? 'text-green-500' : d.score >= 5 ? 'text-blue-500' : d.score >= 3 ? 'text-orange-500' : 'text-red-500';
-                  const barColor = d.score >= 8 ? 'bg-green-500' : d.score >= 5 ? 'bg-blue-500' : d.score >= 3 ? 'bg-orange-500' : 'bg-red-500';
+                  const scoreColor = d.score >= 8 ? 'text-emerald-400' : d.score >= 6 ? 'text-blue-400' : d.score >= 4 ? 'text-amber-400' : 'text-red-400';
+                  const barColor = d.score >= 8 ? 'bg-emerald-500' : d.score >= 6 ? 'bg-blue-500' : d.score >= 4 ? 'bg-amber-500' : 'bg-red-500';
                   return (
                     <div key={dim} className="p-3 rounded-lg border bg-card">
                       <p className="text-xs font-medium text-muted-foreground mb-1">{labels[dim]}</p>
@@ -590,7 +606,7 @@ export default function RoleplayResultsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {roleplayFeedbackData.whatWorked && roleplayFeedbackData.whatWorked.length > 0 && (
                   <div className="p-3 rounded-lg border border-green-500/30 bg-green-500/5">
-                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-green-700">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-emerald-400">
                       <ThumbsUp className="h-4 w-4" /> What Worked
                     </h3>
                     <ul className="space-y-1.5">
@@ -605,7 +621,7 @@ export default function RoleplayResultsPage() {
                 )}
                 {roleplayFeedbackData.whatDidntWork && roleplayFeedbackData.whatDidntWork.length > 0 && (
                   <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5">
-                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-red-700">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-red-400">
                       <ThumbsDown className="h-4 w-4" /> What Didn&apos;t Work
                     </h3>
                     <ul className="space-y-1.5">
@@ -623,7 +639,7 @@ export default function RoleplayResultsPage() {
               {/* Key Improvement Area */}
               {roleplayFeedbackData.keyImprovement && (
                 <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 mb-4">
-                  <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-amber-700">
+                  <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-amber-400">
                     <Target className="h-4 w-4" /> Key Improvement Area
                   </h3>
                   <p className="text-sm">{roleplayFeedbackData.keyImprovement}</p>
@@ -643,10 +659,10 @@ export default function RoleplayResultsPage() {
                     </div>
                     {(roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid) && (
                       <div className="p-2 bg-green-500/10 border border-green-500/20 rounded text-sm">
-                        <p className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
+                        <p className="text-xs font-semibold text-emerald-400 mb-1 flex items-center gap-1">
                           <Lightbulb className="h-3 w-3" /> What they should have said:
                         </p>
-                        <p className="italic text-green-800">&ldquo;{roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid}&rdquo;</p>
+                        <p className="italic text-emerald-300">&ldquo;{roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid}&rdquo;</p>
                       </div>
                     )}
                   </div>
@@ -705,16 +721,16 @@ export default function RoleplayResultsPage() {
                     </div>
                     <div className="space-y-2 text-sm">
                       <div>
-                        <span className="font-medium text-red-600">What went wrong: </span>
-                        <span>{fix.whatWentWrong}</span>
+                        <p className="text-xs font-semibold text-red-400 mb-0.5">What Went Wrong</p>
+                        <p className="text-sm">{fix.whatWentWrong}</p>
                       </div>
                       <div>
-                        <span className="font-medium text-orange-600">Why it mattered: </span>
-                        <span>{fix.whyItMattered}</span>
+                        <p className="text-xs font-semibold text-amber-400 mb-0.5">Why It Mattered</p>
+                        <p className="text-sm">{fix.whyItMattered}</p>
                       </div>
                       <div>
-                        <span className="font-medium text-green-600">What to do differently: </span>
-                        <span>{fix.whatToDoDifferently}</span>
+                        <p className="text-xs font-semibold text-emerald-400 mb-0.5">What To Do Differently</p>
+                        <p className="text-sm">{fix.whatToDoDifferently}</p>
                       </div>
                       {fix.transcriptSegment && (
                         <div className="mt-2 p-2 bg-muted rounded text-xs text-muted-foreground">
@@ -891,8 +907,8 @@ export default function RoleplayResultsPage() {
                   const d = roleplayFeedbackData.dimensions?.[dim];
                   if (!d) return null;
                   const labels: Record<string, string> = { pre_set: 'Pre-Set', authority: 'Authority', objection_handling: 'Objection Handling', close_attempt: 'Close Attempt', overall: 'Overall' };
-                  const scoreColor = d.score >= 8 ? 'text-green-500' : d.score >= 5 ? 'text-blue-500' : d.score >= 3 ? 'text-orange-500' : 'text-red-500';
-                  const barColor = d.score >= 8 ? 'bg-green-500' : d.score >= 5 ? 'bg-blue-500' : d.score >= 3 ? 'bg-orange-500' : 'bg-red-500';
+                  const scoreColor = d.score >= 8 ? 'text-emerald-400' : d.score >= 6 ? 'text-blue-400' : d.score >= 4 ? 'text-amber-400' : 'text-red-400';
+                  const barColor = d.score >= 8 ? 'bg-emerald-500' : d.score >= 6 ? 'bg-blue-500' : d.score >= 4 ? 'bg-amber-500' : 'bg-red-500';
                   return (
                     <div key={dim} className="p-3 rounded-lg border bg-card">
                       <p className="text-xs font-medium text-muted-foreground mb-1">{labels[dim]}</p>
@@ -909,7 +925,7 @@ export default function RoleplayResultsPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                 {roleplayFeedbackData.whatWorked && roleplayFeedbackData.whatWorked.length > 0 && (
                   <div className="p-3 rounded-lg border border-green-500/30 bg-green-500/5">
-                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-green-700">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-emerald-400">
                       <ThumbsUp className="h-4 w-4" /> What Worked
                     </h3>
                     <ul className="space-y-1.5">
@@ -924,7 +940,7 @@ export default function RoleplayResultsPage() {
                 )}
                 {roleplayFeedbackData.whatDidntWork && roleplayFeedbackData.whatDidntWork.length > 0 && (
                   <div className="p-3 rounded-lg border border-red-500/30 bg-red-500/5">
-                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-red-700">
+                    <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5 text-red-400">
                       <ThumbsDown className="h-4 w-4" /> What Didn&apos;t Work
                     </h3>
                     <ul className="space-y-1.5">
@@ -941,7 +957,7 @@ export default function RoleplayResultsPage() {
 
               {roleplayFeedbackData.keyImprovement && (
                 <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/5 mb-4">
-                  <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-amber-700">
+                  <h3 className="text-sm font-semibold mb-1 flex items-center gap-1.5 text-amber-400">
                     <Target className="h-4 w-4" /> Key Improvement Area
                   </h3>
                   <p className="text-sm">{roleplayFeedbackData.keyImprovement}</p>
@@ -960,10 +976,10 @@ export default function RoleplayResultsPage() {
                     </div>
                     {(roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid) && (
                       <div className="p-2 bg-green-500/10 border border-green-500/20 rounded text-sm">
-                        <p className="text-xs font-medium text-green-700 mb-1 flex items-center gap-1">
+                        <p className="text-xs font-semibold text-emerald-400 mb-1 flex items-center gap-1">
                           <Lightbulb className="h-3 w-3" /> What they should have said:
                         </p>
-                        <p className="italic text-green-800">&ldquo;{roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid}&rdquo;</p>
+                        <p className="italic text-emerald-300">&ldquo;{roleplayFeedbackData.transcriptMoment.whatTheyShoulHaveSaid || roleplayFeedbackData.transcriptMoment.whatTheyShouldHaveSaid}&rdquo;</p>
                       </div>
                     )}
                   </div>

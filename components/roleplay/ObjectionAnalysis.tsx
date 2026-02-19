@@ -11,10 +11,10 @@ interface ObjectionAnalysisProps {
 }
 
 const PILLAR_COLORS: Record<string, string> = {
-    value: 'bg-purple-500/20 text-purple-700 border-purple-500/50',
-    trust: 'bg-blue-500/20 text-blue-700 border-blue-500/50',
-    fit: 'bg-green-500/20 text-green-700 border-green-500/50',
-    logistics: 'bg-orange-500/20 text-orange-700 border-orange-500/50',
+    value: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    trust: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+    fit: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+    logistics: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 };
 
 const PILLAR_LABELS: Record<string, string> = {
@@ -80,17 +80,17 @@ export function ObjectionAnalysis({ items }: ObjectionAnalysisProps) {
 
                         {/* How rep handled it */}
                         <div className="mb-3">
-                            <p className="text-xs font-medium text-muted-foreground mb-1">How you handled it:</p>
+                            <p className="text-xs font-semibold text-blue-400 mb-1">How You Handled It</p>
                             <p className="text-sm">{item.howRepHandled}</p>
                         </div>
 
                         {/* How to handle better (only show if not well handled or has advice) */}
                         {item.howCouldBeHandledBetter && (
-                            <div className={`p-3 rounded ${item.wasHandledWell ? 'bg-blue-500/10' : 'bg-orange-500/10'}`}>
-                                <p className="text-xs font-medium mb-1">
-                                    {item.wasHandledWell ? 'Pro tip:' : 'How to handle this better:'}
+                            <div className={`p-3 rounded border ${item.wasHandledWell ? 'bg-blue-500/10 border-blue-500/20' : 'bg-emerald-500/10 border-emerald-500/20'}`}>
+                                <p className={`text-xs font-semibold mb-1 ${item.wasHandledWell ? 'text-blue-400' : 'text-emerald-400'}`}>
+                                    {item.wasHandledWell ? 'Pro Tip' : 'Higher-Leverage Alternative'}
                                 </p>
-                                <p className="text-sm font-medium">
+                                <p className="text-sm">
                                     {item.howCouldBeHandledBetter}
                                 </p>
                             </div>
