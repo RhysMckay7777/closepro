@@ -54,9 +54,10 @@ function NewProspectAvatarContent() {
   // Get difficulty tier label
   const getDifficultyTier = (score: number): string => {
     if (score >= 43) return 'Easy';
-    if (score >= 37) return 'Realistic';
-    if (score >= 31) return 'Hard';
-    return 'Expert';
+    if (score >= 36) return 'Realistic';
+    if (score >= 30) return 'Hard';
+    if (score >= 25) return 'Expert';
+    return 'Near Impossible';
   };
 
   const difficultyScore = calculateDifficultyScore();
@@ -219,7 +220,7 @@ function NewProspectAvatarContent() {
             <div className="space-y-6">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="positionProblemAlignment">Position + Problem Alignment</Label>
+                  <Label htmlFor="positionProblemAlignment">ICP Alignment</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
@@ -254,14 +255,14 @@ function NewProspectAvatarContent() {
 
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="painAmbitionIntensity">Pain / Ambition Intensity</Label>
+                  <Label htmlFor="painAmbitionIntensity">Motivation Intensity</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        Combined measure of how much pain the prospect feels from their problems and how strong their desire is to reach their desired result. Use the higher of pain or ambition.
+                        How driven and emotionally motivated is this prospect — how much pain or ambition do they have?
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -284,14 +285,15 @@ function NewProspectAvatarContent() {
 
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Label htmlFor="perceivedNeedForHelpAuthority">Perceived Need for Help / Authority Stance</Label>
+                  <Label htmlFor="perceivedNeedForHelpAuthority">Prospect Authority &amp; Coachability</Label>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <HelpCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        Combines how aware the prospect is that they need external help with their authority stance relative to the seller. Low (1-3) = advisor (high authority), Medium (4-7) = peer, High (8-10) = advisee (low authority, easy).
+                        What is the prospect&apos;s authority level and how open to being helped are they?
+                        Low (1-3) = advisor (high authority), Medium (4-7) = peer, High (8-10) = advisee (coachable).
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -321,9 +323,7 @@ function NewProspectAvatarContent() {
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        The entry point or journey stage where this prospect entered your sales funnel.
-                        This affects their awareness level, trust, and readiness to buy. Examples range
-                        from cold outbound (low awareness) to referrals or existing customers (high trust).
+                        How warm is the prospect when they come onto the call — what have they seen so far and where did they come from? (i.e., warm inbound vs cold ads)
                       </p>
                     </TooltipContent>
                   </Tooltip>
@@ -353,10 +353,7 @@ function NewProspectAvatarContent() {
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="max-w-xs">
-                        The prospect&apos;s practical ability to take action, independent of their emotional
-                        interest. This measures logistical constraints like budget availability, time
-                        capacity, decision-making authority, and ability to implement. This is about
-                        capability, not desire.
+                        What is the ability of the prospect to proceed today? (Do they have the time, the effort, and the finances to go ahead right now?)
                       </p>
                     </TooltipContent>
                   </Tooltip>

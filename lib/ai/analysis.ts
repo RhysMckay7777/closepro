@@ -98,7 +98,7 @@ export interface ProspectDifficultyAssessment {
   funnelContext?: number;
   executionResistance?: number;
   totalDifficultyScore?: number;
-  difficultyTier?: 'easy' | 'realistic' | 'hard' | 'expert';
+  difficultyTier?: 'easy' | 'realistic' | 'hard' | 'expert' | 'near_impossible';
 }
 
 /** AI-suggested outcome for sales figures (when addToFigures is true) */
@@ -348,27 +348,12 @@ export function calculateCloserEffectiveness(
   difficultyTotal: number,
   overallScore: number
 ): CloserEffectiveness {
-  if (difficultyTotal >= 41) {
-    // Easy prospect (41-50)
-    if (overallScore >= 90) return 'above_expectation';
-    if (overallScore >= 75) return 'at_expectation';
-    return 'below_expectation';
-  }
-  if (difficultyTotal >= 32) {
-    // Realistic prospect (32-40)
-    if (overallScore >= 80) return 'above_expectation';
-    if (overallScore >= 60) return 'at_expectation';
-    return 'below_expectation';
-  }
-  if (difficultyTotal >= 20) {
-    // Hard/Expert prospect (20-31)
-    if (overallScore >= 70) return 'above_expectation';
-    if (overallScore >= 50) return 'at_expectation';
-    return 'below_expectation';
-  }
-  // Near Impossible (<20)
-  if (overallScore >= 60) return 'above_expectation';
-  if (overallScore >= 40) return 'at_expectation';
+  // Connor's final closer performance tiers (universal — same cutoffs regardless of difficulty)
+  // Below Expectation: score < 60
+  // At Expectation: score 60–75
+  // Above Expectation: score > 75
+  if (overallScore > 75) return 'above_expectation';
+  if (overallScore >= 60) return 'at_expectation';
   return 'below_expectation';
 }
 
@@ -827,18 +812,18 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
     whatWorked: Array.isArray(raw?.whatWorked) ? raw.whatWorked.slice(0, 3).map((s: any) => String(s).slice(0, 500)) : [],
     whatLimitedImpact: Array.isArray(raw?.whatLimitedImpact)
       ? raw.whatLimitedImpact.slice(0, 5).map((item: any) => ({
-          description: String(item?.description || '').slice(0, 1000),
-          timestamp: String(item?.timestamp || '').slice(0, 50),
-          whatShouldHaveDone: String(item?.whatShouldHaveDone || '').slice(0, 1000),
-        }))
+        description: String(item?.description || '').slice(0, 1000),
+        timestamp: String(item?.timestamp || '').slice(0, 50),
+        whatShouldHaveDone: String(item?.whatShouldHaveDone || '').slice(0, 1000),
+      }))
       : (typeof raw?.whatLimitedImpact === 'string' ? raw.whatLimitedImpact.slice(0, 2000) : ''),
     timestampedFeedback: Array.isArray(raw?.timestampedFeedback)
       ? raw.timestampedFeedback.map((f: any) => ({
-          timestamp: String(f.timestamp ?? ''),
-          whatHappened: String(f.whatHappened ?? '').slice(0, 1000),
-          whatShouldHaveHappened: String(f.whatShouldHaveHappened ?? '').slice(0, 1000),
-          whyItMatters: String(f.whyItMatters ?? '').slice(0, 1000),
-        }))
+        timestamp: String(f.timestamp ?? ''),
+        whatHappened: String(f.whatHappened ?? '').slice(0, 1000),
+        whatShouldHaveHappened: String(f.whatShouldHaveHappened ?? '').slice(0, 1000),
+        whyItMatters: String(f.whyItMatters ?? '').slice(0, 1000),
+      }))
       : [],
   });
 
@@ -863,13 +848,13 @@ function normalizeV2Analysis(analysis: any): CallAnalysisResult {
   const rawObjBlocks = rawPA.objections?.blocks;
   const objectionBlocks: ObjectionBlock[] = Array.isArray(rawObjBlocks)
     ? rawObjBlocks.map((b: any) => ({
-        quote: String(b.quote ?? '').slice(0, 500),
-        timestamp: String(b.timestamp ?? ''),
-        type: ['value', 'trust', 'fit', 'logistics'].includes(b.type) ? b.type : 'value',
-        whySurfaced: String(b.whySurfaced ?? '').slice(0, 1000),
-        howHandled: String(b.howHandled ?? '').slice(0, 1000),
-        higherLeverageAlternative: String(b.higherLeverageAlternative ?? '').slice(0, 1000),
-      }))
+      quote: String(b.quote ?? '').slice(0, 500),
+      timestamp: String(b.timestamp ?? ''),
+      type: ['value', 'trust', 'fit', 'logistics'].includes(b.type) ? b.type : 'value',
+      whySurfaced: String(b.whySurfaced ?? '').slice(0, 1000),
+      howHandled: String(b.howHandled ?? '').slice(0, 1000),
+      higherLeverageAlternative: String(b.higherLeverageAlternative ?? '').slice(0, 1000),
+    }))
     : [];
 
   // Phase timings (from AI section 8)

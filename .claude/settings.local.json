@@ -19,7 +19,8 @@
       "WebFetch(domain:help.elevenlabs.io)",
       "WebFetch(domain:flexprice.io)",
       "Bash(npm install:*)",
-      "Bash(npm ls:*)"
+      "Bash(npm ls:*)",
+      "Bash(xargs cat:*)"
     ]
   }
 }

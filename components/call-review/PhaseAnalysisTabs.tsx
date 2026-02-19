@@ -52,7 +52,7 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
   return (
     <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
       <CardHeader>
-        <CardTitle className="font-serif">{sectionNumber}. Phase Analysis</CardTitle>
+        <CardTitle className="font-serif text-xl">{sectionNumber}. Phase Analysis</CardTitle>
         <CardDescription>Performance across each phase of the call</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -92,7 +92,7 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
             {/* PARAGRAPH 1: Call Outcome & Why */}
             {phaseAnalysis?.overall?.callOutcomeAndWhy && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-foreground">
+                <h4 className="text-base font-semibold text-foreground">
                   Call Outcome & Why This Happened
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -104,7 +104,7 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
             {/* PARAGRAPH 2: What Limited This Call */}
             {phaseAnalysis?.overall?.whatLimited && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-foreground">
+                <h4 className="text-base font-semibold text-foreground">
                   {phaseAnalysis.overall.isStrongCall
                     ? 'Optimization Opportunities'
                     : 'What Limited This Call'}
@@ -118,7 +118,7 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
             {/* PARAGRAPH 3: Primary Improvement Focus */}
             {phaseAnalysis?.overall?.primaryImprovementFocus && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold text-foreground">
+                <h4 className="text-base font-semibold text-foreground">
                   Primary Improvement Focus
                 </h4>
                 <p className="text-sm text-muted-foreground leading-relaxed">
@@ -166,7 +166,7 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
               {/* What Worked — green accent */}
               {Array.isArray(detail?.whatWorked) && detail.whatWorked.length > 0 && (
                 <div className="space-y-2 mb-4">
-                  <h4 className="text-sm font-semibold text-emerald-400 flex items-center gap-2">
+                  <h4 className="text-base font-semibold text-emerald-400 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4" /> What Worked
                   </h4>
                   <ul className="space-y-1.5">
@@ -183,7 +183,7 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
               {/* What Limited Impact — structured feedback with Problem/Correction cards */}
               {Array.isArray(detail?.whatLimitedImpact) && detail.whatLimitedImpact.length > 0 && (
                 <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-amber-400 flex items-center gap-2">
+                  <h4 className="text-base font-semibold text-amber-400 flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4" /> What Limited Impact
                   </h4>
                   {detail.whatLimitedImpact.map((item: any, i: number) => (

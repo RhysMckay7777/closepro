@@ -291,7 +291,7 @@ export default function CallDetailPage() {
           {/* ══════ SECTION 1: CALL OVERVIEW ══════ */}
           <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader>
-              <CardTitle className="font-serif">1. Call Overview</CardTitle>
+              <CardTitle className="font-serif text-xl">1. Call Overview</CardTitle>
               <CardDescription>Immediate context for this call</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -383,7 +383,7 @@ export default function CallDetailPage() {
               {analysis.outcomeDiagnostic && (
                 <Card className="border border-amber-500/20 bg-linear-to-br from-amber-500/5 to-card/40 backdrop-blur-xl shadow-xl">
                   <CardHeader>
-                    <CardTitle className="font-serif">2. Outcome Diagnostic</CardTitle>
+                    <CardTitle className="font-serif text-xl">2. Outcome Diagnostic</CardTitle>
                     <CardDescription>Why this call ended the way it did</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -395,7 +395,7 @@ export default function CallDetailPage() {
               {/* ══════ SECTION 3: SCORE BREAKDOWN (V1) ══════ */}
               <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
                 <CardHeader>
-                  <CardTitle className="font-serif">3. Score Breakdown</CardTitle>
+                  <CardTitle className="font-serif text-xl">3. Score Breakdown</CardTitle>
                   <CardDescription>10 categories from the Sales Call Scoring Framework. Click to expand.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -462,7 +462,7 @@ export default function CallDetailPage() {
               {Array.isArray(analysis.momentCoaching) && analysis.momentCoaching.length > 0 && (
                 <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
                   <CardHeader>
-                    <CardTitle className="font-serif">4. Moment-by-Moment Coaching</CardTitle>
+                    <CardTitle className="font-serif text-xl">4. Moment-by-Moment Coaching</CardTitle>
                     <CardDescription>Specific moments where execution broke down or opportunities were missed</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -496,7 +496,7 @@ export default function CallDetailPage() {
               {/* ══════ SECTION 5: OBJECTION ANALYSIS (V1) ══════ */}
               <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
                 <CardHeader>
-                  <CardTitle className="font-serif">5. Objection Analysis</CardTitle>
+                  <CardTitle className="font-serif text-xl">5. Objection Analysis</CardTitle>
                   <CardDescription>Diagnose resistance and improve objection prevention and handling</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -537,7 +537,7 @@ export default function CallDetailPage() {
               {Array.isArray(analysis.priorityFixes) && analysis.priorityFixes.length > 0 && (
                 <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
                   <CardHeader>
-                    <CardTitle className="font-serif">6. Priority Fixes</CardTitle>
+                    <CardTitle className="font-serif text-xl">6. Priority Fixes</CardTitle>
                     <CardDescription>Actionable, behavioural, context-aware improvements — ordered by impact</CardDescription>
                   </CardHeader>
                   <CardContent>

@@ -94,11 +94,11 @@ Summary Output: Explain whether logistics were strong or restrictive, whether ab
 Total = ICP Alignment + Motivation Intensity + Authority & Coachability + Funnel Context + Ability to Proceed = /50
 
 4. DIFFICULTY BANDS
-41–50 = Easy
-32–40 = Realistic
-26–31 = Hard
-20–25 = Expert
-Below 20 = Near Impossible
+43–50 = Easy
+36–42 = Realistic
+30–35 = Hard
+25–29 = Expert
+24 and under = Near Impossible
 
 Higher score = more favorable conditions = easier sale.
 Difficulty reflects starting conditions — not outcome.

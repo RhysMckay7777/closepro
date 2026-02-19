@@ -243,6 +243,7 @@ interface AnalysisRow {
   offerId?: string | null;
   offerCategory?: string | null;
   offerName?: string | null;
+  prospectName?: string | null;
   actualDifficultyTier?: string | null;
   selectedDifficulty?: string | null;
   objectionData?: any;
@@ -461,6 +462,7 @@ export async function GET(request: NextRequest) {
         prospectDifficulty: callAnalysis.prospectDifficulty,
         createdAt: salesCalls.createdAt,
         callResult: salesCalls.result,
+        prospectName: salesCalls.prospectName,
       })
       .from(callAnalysis)
       .innerJoin(salesCalls, eq(callAnalysis.callId, salesCalls.id))
@@ -497,6 +499,7 @@ export async function GET(request: NextRequest) {
         type: 'call' as const,
         entityId: a.callId,
         analysisId: a.id,
+        prospectName: (a as any).prospectName ?? null,
         phaseScoresData: parsedPhaseScores,
         phaseAnalysisData: safeParse(a.phaseAnalysis as any),
         actionPointsData: safeParse(a.actionPoints as any),
@@ -562,6 +565,7 @@ export async function GET(request: NextRequest) {
         offerId: a.offerId,
         offerCategory: a.offerCategory,
         offerName: a.offerName,
+        prospectName: a.offerName ?? 'Roleplay',
         selectedDifficulty: a.selectedDifficulty,
         actualDifficultyTier: a.actualDifficultyTier,
         entityId: a.sessionId,
@@ -1103,26 +1107,26 @@ export async function GET(request: NextRequest) {
     type PhaseKey = typeof PHASE_KEYS[number];
 
     // ── V2 Snapshot ─────────────────────────────────────────
-    // Close rate: Connor formula — Closed Calls / Total Qualified Calls
-    const CLOSED_RESULTS = ['closed', 'deposit', 'payment_plan'];
-    const UNQUALIFIED_RESULTS = ['no_show', 'unqualified'];
-
-    const qualifiedCalls = allAnalyses.filter(a => {
-      const result = (a as any).callResult;
-      return a.type === 'call' && result && !UNQUALIFIED_RESULTS.includes(result);
+    // Connor's final definition: closed / total calls taken
+    const allCallsWithResult = allAnalyses.filter(a => {
+      return a.type === 'call' && (a as any).callResult;
     });
-    const closedCalls = qualifiedCalls.filter(a =>
-      CLOSED_RESULTS.includes((a as any).callResult)
+    const closedCalls = allCallsWithResult.filter(a =>
+      (a as any).callResult === 'closed'
     );
-    const closeRate = qualifiedCalls.length > 0
-      ? Math.round((closedCalls.length / qualifiedCalls.length) * 100)
+    const closeRate = allCallsWithResult.length > 0
+      ? Math.round((closedCalls.length / allCallsWithResult.length) * 100)
       : null;
+
+    // Display values for underneath the big number:
+    const callsTaken = allCallsWithResult.length;
+    const callsClosed = closedCalls.length;
 
     // Avg difficulty
     const diffScores = allAnalyses.filter(a => typeof a.prospectDifficultyScore === 'number' && a.prospectDifficultyScore > 0).map(a => a.prospectDifficultyScore!);
     const avgDifficulty = diffScores.length > 0 ? Math.round(diffScores.reduce((s, d) => s + d, 0) / diffScores.length) : null;
     const avgDifficultyTier = avgDifficulty !== null
-      ? (avgDifficulty >= 41 ? 'expert' : avgDifficulty >= 32 ? 'hard' : avgDifficulty >= 20 ? 'realistic' : 'easy')
+      ? (avgDifficulty >= 43 ? 'easy' : avgDifficulty >= 36 ? 'realistic' : avgDifficulty >= 30 ? 'hard' : avgDifficulty >= 25 ? 'expert' : 'near_impossible')
       : null;
 
     // Objection conversion rate: calls WITH objections that still closed
@@ -1137,29 +1141,45 @@ export async function GET(request: NextRequest) {
       } catch { return false; }
     });
     const resolvedObjectionCalls = callsWithObjDetails.filter(a =>
-      CLOSED_RESULTS.includes((a as any).callResult)
+      (a as any).callResult === 'closed'
     );
     const objectionConversionRate = callsWithObjDetails.length > 0
       ? Math.round((resolvedObjectionCalls.length / callsWithObjDetails.length) * 100)
       : null;
 
+    // Display values for objection conversion sub-labels:
+    const objectionCallsTotal = callsWithObjDetails.length;
+    const objectionsResolved = resolvedObjectionCalls.length;
+
     const v2Snapshot = {
       overallScore: averageOverall,
       closeRate,
+      callsTaken,
+      callsClosed,
       avgDifficulty,
       avgDifficultyTier,
       objectionConversionRate,
+      objectionCallsTotal,
+      objectionsResolved,
       totalSessions: totalAnalyses,
     };
 
     // ── V2 Phase tabs ───────────────────────────────────────
+    interface PatternExample {
+      callDate: string;      // DD/MM format
+      prospectName: string;
+      offerName?: string;
+      timestamp?: string;    // MM:SS if available
+      description: string;
+    }
+
     interface V2PhaseTab {
       phase: string;
       averageScore: number;
       sessionCount: number;
       summary: string;
-      strengthPatterns: Array<{ text: string; frequency: number }>;
-      weaknessPatterns: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string; exampleDates?: string[] }>;
+      strengthPatterns: Array<{ text: string; frequency: number; totalCalls: number; examples: PatternExample[] }>;
+      weaknessPatterns: Array<{ text: string; frequency: number; totalCalls: number; whyItMatters?: string; whatToChange?: string; examples: PatternExample[] }>;
       scoreGuidance: string;
       scoreImprovementSummary?: string;
       handlingImprovements?: string;
@@ -1167,17 +1187,31 @@ export async function GET(request: NextRequest) {
       structuralMetrics?: Record<string, number | string>;
     }
 
-    function buildPhaseTab(phase: PhaseKey | 'overall', analyses: AnalysisRow[]): V2PhaseTab {
+    /** Format a date as DD/MM */
+    function formatDDMM(d: Date | string | null | undefined): string {
+      if (!d) return '--/--';
+      const dt = typeof d === 'string' ? new Date(d) : d;
+      const day = String(dt.getDate()).padStart(2, '0');
+      const month = String(dt.getMonth() + 1).padStart(2, '0');
+      return `${day}/${month}`;
+    }
+
+    function buildPhaseTab(phase: PhaseKey | 'overall', analyses: AnalysisRow[], label: string): V2PhaseTab {
       // Collect scores for this phase
       const scores: number[] = [];
       const summaries: string[] = [];
-      const strengths: string[] = [];
-      const weaknesses: Array<{ text: string; why?: string; change?: string; date?: string }> = [];
+      const strengths: Array<{ text: string; prospectName: string; offerName?: string; date: string; description: string }> = [];
+      const weaknesses: Array<{ text: string; why?: string; change?: string; prospectName: string; offerName?: string; date: string; description: string }> = [];
+      const totalCalls = analyses.length;
 
       for (const a of analyses) {
         const ps = a.phaseScoresData;
         const pa = a.phaseAnalysisData;
         if (!ps && !pa) continue;
+
+        const pName = a.prospectName || 'Unknown';
+        const oName = a.offerName || undefined;
+        const dateStr = a.createdAt?.toISOString?.() || '';
 
         // Score
         if (ps && typeof ps === 'object') {
@@ -1191,39 +1225,39 @@ export async function GET(request: NextRequest) {
           if (!phaseDetail) continue;
 
           if (phase === 'overall') {
-            // Overall has callOutcomeAndWhy, whatLimited, primaryImprovementFocus
             if (phaseDetail.primaryImprovementFocus) {
-              weaknesses.push({ text: phaseDetail.primaryImprovementFocus, date: a.createdAt?.toISOString?.() || '' });
+              weaknesses.push({ text: phaseDetail.primaryImprovementFocus, prospectName: pName, offerName: oName, date: dateStr, description: phaseDetail.primaryImprovementFocus.slice(0, 80) });
             }
             if (phaseDetail.summary) summaries.push(phaseDetail.summary);
           } else if (phase === 'objections') {
-            // Objections have blocks
             if (phaseDetail.blocks && Array.isArray(phaseDetail.blocks)) {
               for (const block of phaseDetail.blocks) {
                 if (block.higherLeverageAlternative) {
-                  weaknesses.push({ text: block.howHandled || 'Objection handling', why: block.whySurfaced, change: block.higherLeverageAlternative, date: a.createdAt?.toISOString?.() || '' });
+                  weaknesses.push({ text: block.howHandled || 'Objection handling', why: block.whySurfaced, change: block.higherLeverageAlternative, prospectName: pName, offerName: oName, date: dateStr, description: block.howHandled || 'Objection could be handled better' });
                 }
               }
             }
           } else {
-            // Intro/Discovery/Pitch/Close have whatWorked, whatLimitedImpact, summary
             if (phaseDetail.summary) summaries.push(phaseDetail.summary);
 
             if (Array.isArray(phaseDetail.whatWorked)) {
               for (const item of phaseDetail.whatWorked) {
-                if (typeof item === 'string' && item.length > 10) strengths.push(item);
+                if (typeof item === 'string' && item.length > 10) {
+                  strengths.push({ text: item, prospectName: pName, offerName: oName, date: dateStr, description: item.slice(0, 80) });
+                }
               }
             }
 
             if (Array.isArray(phaseDetail.whatLimitedImpact)) {
               for (const item of phaseDetail.whatLimitedImpact) {
                 if (typeof item === 'string') {
-                  weaknesses.push({ text: item, date: a.createdAt?.toISOString?.() || '' });
+                  weaknesses.push({ text: item, prospectName: pName, offerName: oName, date: dateStr, description: item.slice(0, 80) });
                 } else if (item && typeof item === 'object') {
                   weaknesses.push({
                     text: item.description || '',
                     change: item.whatShouldHaveDone || '',
-                    date: a.createdAt?.toISOString?.() || '',
+                    prospectName: pName, offerName: oName, date: dateStr,
+                    description: (item.description || '').slice(0, 80),
                   });
                 }
               }
@@ -1234,9 +1268,9 @@ export async function GET(request: NextRequest) {
 
       const avgScore = scores.length > 0 ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
 
-      // Frequency-count strength patterns (group by semantic similarity using keyword overlap)
-      const strengthGroups = groupByKeywords(strengths);
-      const weaknessGroups = groupWeaknessByKeywords(weaknesses);
+      // Frequency-count strength/weakness patterns with examples
+      const strengthGroups = groupByKeywordsWithExamples(strengths, totalCalls);
+      const weaknessGroups = groupWeaknessByKeywordsWithExamples(weaknesses, totalCalls);
 
       // Generate guidance
       let scoreGuidance = '';
@@ -1250,14 +1284,37 @@ export async function GET(request: NextRequest) {
         scoreGuidance = `${phase === 'overall' ? 'Overall' : phase.charAt(0).toUpperCase() + phase.slice(1)} needs focused practice at ${avgScore}/100. Prioritize the most frequent weakness below.`;
       }
 
-      // Pick best summary (most recent non-empty)
-      const bestSummary = summaries.filter(s => s.length > 20)[0] || '';
+      // Composite summary synthesis — combine themes across all summaries
+      const validSummaries = summaries.filter(s => s.length > 20);
+      let compositeSummary = '';
+      if (validSummaries.length === 0) {
+        compositeSummary = '';
+      } else if (validSummaries.length === 1) {
+        compositeSummary = `Across ${scores.length} session${scores.length !== 1 ? 's' : ''} ${label}: ${validSummaries[0]}`;
+      } else {
+        // Extract key themes from multiple summaries
+        const themeCounts = new Map<string, number>();
+        for (const s of validSummaries) {
+          const kw = getKW(s);
+          for (const k of kw) {
+            themeCounts.set(k, (themeCounts.get(k) || 0) + 1);
+          }
+        }
+        const topThemes = [...themeCounts.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([theme]) => theme);
+        // Use the most detailed summary as a base, prepend context
+        const bestBase = validSummaries.sort((a, b) => b.length - a.length)[0];
+        const themeNote = topThemes.length > 0 ? ` Key themes: ${topThemes.join(', ')}.` : '';
+        compositeSummary = `Across ${scores.length} session${scores.length !== 1 ? 's' : ''} ${label}: ${bestBase}${themeNote}`;
+      }
 
       return {
         phase,
         averageScore: avgScore,
         sessionCount: scores.length,
-        summary: bestSummary,
+        summary: compositeSummary,
         strengthPatterns: strengthGroups.slice(0, 5),
         weaknessPatterns: weaknessGroups.slice(0, 5),
         scoreGuidance,
@@ -1268,11 +1325,35 @@ export async function GET(request: NextRequest) {
     const V2_STOP = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'it', 'its', 'you', 'your', 'they', 'their', 'not', 'so', 'if', 'from']);
     const getKW = (text: string) => new Set(text.toLowerCase().replace(/[^a-z\s]/g, '').split(/\s+/).filter(w => w.length > 2 && !V2_STOP.has(w)));
 
-    function groupByKeywords(items: string[]): Array<{ text: string; frequency: number }> {
-      const groups: Array<{ text: string; frequency: number }> = [];
+    interface StrengthItem {
+      text: string;
+      prospectName: string;
+      offerName?: string;
+      date: string;
+      description: string;
+    }
+
+    interface WeaknessItem {
+      text: string;
+      why?: string;
+      change?: string;
+      prospectName: string;
+      offerName?: string;
+      date: string;
+      description: string;
+    }
+
+    function groupByKeywordsWithExamples(items: StrengthItem[], totalCalls: number): Array<{ text: string; frequency: number; totalCalls: number; examples: PatternExample[] }> {
+      const groups: Array<{ text: string; frequency: number; totalCalls: number; examples: PatternExample[] }> = [];
       for (const item of items) {
-        if (!item || item.length < 10) continue;
-        const kw = getKW(item);
+        if (!item.text || item.text.length < 10) continue;
+        const kw = getKW(item.text);
+        const example: PatternExample = {
+          callDate: formatDDMM(item.date),
+          prospectName: item.prospectName,
+          offerName: item.offerName,
+          description: item.description,
+        };
         let matched = false;
         for (const g of groups) {
           const gkw = getKW(g.text);
@@ -1280,21 +1361,28 @@ export async function GET(request: NextRequest) {
           for (const k of kw) { if (gkw.has(k)) common++; }
           if (common >= 3) {
             g.frequency++;
-            if (item.length > g.text.length) g.text = item;
+            if (item.text.length > g.text.length) g.text = item.text;
+            if (g.examples.length < 3) g.examples.push(example);
             matched = true;
             break;
           }
         }
-        if (!matched) groups.push({ text: item, frequency: 1 });
+        if (!matched) groups.push({ text: item.text, frequency: 1, totalCalls, examples: [example] });
       }
       return groups.sort((a, b) => b.frequency - a.frequency);
     }
 
-    function groupWeaknessByKeywords(items: Array<{ text: string; why?: string; change?: string; date?: string }>): Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string; exampleDates?: string[] }> {
-      const groups: Array<{ text: string; frequency: number; whyItMatters?: string; whatToChange?: string; exampleDates: string[] }> = [];
+    function groupWeaknessByKeywordsWithExamples(items: WeaknessItem[], totalCalls: number): Array<{ text: string; frequency: number; totalCalls: number; whyItMatters?: string; whatToChange?: string; examples: PatternExample[] }> {
+      const groups: Array<{ text: string; frequency: number; totalCalls: number; whyItMatters?: string; whatToChange?: string; examples: PatternExample[] }> = [];
       for (const item of items) {
         if (!item.text || item.text.length < 10) continue;
         const kw = getKW(item.text);
+        const example: PatternExample = {
+          callDate: formatDDMM(item.date),
+          prospectName: item.prospectName,
+          offerName: item.offerName,
+          description: item.description,
+        };
         let matched = false;
         for (const g of groups) {
           const gkw = getKW(g.text);
@@ -1305,17 +1393,17 @@ export async function GET(request: NextRequest) {
             if (item.text.length > g.text.length) g.text = item.text;
             if (item.why && (!g.whyItMatters || item.why.length > g.whyItMatters.length)) g.whyItMatters = item.why;
             if (item.change && (!g.whatToChange || item.change.length > g.whatToChange.length)) g.whatToChange = item.change;
-            if (item.date && g.exampleDates.length < 3) g.exampleDates.push(item.date);
+            if (g.examples.length < 3) g.examples.push(example);
             matched = true;
             break;
           }
         }
-        if (!matched) groups.push({ text: item.text, frequency: 1, whyItMatters: item.why, whatToChange: item.change, exampleDates: item.date ? [item.date] : [] });
+        if (!matched) groups.push({ text: item.text, frequency: 1, totalCalls, whyItMatters: item.why, whatToChange: item.change, examples: [example] });
       }
-      // Fix 4: Auto-generate whyItMatters fallback for items lacking it
+      // Auto-generate whyItMatters fallback for items lacking it
       for (const g of groups) {
         if (!g.whyItMatters && g.frequency > 0) {
-          g.whyItMatters = `This pattern appeared ${g.frequency > 1 ? `across ${g.frequency} sessions` : 'in your recent session'} and is likely reducing your effectiveness in this phase.`;
+          g.whyItMatters = `This pattern appeared in ${g.frequency} of ${g.totalCalls} sessions and is likely reducing your effectiveness in this phase.`;
         }
       }
       return groups.sort((a, b) => b.frequency - a.frequency);
@@ -1323,9 +1411,9 @@ export async function GET(request: NextRequest) {
 
     // Build phase tabs
     const v2Phases: Record<string, V2PhaseTab> = {};
-    v2Phases['overall'] = buildPhaseTab('overall', allAnalyses);
+    v2Phases['overall'] = buildPhaseTab('overall', allAnalyses, periodLabel);
     for (const phase of PHASE_KEYS) {
-      v2Phases[phase] = buildPhaseTab(phase, allAnalyses);
+      v2Phases[phase] = buildPhaseTab(phase, allAnalyses, periodLabel);
     }
 
     // ── calculatePatternRate helper ────────────────────────────
@@ -1425,44 +1513,139 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ── V2 Objections tab (grouped by category) ─────────────
-    const v2ObjGrouped: Record<string, Array<{ text: string; frequency: number; howHandled?: string; whySurfaced?: string; higherLeverageAlt?: string }>> = {
+    // ── V2 Objections tab — Enriched ObjectionTheme structure ─────────────
+    interface ObjectionTheme {
+      theme: string;
+      category: 'value' | 'trust' | 'fit' | 'logistics';
+      callsObserved: number;
+      totalCalls: number;
+      examples: Array<{
+        callDate: string;
+        prospectName: string;
+        timestamp?: string;
+        description: string;
+      }>;
+      rootCause: string;
+      preEmption: string;
+      handlingImprovement: string;
+      rawPhrases: string[];
+    }
+
+    /** Generate a clean theme label from a raw objection quote */
+    function deriveThemeLabel(rawQuote: string, category: string): string {
+      const q = rawQuote.toLowerCase();
+      // Value category
+      if (category === 'value') {
+        if (q.includes('expensive') || q.includes('money') || q.includes('cost') || q.includes('price') || q.includes('afford')) return 'Money / Too Expensive';
+        if (q.includes('roi') || q.includes('return') || q.includes('worth')) return 'ROI / Worth It';
+        if (q.includes('value') || q.includes('benefit')) return 'Value Unclear';
+        return 'Value Concern';
+      }
+      // Trust category
+      if (category === 'trust') {
+        if (q.includes('scam') || q.includes('legit') || q.includes('real')) return 'Legitimacy / Scam Concern';
+        if (q.includes('review') || q.includes('testimonial') || q.includes('result')) return 'Proof / Social Proof';
+        if (q.includes('think about') || q.includes('decide') || q.includes('sure')) return 'Need to Think About It';
+        return 'Trust / Credibility';
+      }
+      // Fit category
+      if (category === 'fit') {
+        if (q.includes('time') || q.includes('busy') || q.includes('schedule')) return 'Time / Too Busy';
+        if (q.includes('partner') || q.includes('spouse') || q.includes('wife') || q.includes('husband')) return 'Partner / Decision Maker';
+        if (q.includes('work') || q.includes('situation') || q.includes('different')) return 'Fit / My Situation Is Different';
+        return 'Fit Concern';
+      }
+      // Logistics category
+      if (category === 'logistics') {
+        if (q.includes('start') || q.includes('when') || q.includes('timing')) return 'Timing / When to Start';
+        if (q.includes('how') || q.includes('process') || q.includes('work')) return 'Process / How It Works';
+        if (q.includes('contract') || q.includes('commit') || q.includes('cancel')) return 'Commitment / Contract Terms';
+        return 'Logistics Concern';
+      }
+      return 'General Objection';
+    }
+
+    const totalCallsForObj = allAnalyses.length;
+    const v2ObjGrouped: Record<string, ObjectionTheme[]> = {
       value: [], trust: [], fit: [], logistics: [],
     };
+    // Track which calls contributed to each theme (for callsObserved dedup)
+    const themeCallSets = new Map<ObjectionTheme, Set<string>>();
+
     for (const a of allAnalyses) {
       const pa = a.phaseAnalysisData;
       if (!pa?.objections?.blocks) continue;
-      for (const block of pa.objections.blocks) {
-        const cat = block.type || 'value';
-        if (!v2ObjGrouped[cat]) v2ObjGrouped[cat] = [];
+      const callId = a.entityId || a.createdAt?.toISOString?.() || '';
+      const pName = a.prospectName || 'Unknown';
+      const dateStr = a.createdAt?.toISOString?.() || '';
 
-        // Try to group with existing
-        const existing = v2ObjGrouped[cat].find(o => {
-          const ok = getKW(o.text);
-          const bk = getKW(block.quote || '');
+      for (const block of pa.objections.blocks) {
+        const cat = (block.type || 'value') as 'value' | 'trust' | 'fit' | 'logistics';
+        if (!v2ObjGrouped[cat]) v2ObjGrouped[cat] = [];
+        const rawQuote = block.quote || 'Unnamed objection';
+
+        // Try to group with existing theme by keyword overlap
+        let matched: ObjectionTheme | null = null;
+        for (const theme of v2ObjGrouped[cat]) {
+          const ok = getKW(theme.rawPhrases.join(' '));
+          const bk = getKW(rawQuote);
           let common = 0;
           for (const k of bk) { if (ok.has(k)) common++; }
-          return common >= 2;
-        });
-        if (existing) {
-          existing.frequency++;
-          if (block.higherLeverageAlternative && (!existing.higherLeverageAlt || block.higherLeverageAlternative.length > existing.higherLeverageAlt.length)) {
-            existing.higherLeverageAlt = block.higherLeverageAlternative;
+          if (common >= 2) { matched = theme; break; }
+        }
+
+        if (matched) {
+          // Add raw phrase if not duplicate
+          if (!matched.rawPhrases.includes(rawQuote)) matched.rawPhrases.push(rawQuote);
+          // Track unique calls
+          const callSet = themeCallSets.get(matched)!;
+          callSet.add(callId);
+          matched.callsObserved = callSet.size;
+          // Collect example (max 3)
+          if (matched.examples.length < 3) {
+            matched.examples.push({
+              callDate: formatDDMM(dateStr),
+              prospectName: pName,
+              timestamp: block.timestamp || undefined,
+              description: rawQuote.slice(0, 100),
+            });
+          }
+          // Keep best root cause / pre-emption / handling
+          if (block.whySurfaced && block.whySurfaced.length > (matched.rootCause || '').length) {
+            matched.rootCause = block.whySurfaced;
+          }
+          if (block.higherLeverageAlternative && block.higherLeverageAlternative.length > (matched.preEmption || '').length) {
+            matched.preEmption = block.higherLeverageAlternative;
+          }
+          if (block.howHandled && block.howHandled.length > (matched.handlingImprovement || '').length) {
+            matched.handlingImprovement = block.howHandled;
           }
         } else {
-          v2ObjGrouped[cat].push({
-            text: block.quote || 'Unnamed objection',
-            frequency: 1,
-            howHandled: block.howHandled,
-            whySurfaced: block.whySurfaced,
-            higherLeverageAlt: block.higherLeverageAlternative,
-          });
+          // Create new theme
+          const newTheme: ObjectionTheme = {
+            theme: deriveThemeLabel(rawQuote, cat),
+            category: cat,
+            callsObserved: 1,
+            totalCalls: totalCallsForObj,
+            examples: [{
+              callDate: formatDDMM(dateStr),
+              prospectName: pName,
+              timestamp: block.timestamp || undefined,
+              description: rawQuote.slice(0, 100),
+            }],
+            rootCause: block.whySurfaced || `This ${cat} objection likely arose because the prospect's ${cat}-related concerns were not adequately addressed earlier in the call.`,
+            preEmption: block.higherLeverageAlternative || `Strengthen ${cat} anchoring during the pitch phase to reduce this type of objection.`,
+            handlingImprovement: block.howHandled || `When this objection arises, acknowledge the concern, reframe with evidence, and temperature check before re-closing.`,
+            rawPhrases: [rawQuote],
+          };
+          v2ObjGrouped[cat].push(newTheme);
+          themeCallSets.set(newTheme, new Set([callId]));
         }
       }
     }
-    // Sort each category by frequency
+    // Sort each category by callsObserved descending
     for (const cat of Object.keys(v2ObjGrouped)) {
-      v2ObjGrouped[cat].sort((a, b) => b.frequency - a.frequency);
+      v2ObjGrouped[cat].sort((a, b) => b.callsObserved - a.callsObserved);
     }
 
     // ── V2 Priority Action Plan (max 3, deduped across all calls) ──
@@ -1504,6 +1687,7 @@ export async function GET(request: NextRequest) {
       phases: v2Phases,
       objectionsGrouped: v2ObjGrouped,
       priorityActionPlan: v2ActionPlan,
+      periodLabel,
     };
 
     return NextResponse.json({

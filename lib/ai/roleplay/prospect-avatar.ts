@@ -150,7 +150,7 @@ export function calculateDifficultyIndex(
 
   // Determine tier based on 50-point scale (matches canonical DIFFICULTY_BANDS)
   let tier: DifficultyTier;
-  if (index >= 42) {
+  if (index >= 43) {
     tier = 'easy';
   } else if (index >= 36) {
     tier = 'realistic';
@@ -174,17 +174,17 @@ export function mapDifficultySelectionToProfile(
 } {
   switch (selectedDifficulty) {
     case 'easy':
-      return { targetIndexRange: [42, 50], targetTier: 'easy' };
+      return { targetIndexRange: [43, 50], targetTier: 'easy' };
     case 'realistic':
     case 'intermediate':
-      return { targetIndexRange: [36, 41], targetTier: 'realistic' };
+      return { targetIndexRange: [36, 42], targetTier: 'realistic' };
     case 'hard':
       return { targetIndexRange: [30, 35], targetTier: 'hard' };
     case 'expert':
     case 'elite':
       return { targetIndexRange: [25, 29], targetTier: 'expert' };
     default:
-      return { targetIndexRange: [36, 41], targetTier: 'realistic' };
+      return { targetIndexRange: [36, 42], targetTier: 'realistic' };
   }
 }
 

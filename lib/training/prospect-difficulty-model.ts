@@ -4,7 +4,7 @@
  * Used by call analysis, roleplay scoring, and roleplay prospect behavior.
  *
  * v1: 6 dimensions, higher score = easier (42-50=Easy, 0-29=Expert)
- * v2: 5 dimensions, higher score = easier (41-50=Easy, <20=Near Impossible)
+ * v2: 5 dimensions, higher score = easier (43-50=Easy, <=24=Near Impossible)
  */
 
 // ═══════════════════════════════════════════════════════════
@@ -14,8 +14,8 @@
 export const V2_DIFFICULTY_DIMENSIONS = [
   'icpAlignment',
   'motivationIntensity',
-  'funnelContext',
   'authorityAndCoachability',
+  'funnelContext',
   'abilityToProceed',
 ] as const;
 
@@ -73,11 +73,11 @@ Whether the prospect has practical ability to act (money, time, authority).
 - 0-2: Severe Resistance — no funds, no time, external dependency
 
 DIFFICULTY BANDS (higher = easier):
-  41–50 = Easy (green)
-  32–40 = Realistic (amber)
-  26–31 = Hard (orange)
-  20–25 = Expert (red)
-  Below 20 = Near Impossible (red)
+  43–50 = Easy (green)
+  36–42 = Realistic (amber)
+  30–35 = Hard (orange)
+  25–29 = Expert (red)
+  24 and under = Near Impossible (red)
 
 KEY PRINCIPLES:
 1. Score each dimension INDEPENDENTLY based on transcript evidence
@@ -88,20 +88,20 @@ KEY PRINCIPLES:
 `;
 
 export const V2_DIFFICULTY_BANDS = {
-  EASY: { min: 41, max: 50, label: 'Easy', color: 'green' },
-  REALISTIC: { min: 32, max: 40, label: 'Realistic', color: 'amber' },
-  HARD: { min: 26, max: 31, label: 'Hard', color: 'orange' },
-  EXPERT: { min: 20, max: 25, label: 'Expert', color: 'red' },
-  NEAR_IMPOSSIBLE: { min: 0, max: 19, label: 'Near Impossible', color: 'red' },
+  EASY: { min: 43, max: 50, label: 'Easy', color: 'green' },
+  REALISTIC: { min: 36, max: 42, label: 'Realistic', color: 'amber' },
+  HARD: { min: 30, max: 35, label: 'Hard', color: 'orange' },
+  EXPERT: { min: 25, max: 29, label: 'Expert', color: 'red' },
+  NEAR_IMPOSSIBLE: { min: 0, max: 24, label: 'Near Impossible', color: 'red' },
 } as const;
 
 export type V2DifficultyBandKey = keyof typeof V2_DIFFICULTY_BANDS;
 
 export function getDifficultyBandV2(score: number): (typeof V2_DIFFICULTY_BANDS)[V2DifficultyBandKey] {
-  if (score >= 41) return V2_DIFFICULTY_BANDS.EASY;
-  if (score >= 32) return V2_DIFFICULTY_BANDS.REALISTIC;
-  if (score >= 26) return V2_DIFFICULTY_BANDS.HARD;
-  if (score >= 20) return V2_DIFFICULTY_BANDS.EXPERT;
+  if (score >= 43) return V2_DIFFICULTY_BANDS.EASY;
+  if (score >= 36) return V2_DIFFICULTY_BANDS.REALISTIC;
+  if (score >= 30) return V2_DIFFICULTY_BANDS.HARD;
+  if (score >= 25) return V2_DIFFICULTY_BANDS.EXPERT;
   return V2_DIFFICULTY_BANDS.NEAR_IMPOSSIBLE;
 }
 
@@ -156,10 +156,11 @@ Prospect's practical ability to proceed (money, time, authority):
 - 1-4: Extreme resistance — severe constraints, very difficult to close on-call
 
 SCORING TOTALS:
-- Easy: 42-50 (multiple favorable dimensions, low resistance)
-- Realistic: 36-41 (balanced, some friction points)
+- Easy: 43-50 (multiple favorable dimensions, low resistance)
+- Realistic: 36-42 (balanced, some friction points)
 - Hard: 30-35 (significant challenges in multiple areas)
-- Expert: 0-29 (challenging in most dimensions)
+- Expert: 25-29 (challenging in most dimensions)
+- Near Impossible: 24 and under (extreme difficulty across all dimensions)
 
 KEY PRINCIPLES:
 1. Difficulty score is FIXED at session start — it does not change mid-call
@@ -170,15 +171,17 @@ KEY PRINCIPLES:
 `;
 
 export const DIFFICULTY_BANDS = {
-    EASY: { min: 42, max: 50, label: 'Easy' },
-    REALISTIC: { min: 36, max: 41, label: 'Realistic' },
-    HARD: { min: 30, max: 35, label: 'Hard' },
-    EXPERT: { min: 0, max: 29, label: 'Expert' },
+  EASY: { min: 43, max: 50, label: 'Easy' },
+  REALISTIC: { min: 36, max: 42, label: 'Realistic' },
+  HARD: { min: 30, max: 35, label: 'Hard' },
+  EXPERT: { min: 25, max: 29, label: 'Expert' },
+  NEAR_IMPOSSIBLE: { min: 0, max: 24, label: 'Near Impossible' },
 } as const;
 
 export function getDifficultyBand(score: number) {
-    if (score >= 42) return DIFFICULTY_BANDS.EASY;
-    if (score >= 36) return DIFFICULTY_BANDS.REALISTIC;
-    if (score >= 30) return DIFFICULTY_BANDS.HARD;
-    return DIFFICULTY_BANDS.EXPERT;
+  if (score >= 43) return DIFFICULTY_BANDS.EASY;
+  if (score >= 36) return DIFFICULTY_BANDS.REALISTIC;
+  if (score >= 30) return DIFFICULTY_BANDS.HARD;
+  if (score >= 25) return DIFFICULTY_BANDS.EXPERT;
+  return DIFFICULTY_BANDS.NEAR_IMPOSSIBLE;
 }

@@ -297,102 +297,103 @@ export interface OpeningLineContext {
 
 /**
  * Opening line templates by funnel source
- * These replace unrealistic openers like "I don't know why I'm here"
+ * Brief, natural, low-information greetings (3-8 words max).
+ * Difficulty/skepticism emerges LATER through responses, not in the opening.
  */
-const OPENING_TEMPLATES = {
-  // Cold outbound - skeptical but gave time
-  cold_outbound: {
-    easy: [
-      "Hey, so you reached out about {topic}. I've got a few minutes—what's this about?",
-      "Hi, I got your message. I'm curious what you've got, but I'm pretty busy today.",
-      "Okay, you caught me. What exactly do you do?",
-    ],
-    realistic: [
-      "Look, I don't usually take these calls, but you caught me at a good time. What's this about?",
-      "I'm giving you five minutes. What do you have that's different from everyone else?",
-      "Fine, I'm listening. But I've heard a lot of pitches—what makes yours different?",
-    ],
-    hard: [
-      "I'm not sure why I picked up. You've got two minutes. Go.",
-      "Make it quick—I've got back-to-back calls. What do you want?",
-      "I don't know how you got my number, but okay, what's the pitch?",
-    ],
-    elite: [
-      "My assistant said you were persistent. You've got sixty seconds to tell me why I shouldn't hang up.",
-      "I'll be honest—I almost didn't take this. What's so important?",
-      "I'm in between meetings. This better be good.",
-    ],
-  },
-
-  // Warm inbound - applied/registered, some interest
+const OPENING_TEMPLATES: Record<string, Record<string, string[]>> = {
+  // WARM INBOUND — prospect booked the call themselves
   warm_inbound: {
     easy: [
-      "Hi! I applied after seeing your ad. Really excited to learn more about how this works.",
-      "Hey, I signed up on your website. This sounds like exactly what I need.",
-      "Thanks for calling back! I've been looking for something like this for a while.",
+      "Hey, how's it going?",
+      "Hi! Yeah, I'm here.",
+      "Hey, thanks for jumping on.",
     ],
     realistic: [
-      "Hi, I applied for the {topic} thing. I'm interested, but I want to understand what I'm actually getting into.",
-      "Yeah, I signed up. I've tried a few things before that didn't work, so I'm cautiously optimistic.",
-      "Thanks for the call. I saw your ad and it seemed interesting, but I've got questions.",
+      "Hi, yeah I'm here.",
+      "Hey. Alright, go ahead.",
+      "Hi. So yeah, I booked this in.",
     ],
     hard: [
-      "I applied but I'm still not sure about this. I've been burned before, so convince me.",
-      "Look, I signed up but I get a lot of these. What makes you different?",
-      "I'm interested, but I need to know this isn't just another course that sits on my shelf.",
+      "Hey.",
+      "Hi. Yeah, go for it.",
+      "Alright, I'm here.",
     ],
-    elite: [
-      "I applied because something caught my attention, but I'm skeptical. I've done programs before.",
-      "My time is valuable. I'm here because someone I respect mentioned you. Now prove it was worth my time.",
-      "I filled out the form, but I'm already questioning if this is for someone at my level.",
+    expert: [
+      "Hey.",
+      "Hi.",
+      "Yeah, I'm here. Go ahead.",
     ],
   },
 
-  // Content-educated - watched videos, consumed content
+  // COLD OUTBOUND — prospect was contacted, didn't initiate
+  cold_outbound: {
+    easy: [
+      "Oh hey, yeah someone mentioned you'd call.",
+      "Hi, yeah I got your message.",
+      "Hey. Yeah, go ahead.",
+    ],
+    realistic: [
+      "Hey, yeah? What's this about?",
+      "Hi. Yeah, someone said to jump on this.",
+      "Yeah, hi. I got a call booked in?",
+    ],
+    hard: [
+      "Yeah?",
+      "Hey. What's this about then?",
+      "Hi. Go ahead.",
+    ],
+    expert: [
+      "Yeah?",
+      "Who's this?",
+      "Hey. Yeah, go on.",
+    ],
+  },
+
+  // CONTENT EDUCATED — watched videos, consumed content
   content_educated: {
     easy: [
-      "I've been watching your videos for months! So excited to finally talk to someone.",
-      "I feel like I already know you from the podcast. Ready to take the next step.",
-      "Your content has been so helpful. I'm basically sold, just need the details.",
+      "Hey! Yeah, I've seen your stuff.",
+      "Hi, yeah I've been following along.",
+      "Hey, how's it going?",
     ],
     realistic: [
-      "I've consumed a lot of your content and it resonates. But I want to understand what the paid version includes.",
-      "Been following for a while. The free stuff has been great, but I need to know if the program delivers.",
-      "I like what you teach. Now I need to know if the investment makes sense for my situation.",
+      "Hi, yeah I've seen some of your content.",
+      "Hey. Yeah, I know who you are.",
+      "Hi. Yeah, go ahead.",
     ],
     hard: [
-      "I've seen the content. It's good, but I've seen a lot of good content that doesn't translate to results.",
-      "Look, I've watched the videos. I get the concepts. What I don't get is why I need to pay for this.",
-      "The content is solid, but I need more than concepts. I need something that works for my specific case.",
+      "Hey. Yeah.",
+      "Hi.",
+      "Yeah, I've seen a few things.",
     ],
-    elite: [
-      "I've studied your material. It's interesting, but I've been in this space longer than you. What can you teach me?",
-      "I'm familiar with your work. Some good points, some I disagree with. Let's see if this makes sense.",
-      "I've seen the content. I'm here because something about your approach is different. Show me what that is.",
+    expert: [
+      "Hey.",
+      "Hi. Yeah.",
+      "Yeah?",
     ],
   },
 
-  // Referral - transferred trust
+  // REFERRAL — someone they know sent them
   referral: {
     easy: [
-      "{referrer} told me I had to talk to you. He said you completely changed his business.",
-      "I'm here because {referrer} won't stop raving about you. I trust her judgment completely.",
-      "{referrer} said you're the real deal. I'm ready to get started.",
+      "Hey! Yeah, they told me to speak to you.",
+      "Hi, yeah I was told to jump on this.",
+      "Hey, how's it going?",
     ],
     realistic: [
-      "{referrer} mentioned you might be able to help with my {problem}. He spoke highly of you.",
-      "So {referrer} referred me. She said you helped her, but I want to understand if it applies to my situation.",
-      "{referrer} said I should talk to you. I trust his judgment, but I still have questions.",
+      "Hi, yeah they mentioned you.",
+      "Hey. Yeah, I was told to have a chat.",
+      "Hi. Yeah, go ahead.",
     ],
     hard: [
-      "{referrer} referred me, but honestly, what worked for him might not work for me. Different situations.",
-      "I'm here because {referrer} insisted. But I've seen referrals not pan out before, so prove it.",
-      "{referrer} spoke well of you, but he's not the sharpest tool in the shed. Convince me yourself.",
+      "Hey. Yeah, they said to call.",
+      "Hi.",
+      "Yeah, I was told to speak to you.",
     ],
-    elite: [
-      "{referrer} said you helped him. But he's in a different league than me. Can you handle my level?",
-      "I got your name from {referrer}. I respect him, but I make my own decisions. Tell me what you've got.",
-      "{referrer} mentioned you. I'm taking this call as a favor to him. Show me it was worth my time.",
+    expert: [
+      "Hey.",
+      "Hi. Yeah.",
+      "Yeah?",
     ],
   },
 };
@@ -407,7 +408,7 @@ export function getOpeningLine(context: OpeningLineContext): string {
   const tier = difficulty.difficultyTier;
 
   // Map tier to template key
-  let templateKey: 'easy' | 'realistic' | 'hard' | 'elite' = 'realistic';
+  let templateKey: 'easy' | 'realistic' | 'hard' | 'expert' = 'realistic';
   switch (tier) {
     case 'easy':
       templateKey = 'easy';
@@ -419,8 +420,8 @@ export function getOpeningLine(context: OpeningLineContext): string {
       templateKey = 'hard';
       break;
     case 'expert':
-    case 'elite':
-      templateKey = 'elite';
+    case 'elite' as any:
+      templateKey = 'expert';
       break;
   }
 

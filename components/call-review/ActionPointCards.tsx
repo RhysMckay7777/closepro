@@ -34,7 +34,7 @@ export function ActionPointCards({ actionPoints, callId, sessionId, sectionNumbe
   return (
     <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
       <CardHeader>
-        <CardTitle className="font-serif">{sectionNumber}. Action Steps</CardTitle>
+        <CardTitle className="font-serif text-xl">{sectionNumber}. Action Steps</CardTitle>
         <CardDescription>The highest-impact changes to make on your next call</CardDescription>
       </CardHeader>
       <CardContent>
@@ -46,7 +46,7 @@ export function ActionPointCards({ actionPoints, callId, sessionId, sectionNumbe
               </div>
               <div className="flex-1 space-y-3">
                 {ap.label && (
-                  <h4 className="text-sm font-semibold text-foreground mb-2">{ap.label}</h4>
+                  <h4 className="text-base font-semibold text-foreground mb-2">{ap.label}</h4>
                 )}
                 {idx === 2 && !ap.label && (
                   <p className="text-xs font-semibold text-muted-foreground mb-1">Suggested Optimization</p>

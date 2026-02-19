@@ -44,7 +44,7 @@ export function SalesFiguresPanel({ call, callId }: SalesFiguresPanelProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <DollarSign className="h-5 w-5 text-green-500" />
-              <CardTitle className="font-serif">Sales figures outcome</CardTitle>
+              <CardTitle className="font-serif text-xl">Sales figures outcome</CardTitle>
             </div>
             <Link href={`/dashboard/calls/${callId}/confirm`}>
               <Button type="button" variant="outline" size="sm">

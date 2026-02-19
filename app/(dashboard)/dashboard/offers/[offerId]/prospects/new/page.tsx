@@ -345,7 +345,7 @@ export default function NewProspectPage() {
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Position & Problem Alignment</Label>
+                      <Label>ICP Alignment</Label>
                       <span className="text-sm font-medium">{formData.positionProblemAlignment}/10</span>
                     </div>
                     <Slider
@@ -356,13 +356,13 @@ export default function NewProspectPage() {
                       step={1}
                     />
                     <p className="text-xs text-muted-foreground">
-                      How well does the prospect's position align with the offer's ICP?
+                      How closely does this prospect match your ideal customer profile (ICP) for this offer?
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Pain / Ambition Intensity</Label>
+                      <Label>Motivation Intensity</Label>
                       <span className="text-sm font-medium">{formData.painAmbitionIntensity}/10</span>
                     </div>
                     <Slider
@@ -373,13 +373,13 @@ export default function NewProspectPage() {
                       step={1}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Strength of pain or ambition driving the prospect
+                      How driven and emotionally motivated is this prospect — how much pain or ambition do they have?
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Authority Level / Perceived Need for Help</Label>
+                      <Label>Prospect Authority &amp; Coachability</Label>
                       <span className="text-sm font-medium">{formData.authorityPerceivedScore}/10</span>
                     </div>
                     <Slider
@@ -390,7 +390,7 @@ export default function NewProspectPage() {
                       step={1}
                     />
                     <p className="text-xs text-muted-foreground">
-                      1–3 Advisor (high authority), 4–7 Peer, 8–10 Advisee (low authority / high perceived need).
+                      What is the prospect&apos;s authority level and how open to being helped are they? 1–3 Advisor, 4–7 Peer, 8–10 Advisee (coachable).
                     </p>
                   </div>
 
@@ -407,13 +407,13 @@ export default function NewProspectPage() {
                       step={1}
                     />
                     <p className="text-xs text-muted-foreground">
-                      How warm/cold is the prospect? (0-3 cold, 4-6 warm, 7-8 educated, 9-10 referral)
+                      How warm is the prospect when they come onto the call — what have they seen so far and where did they come from? (i.e., warm inbound vs cold ads)
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Execution Resistance</Label>
+                      <Label>Ability to Proceed</Label>
                       <span className="text-sm font-medium">{formData.executionResistance}/10</span>
                     </div>
                     <Slider
@@ -424,7 +424,7 @@ export default function NewProspectPage() {
                       step={1}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Ability to proceed: money, time, effort capacity, decision authority
+                      What is the ability of the prospect to proceed today? (Do they have the time, the effort, and the finances to go ahead right now?)
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {formData.executionResistance >= 8

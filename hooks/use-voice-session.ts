@@ -52,6 +52,9 @@ export function useVoiceSession({
   // Ref to hold the conversation instance — bridges the circular dependency
   const conversationRef = useRef<ReturnType<typeof useConversation> | null>(null);
 
+  // Cache signed URL to reuse within its validity window (avoids voice config changes mid-session)
+  const signedUrlCacheRef = useRef<{ url: string; dynamicVariables: any; createdAt: number } | null>(null);
+
   // Persist transcript to server
   const persistTranscript = useCallback(async () => {
     const entries = transcriptRef.current;
@@ -76,6 +79,49 @@ export function useVoiceSession({
       console.error('[voice] Failed to persist transcript:', err);
     }
   }, [sessionId]);
+
+  /**
+   * Get or fetch a signed URL. Reuses the cached URL if less than 8 minutes old
+   * to prevent voice config changes mid-session on reconnect.
+   */
+  const getOrFetchSignedUrl = useCallback(async (): Promise<{ signedUrl: string; dynamicVariables: any }> => {
+    // Reuse existing URL if less than 8 minutes old (signed URLs valid ~10 minutes)
+    if (
+      signedUrlCacheRef.current &&
+      Date.now() - signedUrlCacheRef.current.createdAt < 8 * 60 * 1000
+    ) {
+      return {
+        signedUrl: signedUrlCacheRef.current.url,
+        dynamicVariables: signedUrlCacheRef.current.dynamicVariables,
+      };
+    }
+
+    // Fetch new signed URL
+    const tokenRes = await fetch(`/api/roleplay/${sessionId}/voice-token`);
+    if (!tokenRes.ok) {
+      const errData = await tokenRes.json().catch(() => ({}));
+      throw new Error(errData.error || 'Failed to get voice token');
+    }
+
+    const data = await tokenRes.json();
+    const url = data.signedUrl || data.signed_url || data.url;
+
+    // Cache it
+    signedUrlCacheRef.current = {
+      url,
+      dynamicVariables: data.dynamicVariables,
+      createdAt: Date.now(),
+    };
+
+    return { signedUrl: url, dynamicVariables: data.dynamicVariables };
+  }, [sessionId]);
+
+  /**
+   * Clear signed URL cache (on session end or unmount)
+   */
+  const clearVoiceCache = useCallback(() => {
+    signedUrlCacheRef.current = null;
+  }, []);
 
   /**
    * Check if we're in a rapid-reconnect loop.
@@ -151,14 +197,8 @@ export function useVoiceSession({
         }
       }
 
-      // Re-fetch token and restart
-      const tokenRes = await fetch(`/api/roleplay/${sessionId}/voice-token`);
-      if (!tokenRes.ok) {
-        const errData = await tokenRes.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to get voice token');
-      }
-
-      const { signedUrl, dynamicVariables } = await tokenRes.json();
+      // Reuse cached signed URL or fetch new one
+      const { signedUrl, dynamicVariables } = await getOrFetchSignedUrl();
 
       if (!conv) {
         throw new Error('Conversation instance not available');
@@ -174,7 +214,7 @@ export function useVoiceSession({
       // Try again if attempts remain (will re-check limits at top of function)
       attemptReconnect();
     }
-  }, [sessionId, onError, onStatusChange, isRapidReconnectLoop, haltReconnection]);
+  }, [sessionId, onError, onStatusChange, isRapidReconnectLoop, haltReconnection, getOrFetchSignedUrl]);
 
   // Initialize ElevenLabs conversation — NO overrides for now (diagnostic)
   // The signed URL encodes the agent ID; the agent's dashboard defaults will be used.
@@ -307,14 +347,9 @@ export function useVoiceSession({
         stableConnectionTimerRef.current = null;
       }
 
-      // Fetch signed URL + overrides from our API
-      const tokenRes = await fetch(`/api/roleplay/${sessionId}/voice-token`);
-      if (!tokenRes.ok) {
-        const errData = await tokenRes.json().catch(() => ({}));
-        throw new Error(errData.error || 'Failed to get voice token');
-      }
-
-      const { signedUrl, dynamicVariables } = await tokenRes.json();
+      // Fetch signed URL (or reuse cached) + overrides from our API
+      clearVoiceCache(); // Clear stale cache from previous session
+      const { signedUrl, dynamicVariables } = await getOrFetchSignedUrl();
 
       // Pass dynamic variables — ElevenLabs injects into {{prospect_context}}, {{offer_info}}, {{first_message}}
       await conversation.startSession({ signedUrl, dynamicVariables });
@@ -329,12 +364,13 @@ export function useVoiceSession({
       setVoiceStatus('disconnected');
       onError?.(message);
     }
-  }, [sessionId, conversation, persistTranscript, onError]);
+  }, [sessionId, conversation, persistTranscript, onError, getOrFetchSignedUrl, clearVoiceCache]);
 
   const endVoice = useCallback(async () => {
     console.log('[voice] Ending voice session');
     intentionalDisconnectRef.current = true;
     isReconnectingRef.current = false;
+    clearVoiceCache();
 
     // Cancel keepalive
     if (keepaliveRef.current) {
@@ -363,7 +399,7 @@ export function useVoiceSession({
     } catch {
       // Ignore — session may already be closed
     }
-  }, [conversation, persistTranscript]);
+  }, [conversation, persistTranscript, clearVoiceCache]);
 
   // Emergency persistence on tab close + cleanup timers
   useEffect(() => {

@@ -35,11 +35,11 @@ export type ObjectionPillarId = ObjectionPillar;
 
 /** Prospect difficulty tiers (aligned with 50-point model) */
 export const DIFFICULTY_TIERS = [
-  'easy',              // 41–50
-  'realistic',         // 32–40
-  'hard',              // 26–31
-  'expert',            // 20–25
-  'near_impossible',   // 0–19
+  'easy',              // 43–50
+  'realistic',         // 36–42
+  'hard',              // 30–35
+  'expert',            // 25–29
+  'near_impossible',   // 0–24
 ] as const;
 
 export type DifficultyTier = (typeof DIFFICULTY_TIERS)[number];

@@ -515,8 +515,8 @@ export default function RoleplayResultsPage() {
           <Card className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h2 className="text-lg sm:text-xl font-semibold mb-2">Overall Score</h2>
-                <p className="text-sm sm:text-base text-muted-foreground">Your performance in this roleplay</p>
+                <h2 className="text-xl sm:text-2xl font-semibold mb-2">Overall Score</h2>
+                <p className="text-base text-muted-foreground">Your performance in this roleplay</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(v2PhaseScores?.overall ?? analysis.overallScore)}`}>
@@ -552,7 +552,7 @@ export default function RoleplayResultsPage() {
           {/* Roleplay Coaching Feedback — 5 Dimensions */}
           {roleplayFeedbackData && roleplayFeedbackData.dimensions && (
             <Card className="p-4 sm:p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4 flex items-center gap-2">
                 <Star className="h-5 w-5 text-amber-500" />
                 Roleplay Coaching Feedback
               </h2>
@@ -671,8 +671,8 @@ export default function RoleplayResultsPage() {
           <Card className="p-4 sm:p-6">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <h2 className="text-lg sm:text-xl font-semibold mb-2">Overall Score</h2>
-                <p className="text-sm sm:text-base text-muted-foreground">Your performance in this roleplay</p>
+                <h2 className="text-xl sm:text-2xl font-semibold mb-2">Overall Score</h2>
+                <p className="text-base text-muted-foreground">Your performance in this roleplay</p>
               </div>
               <div className="flex items-center gap-3">
                 <div className={`text-5xl sm:text-6xl font-bold ${getScoreColor(analysis.overallScore)}`}>
@@ -690,7 +690,7 @@ export default function RoleplayResultsPage() {
           {/* Priority Fixes - Section 6.6 */}
           {priorityFixes.length > 0 && (
             <Card className="p-4 sm:p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4 flex items-center gap-2">
                 <Wrench className="h-5 w-5" />
                 Priority Fixes
               </h2>
@@ -731,7 +731,7 @@ export default function RoleplayResultsPage() {
           {/* Prospect Difficulty Details */}
           {session?.prospectAvatar && (
             <Card className="p-4 sm:p-6">
-              <h2 className="text-lg sm:text-xl font-semibold mb-4">
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4">
                 Prospect Difficulty Profile {session.prospectAvatar.executionResistance !== undefined ? '(50-Point Model)' : '(40-Point Model)'}
               </h2>
 
@@ -812,7 +812,7 @@ export default function RoleplayResultsPage() {
           {/* Coaching Recommendations */}
           {recommendations.length > 0 && (
             <Card className="p-4 sm:p-6">
-              <h2 className="text-xl font-semibold mb-4">3-5 Prioritized Fixes</h2>
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4">3-5 Prioritized Fixes</h2>
               <div className="space-y-3">
                 {recommendations.slice(0, 5).map((rec: { priority?: string; category?: string; timestamp?: number; issue?: string; explanation?: string; action?: string; transcriptSegment?: string }, i: number) => (
                   <div
@@ -874,7 +874,7 @@ export default function RoleplayResultsPage() {
           {/* Roleplay Coaching Feedback (V1 fallback path) */}
           {roleplayFeedbackData && roleplayFeedbackData.dimensions && (
             <Card className="p-4 sm:p-6">
-              <h2 className="text-xl font-semibold mb-4 flex items-center gap-2">
+              <h2 className="text-xl sm:text-2xl font-semibold mb-4 flex items-center gap-2">
                 <Star className="h-5 w-5 text-amber-500" />
                 Roleplay Coaching Feedback
               </h2>
