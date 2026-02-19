@@ -351,9 +351,9 @@ export function validateOfferProfile(offer: Partial<OfferProfile>): {
     }
   }
 
-  // Check primaryProblemsSolved has at least 3
-  if (offer.primaryProblemsSolved && offer.primaryProblemsSolved.length < 3) {
-    missing.push('primaryProblemsSolved (needs at least 3)');
+  // Check primaryProblemsSolved has at least 1 item
+  if (offer.primaryProblemsSolved && offer.primaryProblemsSolved.length < 1) {
+    missing.push('primaryProblemsSolved (needs at least 1)');
   }
 
   return {
