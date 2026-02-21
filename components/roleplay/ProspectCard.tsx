@@ -11,8 +11,8 @@ interface ProspectCardProps {
     compact?: boolean;
 }
 
-// Fallback avatar URL - neutral professional avatar
-const FALLBACK_AVATAR = 'https://api.dicebear.com/7.x/lorelei/svg?seed=neutral&backgroundColor=b6e3f4';
+// Fallback avatar — local professional headshot
+const FALLBACK_AVATAR = '/avatars/male-1.png';
 
 /**
  * ProspectCard - Displays realistic prospect presentation for pre-call

@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { notifications } from '@/db/schema';
 import { eq, desc, and } from 'drizzle-orm';
+import { logger } from '@/lib/logger';
 
 /**
  * Get all notifications for the current user
@@ -30,9 +31,9 @@ export async function GET(request: NextRequest) {
       .where(
         unreadOnly
           ? and(
-              eq(notifications.userId, session.user.id),
-              eq(notifications.read, false)
-            )
+            eq(notifications.userId, session.user.id),
+            eq(notifications.read, false)
+          )
           : eq(notifications.userId, session.user.id)
       )
       .orderBy(desc(notifications.createdAt))
@@ -58,7 +59,7 @@ export async function GET(request: NextRequest) {
       unreadCount: unreadCountResult.length,
     });
   } catch (error) {
-    console.error('Error fetching notifications:', error);
+    logger.error('AUTH', 'Failed to fetch notifications', error as Error);
     return NextResponse.json(
       { error: 'Failed to fetch notifications' },
       { status: 500 }
@@ -122,10 +123,11 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error updating notification:', error);
+    logger.error('AUTH', 'Failed to update notification', error as Error);
     return NextResponse.json(
       { error: 'Failed to update notification' },
       { status: 500 }
     );
   }
 }
+

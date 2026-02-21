@@ -235,15 +235,19 @@ export async function GET(
         { status: 502 }
       );
     }
-    const signedUrl = signedUrlData.signed_url;
+    const rawSignedUrl = signedUrlData.signed_url;
 
-    if (!signedUrl) {
+    if (!rawSignedUrl) {
       logger.error('ROLEPLAY', 'No signed_url in ElevenLabs response', undefined, { sessionId });
       return NextResponse.json(
         { error: 'No signed URL returned from ElevenLabs' },
         { status: 502 }
       );
     }
+
+    // Extend ElevenLabs idle timeout from 20s (default) to 180s (max)
+    const separator = rawSignedUrl.includes('?') ? '&' : '?';
+    const signedUrl = `${rawSignedUrl}${separator}inactivity_timeout=180`;
 
     // Build dynamic variables for ElevenLabs agent template
     // These get injected into {{prospect_context}}, {{offer_info}}, {{first_message}} placeholders

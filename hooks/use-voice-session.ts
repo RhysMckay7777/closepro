@@ -198,15 +198,29 @@ export function useVoiceSession({
         }
       }
 
-      // Reuse cached signed URL or fetch new one
+      // Force fresh signed URL on reconnection (old one may be stale)
+      signedUrlCacheRef.current = null;
       const { signedUrl, dynamicVariables } = await getOrFetchSignedUrl();
 
       if (!conv) {
         throw new Error('Conversation instance not available');
       }
 
-      // Pass dynamic variables — ElevenLabs injects into {{prospect_context}}, {{offer_info}}, {{first_message}}
-      await conv.startSession({ signedUrl, dynamicVariables });
+      // Build conversation context from transcript so AI continues where it left off
+      const history = transcriptRef.current;
+      let reconnectDynamicVars = { ...dynamicVariables };
+      if (history.length > 0) {
+        const transcript = history
+          .slice(-20) // Last 20 messages to avoid exceeding context limits
+          .map((m) => `${m.role === 'rep' ? 'Closer' : 'Prospect'}: ${m.content}`)
+          .join('\n');
+        reconnectDynamicVars = {
+          ...dynamicVariables,
+          conversation_context: `IMPORTANT: This is a reconnected session. The conversation was already in progress. Here is the transcript so far:\n\n${transcript}\n\nContinue the conversation naturally from where it left off. Do NOT restart. Do NOT say generic greetings.`,
+        };
+      }
+
+      await conv.startSession({ signedUrl, dynamicVariables: reconnectDynamicVars });
 
 
     } catch (err: any) {
@@ -231,11 +245,16 @@ export function useVoiceSession({
       // Record connection start for immediate-drop detection
       connectionStartTimeRef.current = Date.now();
 
-      // Keepalive: prevent idle WebSocket timeout (ElevenLabs closes after ~20s)
+      // Keepalive heartbeat: send empty contextual update every 15s to prevent
+      // ElevenLabs from closing the WebSocket due to inactivity.
+      // Works alongside inactivity_timeout=180 on the signed URL.
       if (keepaliveRef.current) clearInterval(keepaliveRef.current);
       keepaliveRef.current = setInterval(() => {
-        // @elevenlabs/react 0.14.0 handles WebSocket keepalive internally.
-        // This interval is a safety net for older SDK versions.
+        try {
+          conversationRef.current?.sendContextualUpdate('');
+        } catch {
+          // Silently ignore — connection may be closing
+        }
       }, 15_000);
 
       // DON'T reset reconnectAttemptsRef immediately — wait for stable connection.

@@ -60,40 +60,123 @@ interface BarSegment {
   durationSec: number;
 }
 
-function buildSegments(timings: PhaseTimings): BarSegment[] {
+function buildSegments(timings: PhaseTimings, totalSec?: number): BarSegment[] {
   const phases = ['intro', 'discovery', 'pitch', 'objections', 'close'] as const;
-  const segments: BarSegment[] = [];
+  const raw: BarSegment[] = [];
 
   for (const phase of phases) {
     const timing = timings[phase];
     if (!timing) continue;
 
     if (Array.isArray(timing)) {
-      // Multiple segments (objections)
       for (const seg of timing) {
         const s = parseTimestamp(seg.start);
         const e = parseTimestamp(seg.end);
-        if (e > s) segments.push({ phase, startSec: s, endSec: e, durationSec: e - s });
+        if (e > s) raw.push({ phase, startSec: s, endSec: e, durationSec: e - s });
       }
     } else {
       const s = parseTimestamp(timing.start);
       const e = parseTimestamp(timing.end);
-      if (e > s) segments.push({ phase, startSec: s, endSec: e, durationSec: e - s });
+      if (e > s) raw.push({ phase, startSec: s, endSec: e, durationSec: e - s });
     }
   }
 
-  return segments.sort((a, b) => a.startSec - b.startSec);
+  if (raw.length === 0) return [];
+
+  // Sort by start time
+  raw.sort((a, b) => a.startSec - b.startSec);
+
+  // Priority order — higher-priority phases take overlapping time
+  const priority: Record<string, number> = {
+    objections: 5,
+    close: 4,
+    pitch: 3,
+    discovery: 2,
+    intro: 1,
+  };
+
+  // Resolve overlaps: when two phases share time, split at the boundary
+  // of the higher-priority phase
+  const resolved: BarSegment[] = [];
+  for (const seg of raw) {
+    let current = { ...seg };
+
+    // Check against already-resolved segments for overlap
+    for (let i = 0; i < resolved.length; i++) {
+      const existing = resolved[i];
+      // No overlap
+      if (current.startSec >= existing.endSec || current.endSec <= existing.startSec) continue;
+
+      const currentPri = priority[current.phase] || 0;
+      const existingPri = priority[existing.phase] || 0;
+
+      if (currentPri > existingPri) {
+        // Current wins — trim the existing segment
+        if (existing.startSec < current.startSec) {
+          // Existing starts before current: trim existing end
+          existing.endSec = current.startSec;
+          existing.durationSec = existing.endSec - existing.startSec;
+        } else {
+          // Existing starts within current: trim existing start
+          existing.startSec = current.endSec;
+          existing.durationSec = existing.endSec - existing.startSec;
+        }
+      } else {
+        // Existing wins — trim current
+        if (current.startSec < existing.startSec) {
+          current.endSec = existing.startSec;
+          current.durationSec = current.endSec - current.startSec;
+        } else {
+          current.startSec = existing.endSec;
+          current.durationSec = current.endSec - current.startSec;
+        }
+      }
+    }
+
+    // Remove zero-width segments from resolved list
+    for (let i = resolved.length - 1; i >= 0; i--) {
+      if (resolved[i].durationSec <= 0) resolved.splice(i, 1);
+    }
+
+    if (current.durationSec > 0) {
+      resolved.push(current);
+    }
+  }
+
+  // Sort final segments by start time
+  resolved.sort((a, b) => a.startSec - b.startSec);
+
+  // Fill gaps: extend previous segment forward OR next segment backward
+  const maxEnd = totalSec || Math.max(...resolved.map((s) => s.endSec));
+  for (let i = 0; i < resolved.length; i++) {
+    const next = resolved[i + 1];
+    if (next && resolved[i].endSec < next.startSec) {
+      // Gap between this and next — extend current forward to fill
+      resolved[i].endSec = next.startSec;
+      resolved[i].durationSec = resolved[i].endSec - resolved[i].startSec;
+    }
+  }
+  // Extend last segment to total duration if there's trailing gap
+  if (resolved.length > 0 && resolved[resolved.length - 1].endSec < maxEnd) {
+    const last = resolved[resolved.length - 1];
+    last.endSec = maxEnd;
+    last.durationSec = last.endSec - last.startSec;
+  }
+
+  return resolved;
 }
 
 export function PhaseTimelineBar({ phaseTimings, totalDuration, activePhase }: PhaseTimelineBarProps) {
   if (!phaseTimings) return null;
 
-  const segments = buildSegments(phaseTimings);
+  const rawTotalSec = totalDuration
+    ? parseTimestamp(totalDuration)
+    : 0;
+
+  const segments = buildSegments(phaseTimings, rawTotalSec || undefined);
   if (segments.length === 0) return null;
 
-  const totalSec = totalDuration
-    ? parseTimestamp(totalDuration)
-    : Math.max(...segments.map(s => s.endSec));
+  const totalSec = rawTotalSec || Math.max(...segments.map(s => s.endSec));
 
   if (totalSec <= 0) return null;
 

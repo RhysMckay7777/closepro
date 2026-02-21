@@ -27,9 +27,9 @@ const FEMALE_FIRST_NAMES = new Set([
   'natasha', 'rebecca', 'victoria', 'samantha', 'katherine', 'catherine',
 ]);
 
-// Static fallback portrait IDs (randomuser.me)
-const MALE_PORTRAIT_IDS = [32, 45, 67, 22, 55, 78, 11, 36];
-const FEMALE_PORTRAIT_IDS = [44, 68, 33, 55, 12, 72, 26, 81];
+// Local fallback portrait paths in /public/avatars/
+const MALE_PORTRAITS = ['/avatars/male-1.png', '/avatars/male-2.png', '/avatars/male-3.png'];
+const FEMALE_PORTRAITS = ['/avatars/female-1.png', '/avatars/female-2.png'];
 
 /**
  * Hash a string to a consistent positive integer.
@@ -54,15 +54,13 @@ function inferGender(name?: string): 'male' | 'female' {
 }
 
 /**
- * Get a deterministic static fallback portrait URL from randomuser.me.
+ * Get a deterministic local fallback portrait path.
  */
 function getStaticFallbackUrl(name?: string): string {
   const gender = inferGender(name);
   const hash = nameHash(name || 'default');
-  const ids = gender === 'female' ? FEMALE_PORTRAIT_IDS : MALE_PORTRAIT_IDS;
-  const portraitId = ids[hash % ids.length];
-  const folder = gender === 'female' ? 'women' : 'men';
-  return `https://randomuser.me/api/portraits/${folder}/${portraitId}.jpg`;
+  const portraits = gender === 'female' ? FEMALE_PORTRAITS : MALE_PORTRAITS;
+  return portraits[hash % portraits.length];
 }
 
 export function resolveProspectAvatarUrl(
