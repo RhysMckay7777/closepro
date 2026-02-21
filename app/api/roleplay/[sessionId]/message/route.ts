@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -254,7 +255,7 @@ export async function POST(
       prospectMessageId: prospectMessage?.id ?? null,
     });
   } catch (error: any) {
-    console.error('Error sending roleplay message:', error);
+    logger.error('ROLEPLAY', 'Failed to send message', error, { sessionId });
     return NextResponse.json(
       { error: error.message || 'Failed to send message' },
       { status: 500 }

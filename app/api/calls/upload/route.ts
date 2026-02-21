@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -127,7 +128,7 @@ export async function POST(request: NextRequest) {
           message: 'Transcription complete. Please confirm call details.',
         }, { status: 201 });
       } catch (transcribeErr: unknown) {
-        console.error('Inline transcription error (blob):', transcribeErr);
+        logger.error('CALL_ANALYSIS', 'Inline transcription error (blob)', transcribeErr);
         return NextResponse.json({
           callId: call.id,
           status: 'failed',
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
         message: 'Transcription complete. Please confirm call details.',
       }, { status: 201 });
     } catch (transcribeErr: unknown) {
-      console.error('Inline transcription error:', transcribeErr);
+      logger.error('CALL_ANALYSIS', 'Inline transcription error', transcribeErr);
       return NextResponse.json({
         callId: call.id,
         status: 'failed',
@@ -223,7 +224,7 @@ export async function POST(request: NextRequest) {
       }, { status: 201 });
     }
   } catch (error: unknown) {
-    console.error('Error uploading call:', error);
+    logger.error('CALL_ANALYSIS', 'Failed to upload call', error);
     let msg = error instanceof Error ? error.message : 'Failed to upload call';
     if (typeof msg === 'string' && (msg.includes('timeout') || msg.includes('TIMEOUT') || msg.includes('aborted'))) {
       msg = 'Upload timed out. Try a shorter file or use Paste transcript instead.';
@@ -249,7 +250,7 @@ async function transcribeOnly(
   try {
     transcriptionResult = await transcribeAudioFile(audioBuffer, fileName, fileUrl);
   } catch (err: unknown) {
-    console.error('Transcription error:', err);
+    logger.error('CALL_ANALYSIS', 'Transcription error', err);
     await db
       .update(salesCalls)
       .set({ status: 'failed' })
@@ -300,8 +301,8 @@ async function runExtraction(callId: string, userId: string, organizationId: str
       .set({ extractedDetails: JSON.stringify(extracted) })
       .where(eq(salesCalls.id, callId));
 
-    console.log('[upload-route] Extraction saved for call:', callId);
+    logger.info('CALL_ANALYSIS', 'Extraction saved for call', { callId });
   } catch (err) {
-    console.error('[upload-route] Extraction failed (non-critical):', err);
+    logger.warn('CALL_ANALYSIS', 'Extraction failed (non-critical)', { callId });
   }
 }

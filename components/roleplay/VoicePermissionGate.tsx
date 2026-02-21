@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Mic, MicOff, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { reportClientError } from '@/lib/report-client-error';
 
 type PermissionState = 'checking' | 'granted' | 'prompt' | 'denied' | 'unsupported';
 
@@ -57,8 +58,10 @@ export function VoicePermissionGate({ children, onFallbackToText }: VoicePermiss
     } catch (err: any) {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
         setPermission('denied');
+        reportClientError('VoicePermissionGate', 'Microphone permission denied', { errorName: err.name });
       } else {
         setPermission('unsupported');
+        reportClientError('VoicePermissionGate', 'Microphone access failed', { errorName: err.name, message: err.message });
       }
     }
   };

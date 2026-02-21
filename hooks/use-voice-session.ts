@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import type { Status } from '@elevenlabs/react';
+import { reportClientError } from '@/lib/report-client-error';
 
 export interface VoiceTranscriptEntry {
   role: 'rep' | 'prospect';
@@ -76,7 +77,7 @@ export function useVoiceSession({
         lastPersistedIndexRef.current = entries.length;
       }
     } catch (err) {
-      console.error('[voice] Failed to persist transcript:', err);
+      reportClientError('use-voice-session', 'Failed to persist transcript', { sessionId });
     }
   }, [sessionId]);
 
@@ -140,7 +141,7 @@ export function useVoiceSession({
    * Stop all reconnection and show error state.
    */
   const haltReconnection = useCallback((message: string) => {
-    console.error(`[voice] Halting reconnection: ${message}`);
+    reportClientError('use-voice-session', `Halting reconnection: ${message}`, { sessionId });
     isReconnectingRef.current = false;
     setReconnectFailed(true);
     setError(message);
@@ -175,14 +176,14 @@ export function useVoiceSession({
     // Record this reconnect timestamp for rapid-loop detection
     reconnectTimestampsRef.current.push(Date.now());
 
-    console.log(`[voice] Reconnecting attempt ${attempt}/${MAX_RECONNECT_ATTEMPTS}`);
+
     setVoiceStatus('connecting');
     setError(null);
     onStatusChange?.('connecting');
 
     // Exponential backoff: 2s, 4s, 8s
     const delay = BASE_RECONNECT_DELAY_MS * Math.pow(2, attempt - 1);
-    console.log(`[voice] Waiting ${delay}ms before reconnect`);
+
     await new Promise((r) => setTimeout(r, delay));
 
     try {
@@ -207,9 +208,9 @@ export function useVoiceSession({
       // Pass dynamic variables — ElevenLabs injects into {{prospect_context}}, {{offer_info}}, {{first_message}}
       await conv.startSession({ signedUrl, dynamicVariables });
 
-      console.log(`[voice] Reconnect attempt ${attempt} succeeded`);
+
     } catch (err: any) {
-      console.error(`[voice] Reconnect attempt ${attempt} failed:`, err?.message);
+      reportClientError('use-voice-session', `Reconnect attempt ${attempt} failed: ${err?.message}`, { sessionId });
       isReconnectingRef.current = false;
       // Try again if attempts remain (will re-check limits at top of function)
       attemptReconnect();
@@ -221,7 +222,7 @@ export function useVoiceSession({
   // If connection holds, the problem is purely in override format.
   const conversation = useConversation({
     onConnect: () => {
-      console.log('[voice] Connected');
+
       hasConnectedRef.current = true;
       isReconnectingRef.current = false;
       setReconnectFailed(false);
@@ -243,7 +244,7 @@ export function useVoiceSession({
         clearTimeout(stableConnectionTimerRef.current);
       }
       stableConnectionTimerRef.current = setTimeout(() => {
-        console.log('[voice] Connection stable for 10s — resetting attempt counter');
+
         reconnectAttemptsRef.current = 0;
         stableConnectionTimerRef.current = null;
       }, STABLE_CONNECTION_THRESHOLD_MS);
@@ -253,11 +254,7 @@ export function useVoiceSession({
         ? Date.now() - connectionStartTimeRef.current
         : Infinity;
 
-      console.log('[voice] Disconnected', {
-        intentional: intentionalDisconnectRef.current,
-        reconnecting: isReconnectingRef.current,
-        connectionDurationMs: connectionDuration,
-      });
+
 
       // Clear keepalive
       if (keepaliveRef.current) {
@@ -292,7 +289,7 @@ export function useVoiceSession({
       }
     },
     onError: (message: string) => {
-      console.error('[voice] Error:', message);
+      reportClientError('use-voice-session', `Voice error: ${message}`, { sessionId });
 
       // WebSocket errors should trigger reconnect
       const isWebSocketError =
@@ -329,7 +326,7 @@ export function useVoiceSession({
 
   const startVoice = useCallback(async () => {
     try {
-      console.log('[voice] Starting voice session');
+
       setVoiceStatus('connecting');
       setError(null);
       setReconnectFailed(false);
@@ -359,7 +356,7 @@ export function useVoiceSession({
       persistTimerRef.current = setInterval(persistTranscript, 30000);
     } catch (err: any) {
       const message = err?.message || 'Failed to start voice session';
-      console.error('[voice] Start failed:', message);
+      reportClientError('use-voice-session', `Start failed: ${message}`, { sessionId });
       setError(message);
       setVoiceStatus('disconnected');
       onError?.(message);
@@ -367,7 +364,7 @@ export function useVoiceSession({
   }, [sessionId, conversation, persistTranscript, onError, getOrFetchSignedUrl, clearVoiceCache]);
 
   const endVoice = useCallback(async () => {
-    console.log('[voice] Ending voice session');
+
     intentionalDisconnectRef.current = true;
     isReconnectingRef.current = false;
     clearVoiceCache();

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -136,7 +137,7 @@ export async function POST(
             message: `Re-practice session created from message ${restartFromMessageIndex + 1}`,
         });
     } catch (error: any) {
-        console.error('Error creating restart session:', error);
+        logger.error('ROLEPLAY', 'Failed to create restart session', error);
         return NextResponse.json(
             { error: error.message || 'Failed to create restart session' },
             { status: 500 }

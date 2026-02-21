@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -143,7 +144,7 @@ export async function POST(request: NextRequest) {
           // authorityAndCoachability → authorityLevel (map score to tier)
           authorityLevel: (dimensionScores.authorityAndCoachability ?? 5) >= 7 ? 'advisee'
             : (dimensionScores.authorityAndCoachability ?? 5) >= 4 ? 'peer'
-            : 'advisor',
+              : 'advisor',
           // perceivedNeedForHelp — derived from motivationIntensity
           perceivedNeedForHelp: dimensionScores.motivationIntensity ?? 5,
           // abilityToProceed → executionResistance
@@ -178,7 +179,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ sessionId: newSession.id });
   } catch (error: any) {
-    console.error('[Replay API] Error:', error);
+    logger.error('ROLEPLAY', 'Phase replay failed', error);
     return NextResponse.json(
       { error: error.message || 'Failed to create replay session' },
       { status: 500 }

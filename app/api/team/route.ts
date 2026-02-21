@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
 
     // Use primary organizationId, or get from junction table
     let organizationId = user[0].organizationId;
-    
+
     if (!organizationId) {
       // Fallback: get first organization from junction table
       const firstOrg = await db
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, user[0].id))
         .limit(1);
-      
+
       if (firstOrg[0]) {
         organizationId = firstOrg[0].organizationId;
       } else {
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
       planTier: subscription?.planTier || org[0].planTier,
     });
   } catch (error) {
-    console.error('Error fetching team data:', error);
+    logger.error('TEAM', 'Failed to fetch team data', error);
     return NextResponse.json(
       { error: 'Failed to fetch team data' },
       { status: 500 }
@@ -164,14 +165,14 @@ export async function POST(request: NextRequest) {
     // Check seat limit
     const organizationId = user[0].organizationId;
     const subscription = await getActiveSubscription(organizationId);
-    
+
     const currentMembers = await db
       .select()
       .from(users)
       .where(eq(users.organizationId, organizationId));
 
     const maxSeats = subscription?.seats || 5;
-    
+
     if (currentMembers.length >= maxSeats) {
       return NextResponse.json(
         { error: 'Seat limit reached. Please upgrade your plan.' },
@@ -181,13 +182,13 @@ export async function POST(request: NextRequest) {
 
     // TODO: Implement email invitation system
     // For now, return success indicating invitation would be sent
-    
+
     return NextResponse.json({
       message: 'Invitation sent successfully',
       email,
     });
   } catch (error) {
-    console.error('Error inviting team member:', error);
+    logger.error('TEAM', 'Failed to invite team member', error);
     return NextResponse.json(
       { error: 'Failed to invite team member' },
       { status: 500 }

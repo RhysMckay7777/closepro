@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -76,7 +77,7 @@ export async function POST(
 
     return NextResponse.json({ persisted: newMessages.length });
   } catch (error: any) {
-    console.error('[transcript] Error persisting transcript:', error);
+    logger.error('ROLEPLAY', 'Failed to persist transcript', error);
     return NextResponse.json(
       { error: error.message || 'Failed to persist transcript' },
       { status: 500 }

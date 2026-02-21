@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -53,7 +54,7 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error('Error fetching invites:', error);
+    logger.error('TEAM', 'Failed to fetch invites', error);
     return NextResponse.json(
       { error: 'Failed to fetch invites' },
       { status: 500 }

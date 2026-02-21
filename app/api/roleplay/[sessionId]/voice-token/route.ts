@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -185,7 +186,7 @@ export async function GET(
         systemPrompt += '\n\n' + transcriptPatterns;
       }
     } catch (err) {
-      console.error('[voice-token] Failed to load transcript patterns:', err);
+      logger.warn('ROLEPLAY', 'Failed to load transcript patterns', { sessionId });
     }
 
     // Generate initial prospect message
@@ -203,12 +204,6 @@ export async function GET(
     const voiceId = voiceConfig.voiceId;
 
     // Fetch signed URL from ElevenLabs
-    console.log('[voice-token] Requesting signed URL', {
-      agentId: ELEVENLABS_AGENT_ID,
-      endpoint: `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
-      voiceId,
-      prospectName,
-    });
 
     const signedUrlResponse = await fetch(
       `https://api.elevenlabs.io/v1/convai/conversation/get_signed_url?agent_id=${ELEVENLABS_AGENT_ID}`,
@@ -221,13 +216,9 @@ export async function GET(
     );
 
     const signedUrlBody = await signedUrlResponse.text();
-    console.log('[voice-token] ElevenLabs response', {
-      status: signedUrlResponse.status,
-      body: signedUrlBody.slice(0, 500),
-    });
 
     if (!signedUrlResponse.ok) {
-      console.error('[voice-token] ElevenLabs signed URL error:', signedUrlResponse.status, signedUrlBody);
+      logger.error('ROLEPLAY', 'ElevenLabs signed URL error', undefined, { sessionId, status: signedUrlResponse.status });
       return NextResponse.json(
         { error: 'Failed to get voice session URL' },
         { status: 502 }
@@ -238,7 +229,7 @@ export async function GET(
     try {
       signedUrlData = JSON.parse(signedUrlBody);
     } catch {
-      console.error('[voice-token] Failed to parse ElevenLabs response as JSON');
+      logger.error('ROLEPLAY', 'Failed to parse ElevenLabs response as JSON', undefined, { sessionId });
       return NextResponse.json(
         { error: 'Invalid response from voice service' },
         { status: 502 }
@@ -247,7 +238,7 @@ export async function GET(
     const signedUrl = signedUrlData.signed_url;
 
     if (!signedUrl) {
-      console.error('[voice-token] No signed_url in response:', signedUrlData);
+      logger.error('ROLEPLAY', 'No signed_url in ElevenLabs response', undefined, { sessionId });
       return NextResponse.json(
         { error: 'No signed URL returned from ElevenLabs' },
         { status: 502 }
@@ -280,7 +271,7 @@ export async function GET(
       offerData[0].mechanismHighLevel ? `Mechanism: ${offerData[0].mechanismHighLevel}` : '',
     ].filter(Boolean).join('\n');
 
-    console.log('[voice-token] Success — signed URL generated for session', sessionId);
+
 
     return NextResponse.json({
       signedUrl,
@@ -296,7 +287,7 @@ export async function GET(
       prospectName,
     });
   } catch (error: any) {
-    console.error('[voice-token] Error:', error);
+    logger.error('ROLEPLAY', 'Failed to generate voice token', error, { sessionId });
     return NextResponse.json(
       { error: error.message || 'Failed to generate voice token' },
       { status: 500 }

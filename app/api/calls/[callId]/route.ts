@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -105,7 +106,7 @@ export async function GET(
       analysis: analysisData,
     });
   } catch (error: any) {
-    console.error('Error fetching call details:', error);
+    logger.error('CALL_ANALYSIS', 'Failed to fetch call details', error);
     return NextResponse.json(
       { error: 'Failed to fetch call details' },
       { status: 500 }
@@ -164,7 +165,7 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Error deleting call:', error);
+    logger.error('CALL_ANALYSIS', 'Failed to delete call', error);
     return NextResponse.json(
       { error: 'Failed to delete call' },
       { status: 500 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -142,7 +143,7 @@ export async function GET(request: NextRequest) {
       if (!isMissingColumnError(dbError)) throw dbError;
       // Log so you can see which column is missing (check terminal when loading Figures)
       const e = dbError as { code?: string; message?: string };
-      console.error('Figures API: missing column (run migrations against same DB as app):', e?.code, e?.message);
+      logger.warn('PERFORMANCE', 'Figures API: missing column (run migrations)', { code: e?.code });
       // Try raw SQL in case Drizzle is out of sync with DB
       try {
         const raw = await db.execute<{
@@ -172,7 +173,7 @@ export async function GET(request: NextRequest) {
         }));
       } catch (rawErr: unknown) {
         const re = rawErr as { code?: string; message?: string };
-        console.error('Figures API: raw query also failed:', re?.code, re?.message);
+        logger.error('PERFORMANCE', 'Figures API: raw query also failed', re);
         return NextResponse.json(emptyFigures(monthParam, true));
       }
     }
@@ -328,7 +329,7 @@ export async function GET(request: NextRequest) {
       }
     } catch (instErr: unknown) {
       // paymentPlanInstalments table or columns may not exist yet — gracefully skip
-      console.error('Figures API: instalment query failed (run drizzle-kit push to migrate):', instErr);
+      logger.warn('PERFORMANCE', 'Instalment query failed (run drizzle-kit push to migrate)');
     }
 
     // Remove parent salesCalls rows that have payment plan instalments (avoid double-counting)
@@ -356,7 +357,7 @@ export async function GET(request: NextRequest) {
       totalCommission,
     });
   } catch (error) {
-    console.error('Error fetching figures:', error);
+    logger.error('PERFORMANCE', 'Failed to fetch figures', error);
     return NextResponse.json(
       { error: 'Failed to fetch figures' },
       { status: 500 }

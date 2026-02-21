@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     // Use requested org or fallback to primary
     let organizationId = requestedOrgId || currentUser[0].organizationId;
-    
+
     if (!organizationId) {
       // Get first organization from junction table
       const firstOrg = await db
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, currentUser[0].id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found. Please create an organization first before inviting members.' },
@@ -215,7 +216,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: canAdd 
+      message: canAdd
         ? `Successfully invited ${existingUser[0].name} to the team`
         : `Invite sent to ${existingUser[0].name}. They can accept once you upgrade your plan to add more seats.`,
       user: {
@@ -228,7 +229,7 @@ export async function POST(request: NextRequest) {
       seatLimitReached: !canAdd,
     });
   } catch (error) {
-    console.error('Error inviting team member:', error);
+    logger.error('TEAM', 'Failed to invite team member', error);
     return NextResponse.json(
       { error: 'Failed to invite team member' },
       { status: 500 }
@@ -278,7 +279,7 @@ export async function GET(request: NextRequest) {
 
     // Determine which organization to search for
     let organizationId = requestedOrgId || currentUser[0].organizationId;
-    
+
     if (!organizationId) {
       // Try to get from junction table
       const firstOrg = await db
@@ -286,7 +287,7 @@ export async function GET(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, currentUser[0].id))
         .limit(1);
-      
+
       if (firstOrg[0]) {
         organizationId = firstOrg[0].organizationId;
       } else {
@@ -358,7 +359,7 @@ export async function GET(request: NextRequest) {
     // If exact match exists and is already in this org, return helpful message
     if (exactMatch[0]) {
       if (existingMemberIds.includes(exactMatch[0].id)) {
-        return NextResponse.json({ 
+        return NextResponse.json({
           users: [],
           message: 'This user is already a member of this organization'
         });
@@ -405,7 +406,7 @@ export async function GET(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error('Error searching users:', error);
+    logger.error('TEAM', 'Failed to search users', error);
     return NextResponse.json(
       { error: 'Failed to search users' },
       { status: 500 }

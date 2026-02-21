@@ -187,12 +187,12 @@ export async function POST(
                 console.log(`[prospects/generate after()] ✅ Human photo saved for ${prospect.name}, URL starts with: ${url.slice(0, 50)}`);
               }
             } catch (err: any) {
-              console.error(`[prospects/generate after()] ❌ Gemini failed for ${prospect.name}:`, err?.message);
+              logger.warn('PROSPECT_BUILDER', `Gemini image failed for ${prospect.name}`);
             }
           }
           console.log(`[prospects/generate after()] Background image generation COMPLETED`);
         } catch (err) {
-          console.error('[prospects/generate after()] Background image generation FAILED:', err);
+          logger.error('PROSPECT_BUILDER', 'Background image generation failed', err);
         }
       });
     } else {
@@ -201,7 +201,7 @@ export async function POST(
 
     return NextResponse.json(responsePayload);
   } catch (error: any) {
-    console.error('Error generating prospects:', error);
+    logger.error('PROSPECT_BUILDER', 'Failed to generate prospects', error);
     const msg = error?.message ?? '';
     const code = error?.code ?? error?.errno;
     // Session/auth failure (e.g. BETTER_AUTH_URL unreachable in dev) → 401 so client can redirect to login

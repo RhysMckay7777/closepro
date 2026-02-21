@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, user[0].id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found' },
@@ -69,7 +70,7 @@ export async function GET(request: NextRequest) {
     }
 
     const subscription = await getActiveSubscription(organizationId);
-    const hasActiveSubscription = subscription !== null && 
+    const hasActiveSubscription = subscription !== null &&
       (subscription.status === 'active' || subscription.status === 'trialing');
 
     return NextResponse.json({
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
       } : null,
     });
   } catch (error: any) {
-    console.error('Error checking subscription:', error);
+    logger.error('BILLING', 'Failed to check subscription', error);
     return NextResponse.json(
       { error: 'Failed to check subscription' },
       { status: 500 }

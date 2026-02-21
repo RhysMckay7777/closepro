@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -95,7 +96,7 @@ export async function GET(
       analysis,
     });
   } catch (error: any) {
-    console.error('Error fetching roleplay session:', error);
+    logger.error('ROLEPLAY', 'Failed to fetch session', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch session' },
       { status: 500 }
@@ -172,12 +173,25 @@ export async function PATCH(
       .where(eq(roleplaySessions.id, sessionId))
       .returning();
 
+    // Log session lifecycle events
+    if (status === 'completed' || status === 'errored' || status === 'timed_out') {
+      const startedAt = roleplay[0].startedAt || roleplay[0].createdAt;
+      const durationSeconds = startedAt
+        ? Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)
+        : 0;
+      logger.info('ROLEPLAY', `Session ended`, {
+        sessionId,
+        duration: `${durationSeconds}s`,
+        status,
+      });
+    }
+
     return NextResponse.json({
       session: updated,
       message: 'Session updated',
     });
   } catch (error: any) {
-    console.error('Error updating roleplay session:', error);
+    logger.error('ROLEPLAY', 'Failed to update session', error);
     return NextResponse.json(
       { error: error.message || 'Failed to update session' },
       { status: 500 }

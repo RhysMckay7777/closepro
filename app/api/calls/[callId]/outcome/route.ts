@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -120,7 +121,7 @@ export async function PATCH(
 
     return NextResponse.json({ ok: true });
   } catch (error: unknown) {
-    console.error('Error updating call outcome:', error);
+    logger.error('CALL_ANALYSIS', 'Failed to update call outcome', error);
     return NextResponse.json(
       { error: 'Failed to update outcome' },
       { status: 500 }

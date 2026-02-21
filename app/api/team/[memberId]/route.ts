@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -43,14 +44,14 @@ export async function DELETE(
     const { searchParams } = new URL(request.url);
     const requestedOrgId = searchParams.get('orgId');
     let organizationId = requestedOrgId || currentUser[0].organizationId;
-    
+
     if (!organizationId) {
       const firstOrg = await db
         .select()
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, currentUser[0].id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'User organization not found' },
@@ -142,19 +143,19 @@ export async function DELETE(
 
       await db
         .update(users)
-        .set({ 
+        .set({
           organizationId: otherOrg[0]?.organizationId || null,
           updatedAt: new Date(),
         })
         .where(eq(users.id, params.memberId));
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: 'Team member removed successfully' 
+      message: 'Team member removed successfully'
     });
   } catch (error) {
-    console.error('Error removing team member:', error);
+    logger.error('TEAM', 'Failed to remove team member', error);
     return NextResponse.json(
       { error: 'Failed to remove team member' },
       { status: 500 }
@@ -208,14 +209,14 @@ export async function PATCH(
 
     // Get organization
     let organizationId = requestedOrgId || currentUser[0].organizationId;
-    
+
     if (!organizationId) {
       const firstOrg = await db
         .select()
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, currentUser[0].id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'User organization not found' },
@@ -266,7 +267,7 @@ export async function PATCH(
     // Update role in this organization
     await db
       .update(userOrganizations)
-      .set({ 
+      .set({
         role: role as 'admin' | 'manager' | 'rep',
         updatedAt: new Date(),
       })
@@ -277,12 +278,12 @@ export async function PATCH(
         )
       );
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      message: 'Member role updated successfully' 
+      message: 'Member role updated successfully'
     });
   } catch (error) {
-    console.error('Error updating team member:', error);
+    logger.error('TEAM', 'Failed to update team member', error);
     return NextResponse.json(
       { error: 'Failed to update team member' },
       { status: 500 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -56,7 +57,7 @@ export async function POST(
     // Only block if they're not already a member AND seats are full
     const { canAddSeat } = await import('@/lib/subscription');
     const canAdd = await canAddSeat(invite[0].organizationId);
-    
+
     // Check if user is already in this organization first
     const existingMembershipCheck = await db
       .select()
@@ -162,7 +163,7 @@ export async function POST(
       message: `Successfully joined ${org[0]?.name || 'the organization'}`,
     });
   } catch (error) {
-    console.error('Error accepting invite:', error);
+    logger.error('TEAM', 'Failed to accept invite', error);
     return NextResponse.json(
       { error: 'Failed to accept invite' },
       { status: 500 }
@@ -258,7 +259,7 @@ export async function DELETE(
       message: 'Invite declined',
     });
   } catch (error) {
-    console.error('Error declining invite:', error);
+    logger.error('TEAM', 'Failed to decline invite', error);
     return NextResponse.json(
       { error: 'Failed to decline invite' },
       { status: 500 }

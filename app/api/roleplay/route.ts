@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, user[0].id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json({ sessions: [] });
       }
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ sessions: sessionsWithOffers });
   } catch (error: any) {
-    console.error('Error fetching roleplay sessions:', error);
+    logger.error('ROLEPLAY', 'Failed to fetch sessions', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch sessions' },
       { status: 500 }
@@ -188,7 +189,7 @@ export async function POST(request: NextRequest) {
         .from(userOrganizations)
         .where(eq(userOrganizations.userId, user[0].id))
         .limit(1);
-      
+
       if (!firstOrg[0]) {
         return NextResponse.json(
           { error: 'No organization found' },
@@ -204,7 +205,7 @@ export async function POST(request: NextRequest) {
       .from(offers)
       .where(eq(offers.id, offerId))
       .limit(1);
-    
+
     if (!offerResult[0]) {
       return NextResponse.json(
         { error: 'Offer not found' },
@@ -213,14 +214,14 @@ export async function POST(request: NextRequest) {
     }
 
     const offer = offerResult[0];
-    
+
     // Verify user has access to the offer
     const userOrg = await db
       .select()
       .from(userOrganizations)
       .where(eq(userOrganizations.userId, session.user.id))
       .limit(1);
-    
+
     const userOrgIds = userOrg.map(uo => uo.organizationId);
     if (!userOrgIds.includes(offer.organizationId)) {
       return NextResponse.json(
@@ -259,7 +260,7 @@ export async function POST(request: NextRequest) {
           isActive: true,
         })
         .returning();
-      
+
       finalProspectAvatarId = newAvatar.id;
       actualDifficultyTier = newAvatar.difficultyTier;
     } else if (prospectAvatarId) {
@@ -274,14 +275,14 @@ export async function POST(request: NextRequest) {
           )
         )
         .limit(1);
-      
+
       if (!avatar[0]) {
         return NextResponse.json(
           { error: 'Prospect not found or does not belong to this offer' },
           { status: 404 }
         );
       }
-      
+
       actualDifficultyTier = avatar[0].difficultyTier;
     }
 
@@ -306,12 +307,21 @@ export async function POST(request: NextRequest) {
       })
       .returning();
 
+    logger.info('ROLEPLAY', `Session started`, {
+      sessionId: newSession.id,
+      userId: session.user.id,
+      prospectId: finalProspectAvatarId || null,
+      offerId,
+      mode,
+      inputMode,
+    });
+
     return NextResponse.json({
       session: newSession,
       message: 'Roleplay session created',
     });
   } catch (error: any) {
-    console.error('Error creating roleplay session:', error);
+    logger.error('ROLEPLAY', 'Failed to create session', error);
     return NextResponse.json(
       { error: error.message || 'Failed to create session' },
       { status: 500 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -1727,7 +1728,7 @@ export async function GET(request: NextRequest) {
       v2: v2Data,
     });
   } catch (error) {
-    console.error('Error fetching performance:', error);
+    logger.error('PERFORMANCE', 'Failed to fetch performance data', error);
     return NextResponse.json(
       { error: 'Failed to fetch performance data' },
       { status: 500 }

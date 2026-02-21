@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { db } from '@/db';
 import { salesCalls } from '@/db/schema';
 import { eq } from 'drizzle-orm';
@@ -24,11 +25,11 @@ export async function POST(request: NextRequest) {
         .update(rawBody)
         .digest('hex');
       if (signature !== expectedSig) {
-        console.error('[transcription-webhook] Invalid signature — rejecting request');
+        logger.error('WEBHOOKS', 'Invalid webhook signature — rejecting request');
         return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
       }
     } else {
-      console.warn('[transcription-webhook] ⚠️ ASSEMBLYAI_WEBHOOK_SECRET not set — skipping signature verification');
+      logger.warn('WEBHOOKS', 'ASSEMBLYAI_WEBHOOK_SECRET not set — skipping signature verification');
     }
 
     const body = JSON.parse(rawBody);
@@ -130,7 +131,7 @@ export async function POST(request: NextRequest) {
             })
             .where(eq(salesCalls.id, call.id));
         } catch (analysisError) {
-          console.error('Analysis error:', analysisError);
+          logger.error('CALL_ANALYSIS', 'Analysis error in webhook', analysisError);
           await db
             .update(salesCalls)
             .set({ status: 'failed' })
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    console.error('Webhook error:', error);
+    logger.error('WEBHOOKS', 'Webhook processing error', error);
     return NextResponse.json(
       { error: error.message || 'Webhook processing failed' },
       { status: 500 }

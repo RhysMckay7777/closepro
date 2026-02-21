@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -112,7 +113,7 @@ export async function GET(request: NextRequest) {
     } catch (error: any) {
       // If offer_id column doesn't exist, fetch offers without prospect count
       if (error.message && error.message.includes('offer_id') && error.message.includes('does not exist')) {
-        console.warn('offer_id column not found in prospect_avatars, fetching offers without prospect count');
+        logger.warn('OFFERS', 'offer_id column not found in prospect_avatars, fetching without prospect count');
         offersList = await db
           .select({
             id: offers.id,
@@ -150,7 +151,7 @@ export async function GET(request: NextRequest) {
       offers: filteredOffers,
     });
   } catch (error: any) {
-    console.error('Error fetching offers:', error);
+    logger.error('OFFERS', 'Failed to fetch offers', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch offers' },
       { status: 500 }
@@ -320,7 +321,7 @@ export async function POST(request: NextRequest) {
     } catch (insertError: any) {
       // If new columns don't exist, fallback to legacy columns only
       if (insertError.message && insertError.message.includes('does not exist')) {
-        console.warn('New columns not found, using legacy schema:', insertError.message);
+        logger.warn('OFFERS', 'Schema fallback: new columns not found', { error: insertError.message });
         [newOffer] = await db
           .insert(offers)
           .values({
@@ -363,7 +364,7 @@ export async function POST(request: NextRequest) {
       message: 'Offer created successfully',
     }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating offer:', error);
+    logger.error('OFFERS', 'Failed to create offer', error);
 
     // Check if it's a missing column error
     if (error.message && error.message.includes('does not exist')) {

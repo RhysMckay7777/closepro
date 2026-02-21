@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -297,7 +298,7 @@ Return ONLY valid JSON, no markdown formatting.`;
       message: 'Prospect extracted successfully',
     }, { status: 201 });
   } catch (error: any) {
-    console.error('Error extracting prospect:', error);
+    logger.error('PROSPECT_BUILDER', 'Failed to extract prospect from call', error);
     return NextResponse.json(
       { error: error.message || 'Failed to extract prospect' },
       { status: 500 }

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -60,7 +61,7 @@ export async function GET(
       offer: offer[0],
     });
   } catch (error: any) {
-    console.error('Error fetching offer:', error);
+    logger.error('OFFERS', 'Failed to fetch offer', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch offer' },
       { status: 500 }
@@ -190,7 +191,7 @@ export async function PATCH(
       message: 'Offer updated successfully',
     });
   } catch (error: any) {
-    console.error('Error updating offer:', error);
+    logger.error('OFFERS', 'Failed to update offer', error);
     return NextResponse.json(
       { error: error.message || 'Failed to update offer' },
       { status: 500 }
@@ -250,7 +251,7 @@ export async function DELETE(
       message: 'Offer deleted successfully',
     });
   } catch (error: any) {
-    console.error('Error deleting offer:', error);
+    logger.error('OFFERS', 'Failed to delete offer', error);
     return NextResponse.json(
       { error: error.message || 'Failed to delete offer' },
       { status: 500 }

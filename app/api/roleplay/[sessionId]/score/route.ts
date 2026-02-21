@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -63,7 +64,7 @@ Return ONLY valid JSON with this structure:
     let jsonText = content.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
     return JSON.parse(jsonText);
   } catch (err) {
-    console.error('[roleplay-feedback] Error generating feedback:', err);
+    logger.error('ROLEPLAY', 'Feedback generation failed', err);
     return null;
   }
 }
@@ -77,8 +78,6 @@ export async function POST(
 ) {
   try {
     const { sessionId } = await params;
-    console.log('[SCORING] Starting for session:', sessionId);
-    console.log('[SCORING] GROQ_API_KEY present:', !!process.env.GROQ_API_KEY);
 
     const session = await auth.api.getSession({
       headers: await headers(),
@@ -147,7 +146,7 @@ export async function POST(
     try {
       analysisResult = await analyzeCall(transcript, transcriptJson);
     } catch (analysisError: any) {
-      console.error('Analysis error:', analysisError);
+      logger.error('ROLEPLAY', 'Analysis engine failed', analysisError, { sessionId });
       const msg = analysisError?.message ?? '';
       const isCreditError = /credit|balance|too low|payment|upgrade/i.test(msg) || (analysisError?.status === 400);
       return NextResponse.json(
@@ -171,22 +170,19 @@ export async function POST(
     const isIncomplete = !stagesCompleted.opening || !stagesCompleted.discovery || !stagesCompleted.offer;
 
     // Save analysis to roleplay_analysis (10-category framework, same as call analysis)
-    console.log('[Roleplay Score] Storing analysis:', {
+    logger.info('ROLEPLAY', 'Scoring analysis stored', {
       sessionId,
       overallScore: analysisResult.overallScore,
       categoryCount: Object.keys(analysisResult.categoryScores || {}).length,
-      prospectDifficulty: analysisResult.prospectDifficulty?.totalDifficultyScore,
       isIncomplete,
-      stagesCompleted,
     });
 
     // Generate roleplay-specific post-call feedback (5 dimensions) in parallel
     let roleplayFeedback: Record<string, unknown> | null = null;
     try {
       roleplayFeedback = await generateRoleplayFeedback(transcript);
-      console.log('[SCORING] Roleplay feedback generated:', !!roleplayFeedback);
     } catch (feedbackErr) {
-      console.error('[SCORING] Roleplay feedback generation failed (non-fatal):', feedbackErr);
+      logger.warn('ROLEPLAY', 'Feedback generation failed (non-fatal)', { sessionId });
     }
 
     // Build insert values with v1 + v2 columns
@@ -256,7 +252,7 @@ export async function POST(
         : 'Roleplay scored successfully',
     });
   } catch (error: any) {
-    console.error('[SCORING] Error scoring roleplay:', error);
+    logger.error('ROLEPLAY', 'Failed to score roleplay', error, { sessionId });
     const msg = error?.message ?? '';
 
     if (msg.includes('timeout') || error?.code === 'ETIMEDOUT' || error?.code === 'UND_ERR_CONNECT_TIMEOUT') {

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
@@ -69,7 +70,7 @@ export async function GET(
       prospects,
     });
   } catch (error: any) {
-    console.error('Error fetching prospects:', error);
+    logger.error('PROSPECT_BUILDER', 'Failed to fetch prospects', error);
     return NextResponse.json(
       { error: error.message || 'Failed to fetch prospects' },
       { status: 500 }
