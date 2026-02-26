@@ -167,8 +167,8 @@ function inferGenderFromName(name: string): 'male' | 'female' | 'unknown' {
  * Filters by inferred gender so male names get male voices and vice versa.
  * Unknown gender defaults to the env-configured neutral voice instead of male.
  */
-function autoSelectVoice(prospectName: string): string {
-  const gender = inferGenderFromName(prospectName);
+function autoSelectVoice(prospectName: string, storedGender?: 'male' | 'female' | null): string {
+  const gender = storedGender || inferGenderFromName(prospectName);
   let voiceArray: string[];
   if (gender === 'female') {
     voiceArray = FEMALE_VOICES;
@@ -207,6 +207,7 @@ function normalizeLabel(label: string): string {
 export function getVoiceIdFromProspect(prospectAvatar: {
   name: string;
   voiceStyle?: string | null;
+  gender?: 'male' | 'female' | null;
 }): string {
   // Fallback to env or default if no prospect
   if (!prospectAvatar?.name) {
@@ -235,8 +236,8 @@ export function getVoiceIdFromProspect(prospectAvatar: {
     }
   }
 
-  // Case 3: Auto-select based on prospect name (consistent hashing)
-  const autoVoice = autoSelectVoice(prospectAvatar.name);
+  // Case 3: Auto-select based on prospect name + stored gender (consistent hashing)
+  const autoVoice = autoSelectVoice(prospectAvatar.name, prospectAvatar.gender);
 
   // Case 4: Final fallback
   return process.env.ELEVENLABS_VOICE_ID?.trim() || autoVoice || DEFAULT_VOICE_ID;
@@ -305,6 +306,7 @@ const CHARACTER_VOICE_MAP: Record<string, Partial<VoiceConfig> & { voiceLabel: s
 export function getProspectVoiceConfig(prospectAvatar: {
   name: string;
   voiceStyle?: string | null;
+  gender?: 'male' | 'female' | null;
   positionDescription?: string | null;
   difficultyTier?: string | null;
   authorityLevel?: string | null;
@@ -313,6 +315,7 @@ export function getProspectVoiceConfig(prospectAvatar: {
   const voiceId = getVoiceIdFromProspect({
     name: prospectAvatar.name,
     voiceStyle: prospectAvatar.voiceStyle,
+    gender: prospectAvatar.gender,
   });
 
   const config: VoiceConfig = {
@@ -363,6 +366,7 @@ export function getProspectVoiceConfig(prospectAvatar: {
 export function getVoiceModeConfig(prospectAvatar: {
   name: string;
   voiceStyle?: string | null;
+  gender?: 'male' | 'female' | null;
   positionDescription?: string | null;
   difficultyTier?: string | null;
   authorityLevel?: string | null;

@@ -47,6 +47,29 @@ export function inferGenderFromOffer(whoItsFor?: string | null): ProspectGender 
   return 'any';
 }
 
+/**
+ * Resolve a definitive binary gender for a prospect.
+ * Priority: stored gender > name-based inference > offer-level hint > random fallback.
+ * Always returns 'male' | 'female' (never 'any').
+ */
+export function resolveProspectGender(
+  name: string,
+  offerGender: ProspectGender = 'any'
+): 'male' | 'female' {
+  // Infer from first name
+  const firstName = name.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+  if (FEMALE_FIRST_NAMES.map(n => n.toLowerCase()).includes(firstName)) return 'female';
+  if (MALE_FIRST_NAMES.map(n => n.toLowerCase()).includes(firstName)) return 'male';
+
+  // Fall back to offer-level hint
+  if (offerGender === 'male') return 'male';
+  if (offerGender === 'female') return 'female';
+
+  // Final fallback: hash name to deterministic choice
+  const hash = name.toLowerCase().split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  return hash % 2 === 0 ? 'male' : 'female';
+}
+
 function getFirstNamesForGender(gender: ProspectGender): string[] {
   switch (gender) {
     case 'male': return MALE_FIRST_NAMES;

@@ -143,7 +143,9 @@ export function buildGeminiAvatarPrompt(
     name?: string,
     context?: string | null,
     gender?: 'male' | 'female' | 'any' | null,
-    offerCategory?: string | null
+    offerCategory?: string | null,
+    age?: string | null,
+    occupation?: string | null
 ): string {
     const parts: string[] = [
         'Generate a portrait photograph of a person — 95% photorealistic.',
@@ -161,12 +163,18 @@ export function buildGeminiAvatarPrompt(
         parts.push('The person is female.');
     }
 
-    if (name?.trim()) {
+    if (age) {
+        parts.push(`The person is ${age} years old.`);
+    } else if (name?.trim()) {
         const seed = name.toLowerCase();
         const hash = seed.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
         const ages = ['late 20s', 'early 30s', 'mid 30s', 'early 40s', 'mid 40s'];
-        const age = ages[hash % ages.length];
-        parts.push(`The person appears to be in their ${age}.`);
+        const inferredAge = ages[hash % ages.length];
+        parts.push(`The person appears to be in their ${inferredAge}.`);
+    }
+
+    if (occupation) {
+        parts.push(`They work as a ${occupation}.`);
     }
 
     // Context-conditioned wardrobe/vibe from offer category + prospect context

@@ -2,15 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { prospectAvatars, userOrganizations, offers } from '@/db/schema';
+import { prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
+import { resolveProspectGender } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
 export const maxDuration = 120;
 
 /**
  * POST - Generate a human-style portrait for this prospect via Google AI Studio (Gemini) and save as avatar_url.
+ * Uses the prospect's stored gender field for accurate image generation.
  * Requires GOOGLE_AI_STUDIO_KEY or GOOGLE_GENERATIVE_AI_API_KEY in env.
  */
 export async function POST(
@@ -64,20 +65,25 @@ export async function POST(
       );
     }
 
-    // Infer gender from the offer's whoItsFor field
-    let prospectGender: 'male' | 'female' | 'any' = 'any';
-    if (prospect.offerId) {
-      const [offer] = await db
-        .select({ whoItsFor: offers.whoItsFor })
-        .from(offers)
-        .where(eq(offers.id, prospect.offerId))
-        .limit(1);
-      if (offer?.whoItsFor) {
-        prospectGender = inferGenderFromOffer(offer.whoItsFor);
-      }
-    }
+    // Use stored gender, fall back to name-based inference for legacy prospects
+    const gender: 'male' | 'female' = (prospect.gender as 'male' | 'female') ||
+      resolveProspectGender(prospect.name);
 
-    const prompt = buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription ?? undefined, prospectGender);
+    // Extract age and occupation from position description for accurate images
+    const ageMatch = prospect.positionDescription?.match(/(\d+)-year-old/);
+    const age = ageMatch ? ageMatch[1] : undefined;
+
+    const roleMatch = prospect.positionDescription?.match(/\d+-year-old\s+(.+?)\s+from/);
+    const occupation = roleMatch ? roleMatch[1] : undefined;
+
+    const prompt = buildGeminiAvatarPrompt(
+      prospect.name,
+      prospect.positionDescription ?? undefined,
+      gender,
+      undefined,
+      age,
+      occupation
+    );
     const { url } = await generateImageWithGemini({ prompt });
 
     const [updated] = await db

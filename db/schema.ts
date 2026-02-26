@@ -436,6 +436,7 @@ export const prospectAvatars = pgTable('prospect_avatars', {
   avatarUrl: text('avatar_url'), // Optional: NanoBanana or other human-style portrait URL
   positionDescription: text('position_description'), // Current situation
   voiceStyle: text('voice_style'), // Optional: e.g. Professional, Friendly; ElevenLabs maps to voice ID
+  gender: text('gender'), // 'male' | 'female' — set during generation, used for avatar/voice/pronouns
   problems: text('problems'), // JSON array
   painDrivers: text('pain_drivers'), // JSON array
   ambitionDrivers: text('ambition_drivers'), // JSON array

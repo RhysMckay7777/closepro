@@ -200,9 +200,15 @@ export async function GET(
     );
 
     // Get voice ID and voice settings (use voice-mode config for higher stability)
+    // Read stored gender from the prospect avatar DB record
+    const prospectGender = roleplay[0].prospectAvatarId
+      ? ((await db.select({ gender: prospectAvatars.gender }).from(prospectAvatars).where(eq(prospectAvatars.id, roleplay[0].prospectAvatarId)).limit(1))[0]?.gender as 'male' | 'female' | null) ?? null
+      : null;
+
     const voiceConfig = getVoiceModeConfig({
       name: prospectName,
       voiceStyle: prospectVoiceStyle,
+      gender: prospectGender,
     });
     const voiceId = voiceConfig.voiceId;
 

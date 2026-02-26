@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Dialog,
@@ -14,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, ArrowLeft, Edit, Play, Phone } from 'lucide-react';
+import { Plus, ArrowLeft, Edit, Phone, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { toastError } from '@/lib/toast';
@@ -36,6 +35,7 @@ interface Offer {
 interface Prospect {
   id: string;
   name: string;
+  gender?: string | null;
   difficultyTier: string;
   difficultyIndex: number;
   sourceType: string;
@@ -54,58 +54,10 @@ export default function OfferDetailsPage() {
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [selectedProspect, setSelectedProspect] = useState<Prospect | null>(null);
-  const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const pollingCountRef = useRef(0);
-
-  // Stop any active polling
-  const stopPolling = useCallback(() => {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
-    }
-    pollingCountRef.current = 0;
-  }, []);
-
-  // Poll for avatar updates after generate/regenerate
-  const startAvatarPolling = useCallback(() => {
-    stopPolling();
-    pollingCountRef.current = 0;
-
-    pollingRef.current = setInterval(async () => {
-      pollingCountRef.current++;
-      // Stop after 12 polls (60 seconds at 5s intervals)
-      if (pollingCountRef.current > 12) {
-        stopPolling();
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/offers/${offerId}/prospects`);
-        if (!response.ok) return;
-        const data = await response.json();
-        const freshProspects: Prospect[] = data.prospects || [];
-        setProspects(freshProspects);
-
-        // Stop polling if all prospects have real (non-cartoon) avatar URLs
-        const allHaveAvatars = freshProspects.length > 0 &&
-          freshProspects.every(p => {
-            const url = resolveProspectAvatarUrl(p.id, p.name, p.avatarUrl);
-            return url !== null;
-          });
-
-        if (allHaveAvatars) {
-          stopPolling();
-        }
-      } catch (err) {
-        // Silently continue polling
-      }
-    }, 5000);
-  }, [offerId, stopPolling]);
 
   useEffect(() => {
     fetchOffer();
     fetchProspects();
-    return () => stopPolling();
   }, [offerId]);
 
   const fetchOffer = async () => {
@@ -139,38 +91,18 @@ export default function OfferDetailsPage() {
     }
   };
 
-  // Generate avatar images sequentially via individual API calls
-  const triggerAvatarGeneration = async (prospectsList: Prospect[]) => {
-    for (let i = 0; i < prospectsList.length; i++) {
-      const prospect = prospectsList[i];
-      if (prospect.avatarUrl) continue; // Skip if already has image
-      try {
-        if (i > 0) {
-          await new Promise(resolve => setTimeout(resolve, 2000)); // 2s delay between calls
-        }
-        console.log(`[Avatar Gen] Generating image ${i + 1}/${prospectsList.length} for ${prospect.name}`);
-        const res = await fetch(`/api/prospect-avatars/${prospect.id}/generate-avatar`, {
-          method: 'POST',
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.avatarUrl) {
-            setProspects(prev => prev.map(p =>
-              p.id === prospect.id ? { ...p, avatarUrl: data.avatarUrl } : p
-            ));
-          }
-        } else {
-          console.error(`[Avatar Gen] Failed for ${prospect.name}:`, res.status);
-        }
-      } catch (err) {
-        console.error(`[Avatar Gen] Error for ${prospect.name}:`, err);
-      }
-    }
-  };
-
+  /**
+   * Generate prospects with full loading state:
+   * 1. Show skeleton loader
+   * 2. Generate bios via /api/offers/{offerId}/prospects/generate
+   * 3. Generate all avatar images via /api/prospect-avatars/batch-generate (parallel)
+   * 4. Re-fetch prospects with complete data
+   * 5. Render cards only when everything is ready
+   */
   const generateProspects = async () => {
     setGenerating(true);
     try {
+      // Step 1: Generate prospect bios
       const response = await fetch(`/api/offers/${offerId}/prospects/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,10 +116,34 @@ export default function OfferDetailsPage() {
 
       const data = await response.json();
       const newProspects: Prospect[] = data.prospects || [];
-      setProspects(newProspects);
-      // Start polling for avatar images AND trigger frontend-based generation as fallback
-      startAvatarPolling();
-      triggerAvatarGeneration(newProspects);
+
+      // Step 2: Batch generate all avatar images in parallel
+      if (newProspects.length > 0) {
+        try {
+          const batchRes = await fetch('/api/prospect-avatars/batch-generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prospectIds: newProspects.map(p => p.id) }),
+          });
+
+          if (!batchRes.ok) {
+            console.error('[Generate] Batch image generation failed:', batchRes.status);
+            // Continue even if image gen fails — prospects still exist without images
+          }
+        } catch (err) {
+          console.error('[Generate] Batch image generation error:', err);
+        }
+      }
+
+      // Step 3: Re-fetch to get fully populated prospects (with avatar URLs)
+      const freshRes = await fetch(`/api/offers/${offerId}/prospects`);
+      if (freshRes.ok) {
+        const freshData = await freshRes.json();
+        setProspects(freshData.prospects || []);
+      } else {
+        // Fallback to what we have
+        setProspects(newProspects);
+      }
     } catch (error: any) {
       console.error('Error generating prospects:', error);
       toastError(error.message || 'Failed to generate prospects');
@@ -202,6 +158,7 @@ export default function OfferDetailsPage() {
     }
     setGenerating(true);
     try {
+      // Step 1: Regenerate prospect bios
       const response = await fetch(
         `/api/offers/${offerId}/prospects/generate?regenerate=true`,
         {
@@ -218,10 +175,32 @@ export default function OfferDetailsPage() {
 
       const data = await response.json();
       const newProspects: Prospect[] = data.prospects || [];
-      setProspects(newProspects);
-      // Start polling for avatar images AND trigger frontend-based generation as fallback
-      startAvatarPolling();
-      triggerAvatarGeneration(newProspects);
+
+      // Step 2: Batch generate all avatar images in parallel
+      if (newProspects.length > 0) {
+        try {
+          const batchRes = await fetch('/api/prospect-avatars/batch-generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prospectIds: newProspects.map(p => p.id) }),
+          });
+
+          if (!batchRes.ok) {
+            console.error('[Regenerate] Batch image generation failed:', batchRes.status);
+          }
+        } catch (err) {
+          console.error('[Regenerate] Batch image generation error:', err);
+        }
+      }
+
+      // Step 3: Re-fetch to get fully populated prospects
+      const freshRes = await fetch(`/api/offers/${offerId}/prospects`);
+      if (freshRes.ok) {
+        const freshData = await freshRes.json();
+        setProspects(freshData.prospects || []);
+      } else {
+        setProspects(newProspects);
+      }
     } catch (error: any) {
       console.error('Error regenerating prospects:', error);
       toastError(error.message || 'Failed to regenerate prospects');
@@ -240,15 +219,6 @@ export default function OfferDetailsPage() {
       near_impossible: 'bg-red-500/20 text-red-600 border-red-500/50',
     };
     return colors[tier] || 'bg-gray-500/20 text-gray-600 border-gray-500/50';
-  };
-
-  const getAuthorityLabel = (level: string) => {
-    const labels: Record<string, string> = {
-      advisee: 'Advisee',
-      peer: 'Peer',
-      advisor: 'Advisor',
-    };
-    return labels[level] || level;
   };
 
   const getModeLabel = (tier: string) => {
@@ -286,8 +256,6 @@ export default function OfferDetailsPage() {
     };
     return classes[tier] ?? 'bg-muted-foreground';
   };
-
-
 
   const getShortTitle = (p: Prospect) => {
     if (!p.positionDescription) return getModeLabel(p.difficultyTier);
@@ -374,7 +342,7 @@ export default function OfferDetailsPage() {
         <h2 className="text-lg font-semibold mb-4">Offer Details</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <p className="text-sm text-muted-foreground">Who It's For</p>
+            <p className="text-sm text-muted-foreground">Who It&apos;s For</p>
             <p className="font-medium">{offer.whoItsFor}</p>
           </div>
           <div>
@@ -416,11 +384,32 @@ export default function OfferDetailsPage() {
         </div>
 
         {generating ? (
-          <Card className="p-6">
-            <div className="text-center text-muted-foreground">
-              Generating prospects...
+          /* Full skeleton loader — visible until ALL bios + images are ready */
+          <div className="space-y-4">
+            <Card className="p-8">
+              <div className="flex flex-col items-center justify-center gap-4">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+                <div className="text-center">
+                  <p className="text-lg font-semibold">Generating prospects…</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Creating bios and generating realistic portrait images. This may take up to a minute.
+                  </p>
+                </div>
+              </div>
+            </Card>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+              {[1, 2, 3, 4].map((i) => (
+                <Card key={i} className="overflow-hidden animate-pulse flex flex-col">
+                  <div className="aspect-square min-h-[200px] bg-muted" />
+                  <div className="p-4 space-y-3">
+                    <div className="h-5 bg-muted rounded w-3/4" />
+                    <div className="h-4 bg-muted rounded w-1/2" />
+                    <div className="h-3 bg-muted rounded w-1/3" />
+                  </div>
+                </Card>
+              ))}
             </div>
-          </Card>
+          </div>
         ) : prospects.length === 0 ? (
           <Card className="p-6">
             <Empty>

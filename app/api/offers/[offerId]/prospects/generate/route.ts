@@ -1,17 +1,21 @@
-import { NextRequest, NextResponse, after } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { generateRandomProspectInBand, generateProspectContext, generateRandomProspectName, inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
-import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
+import { generateRandomProspectInBand, generateProspectContext, generateRandomProspectName, inferGenderFromOffer, resolveProspectGender } from '@/lib/ai/roleplay/prospect-avatar';
 
 export const maxDuration = 300;
 
 /**
  * POST - Auto-generate 4 prospects (Easy/Realistic/Hard/Expert) for an offer.
  * Body: { regenerate?: boolean } — if true, delete existing prospects and generate new ones (with bios).
+ *
+ * Returns the prospects immediately (bios only, no images).
+ * The frontend is responsible for calling /api/prospect-avatars/batch-generate
+ * to generate all avatar images before rendering cards.
  */
 export async function POST(
   request: NextRequest,
@@ -94,8 +98,8 @@ export async function POST(
     const difficulties: Array<'easy' | 'realistic' | 'hard' | 'expert'> = ['easy', 'realistic', 'hard', 'expert'];
     const generatedProspects = [];
     const usedNames = new Set<string>();
-    const prospectGender = inferGenderFromOffer(offer[0].whoItsFor);
-    console.log('[PROSPECT GEN] Gender inferred from whoItsFor:', JSON.stringify(offer[0].whoItsFor), '→', prospectGender);
+    const offerGender = inferGenderFromOffer(offer[0].whoItsFor);
+    console.log('[PROSPECT GEN] Offer-level gender hint:', JSON.stringify(offer[0].whoItsFor), '→', offerGender);
 
     const VALID_TIERS = new Set(['easy', 'realistic', 'hard', 'expert', 'near_impossible']);
 
@@ -106,10 +110,14 @@ export async function POST(
       if (!VALID_TIERS.has(tierStr)) {
         prospectProfile.difficultyTier = (tierStr === 'elite') ? 'expert' : difficulty;
       }
-      const name = generateRandomProspectName(usedNames, prospectGender);
+      const name = generateRandomProspectName(usedNames, offerGender);
+
+      // Resolve per-prospect binary gender from name (not offer-level)
+      const gender = resolveProspectGender(name, offerGender);
+
       const positionDescription = generateProspectContext({
         name,
-        gender: prospectGender,
+        gender,
         positionProblemAlignment: prospectProfile.positionProblemAlignment,
         painAmbitionIntensity: prospectProfile.painAmbitionIntensity,
         perceivedNeedForHelp: prospectProfile.perceivedNeedForHelp,
@@ -132,6 +140,7 @@ export async function POST(
           offerId: offerId,
           userId: session.user.id,
           name,
+          gender,
           sourceType: 'auto_generated',
           positionProblemAlignment: prospectProfile.positionProblemAlignment,
           painAmbitionIntensity: prospectProfile.painAmbitionIntensity,
@@ -150,67 +159,13 @@ export async function POST(
       generatedProspects.push(newProspect);
     }
 
-    // Return prospects immediately so the page loads fast
-    // Image generation happens in the background (fire-and-forget)
-    const geminiConfigured = isGeminiImageConfigured();
-    const responsePayload = {
+    // Return prospects immediately — frontend will call batch-generate for images
+    return NextResponse.json({
       prospects: generatedProspects,
       message: regenerate
         ? 'Prospects regenerated with bios.'
         : 'Successfully generated 4 prospects with bios.',
-      imageGenStatus: geminiConfigured ? 'generating' as const : 'not_configured' as const,
-    };
-
-    // Generate human photos in the background via Gemini (Google AI Studio)
-    console.log(`[prospects/generate] Checking Gemini config for background image gen...`);
-    const geminiReady = isGeminiImageConfigured();
-    console.log(`[prospects/generate] Gemini configured: ${geminiReady}`);
-
-    if (geminiReady) {
-      console.log(`[prospects/generate] Scheduling after() for background image generation...`);
-      after(async () => {
-        console.log(`[prospects/generate after()] Background image generation STARTED`);
-        try {
-          const allProspects = await db
-            .select()
-            .from(prospectAvatars)
-            .where(eq(prospectAvatars.offerId, offerId));
-
-          const prospectsToPhoto = allProspects.filter(p => !p.avatarUrl);
-          console.log(`[prospects/generate after()] Found ${prospectsToPhoto.length} prospects needing photos (out of ${allProspects.length} total)`);
-
-          for (let i = 0; i < prospectsToPhoto.length; i++) {
-            const prospect = prospectsToPhoto[i];
-            // Add delay between API calls to avoid rate limiting (skip first)
-            if (i > 0) {
-              await new Promise(resolve => setTimeout(resolve, 3000));
-            }
-            console.log(`[prospects/generate after()] Generating image for: ${prospect.name} (${i + 1}/${prospectsToPhoto.length})...`);
-            try {
-              const { url } = await generateImageWithGemini({
-                prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription, prospectGender, offer[0].offerCategory),
-              });
-              if (url) {
-                await db
-                  .update(prospectAvatars)
-                  .set({ avatarUrl: url, updatedAt: new Date() })
-                  .where(eq(prospectAvatars.id, prospect.id));
-                console.log(`[prospects/generate after()] ✅ Human photo saved for ${prospect.name}, URL starts with: ${url.slice(0, 50)}`);
-              }
-            } catch (err: any) {
-              logger.warn('PROSPECT_BUILDER', `Gemini image failed for ${prospect.name}`);
-            }
-          }
-          console.log(`[prospects/generate after()] Background image generation COMPLETED`);
-        } catch (err) {
-          logger.error('PROSPECT_BUILDER', 'Background image generation failed', err);
-        }
-      });
-    } else {
-      console.log('[prospects/generate] ⚠️ No image API configured (set GOOGLE_AI_STUDIO_KEY in Vercel env vars)');
-    }
-
-    return NextResponse.json(responsePayload);
+    });
   } catch (error: any) {
     logger.error('PROSPECT_BUILDER', 'Failed to generate prospects', error);
     const msg = error?.message ?? '';
