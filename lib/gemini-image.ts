@@ -134,9 +134,10 @@ export async function generateImageWithGemini(
 }
 
 /**
- * Build a prompt for a credible realistic avatar (~80-85% realism).
+ * Build a prompt for a photorealistic avatar (~95% realism).
  * Plain colored background, head+shoulders or mid-chest framing.
  * Context-conditioned: uses offer type + prospect context + archetype for wardrobe/vibe.
+ * Does NOT inject raw context text to avoid offer names rendering visually.
  */
 export function buildGeminiAvatarPrompt(
     name?: string,
@@ -145,12 +146,13 @@ export function buildGeminiAvatarPrompt(
     offerCategory?: string | null
 ): string {
     const parts: string[] = [
-        'Generate a realistic digital portrait of a person — approximately 80-85% photorealistic.',
-        'This should look like a credible, realistic avatar. NOT a perfect DSLR photograph, and NOT a cartoon.',
-        'Natural lighting, real skin texture, natural hair. Slightly stylized but fully believable as a real person.',
+        'Generate a portrait photograph of a person — 95% photorealistic.',
+        'The person must look like a REAL human being with natural skin texture, pores, and imperfections. NOT a digital painting, NOT smooth/airbrushed skin.',
+        'This should be indistinguishable from a real photograph. Natural lighting, real skin, natural hair, subtle asymmetry.',
         'Head and shoulders framing, or mid-chest crop.',
         'Plain solid colored background — pick a muted, professional tone (slate, warm gray, soft blue, or sage green).',
         'Do NOT generate any cartoon, anime, illustration, sketch, CGI, or 3D render.',
+        'Do NOT include any text, words, letters, watermarks, labels, or captions anywhere in the image. The image must contain ONLY the person against a plain solid color background.',
     ];
 
     if (gender === 'male') {
@@ -168,6 +170,7 @@ export function buildGeminiAvatarPrompt(
     }
 
     // Context-conditioned wardrobe/vibe from offer category + prospect context
+    // Only use category/context for wardrobe keywords — never inject raw text
     const cat = (offerCategory || '').toLowerCase();
     const ctx = (context || '').toLowerCase();
 
@@ -185,12 +188,11 @@ export function buildGeminiAvatarPrompt(
         parts.push('Wearing smart casual clothes. Natural, approachable expression.');
     }
 
-    if (context?.trim()) {
-        const safe = context.trim().slice(0, 150).replace(/[^\w\s,.'()-]/g, '');
-        if (safe) {
-            parts.push(`Context about the person: ${safe}.`);
-        }
-    }
+    // NOTE: Raw context text is intentionally NOT injected into the prompt.
+    // Previously `Context about the person: ${safe}` caused offer names and
+    // descriptive text (e.g. "Mixed Wealth Closing Mastery") to render
+    // visually on the generated image. Demographic/appearance conditioning
+    // is handled above via category keyword matching.
 
     return parts.join(' ');
 }

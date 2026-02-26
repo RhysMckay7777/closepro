@@ -127,6 +127,7 @@ export async function GET(request: NextRequest) {
         result: call.result,
         offerType: call.offerType,
         callType: call.callType,
+        callDate: call.callDate ? call.callDate.toISOString().slice(0, 10) : null,
         date: call.callDate ? call.callDate.toISOString().slice(0, 10) : call.createdAt.toISOString().slice(0, 10),
         userName: call.userName,
         userEmail: call.userEmail,
