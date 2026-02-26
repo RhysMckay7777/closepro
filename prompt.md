@@ -1,170 +1,86 @@
-I see both issues clearly. Let me break them down:
+Prompt 5 — Prospect Generation: Images, Context, Cards & Builder Consistency
+Scope: Overhaul prospect image generation, structured context output, card descriptors, the Create Prospect form, and difficulty banding across the entire app.
 
-Issue 1: Scoring Timeout on First Attempt
-The "Analysis is taking longer than expected" error on first try then succeeding on retry suggests the scoring API is timing out. This is likely a race condition or the API cold-starting.
+Critical addition from Connor (WhatsApp — yesterday):
+"we're now going to have more in depth prospect context with 2/3 lines for each difficulty maker, this is going to be so important but lets also make sure that the prospect context is based off of the 5 difficulty makers AND the offer itself. its going to be so important that it is pulling from the offer context as well as the difficulty markers."
+
+Requirements to implement:
+5A. Prospect Image Generation — New Style
+Remove all photoreal constraints: "professional headshot," "Canon EOS R5," "85mm f/1.4," "bokeh background," "must be indistinguishable from real photo," and all strict anti-cartoon language.
+
+New target: ~80–85% realism — credible realistic avatar, NOT a perfect photograph. Plain colored background. Head + shoulders or mid-chest framing.
+
+Context-conditioned: Image prompt must use offer type + prospect context + archetype (busy dad, skeptic, fitness, career changer, etc.) to choose wardrobe + vibe. Stop defaulting everyone to suit-and-office.
 ​
 
-Issue 2: Missing Color-Coded Tags in Roleplay Results
-This is the bigger UI issue. Comparing your screenshots:
+Replace existing prompt template entirely. Speed should improve as a side benefit.
 
-Regular call analysis: Has color-coded tags — Value (green tag), Root Cause (red), Pre-emption (blue), Handling Improvement (green), Higher-Leverage Alternative (green border) — all clearly styled
+5B. Prospect Context — 8–12 Lines, Mapped to 5 Difficulty Markers + Offer
+This is the most critical change per Connor's latest message. Every auto-generated prospect context must be 8–12 lines, with 2–3 lines per difficulty marker, and must pull from both the offer context AND the 5 difficulty scores:
+
+Identity / Demographics (1–2 lines): Name, age, gender, location — singular and consistent. Never "male and female," never two locations.
+
+Position + Problem as it relates to the offer (2–3 lines): Derived from offer ICP + offer context. Higher ICP alignment score → closer match to offer's ICP details. Must reflect the specific offer vertical (fitness, sales, relationships, etc.).
+
+Motivation Intensity (2–3 lines): Pain and/or ambition intensity based on motivation score. Must feel real and specific to the offer.
+
+Authority & Coachability (2–3 lines): What they've tried, how they think, how open they are. Higher score → more receptive, less defensive.
+
+Funnel Context (1–2 lines): What they've seen before the call, how warm they are (based on funnel context score).
+
+Ability to Proceed (1 line): Most likely logistical friction — money vs time vs effort/priorities.
+
+Output format example: "Thomas is a 34-year-old ___ currently ___, wants ___ because ___. He's struggling with ___ and worries ___. He's interested but cautious due to ___."
+Must never output contradictory identity info. Context must make the roleplay more realistic because the prospect has real grounding to act from.
+
+5C. Prospect Card Descriptors
+On roleplay prospect selection page, under prospect name, display a 2-line descriptor: (a) demographic anchor (age/role/stage) and (b) biggest problem or obstacle.
+
+Replace vague labels ("wrong timing," "busy dad," "skeptical business") with specific ones. Example: "35-year-old B2C salesperson — wants career change, lacks confidence + clear path."
+
+5D. Create Prospect / Prospect Builder — Category Alignment
+Replace old fields with system-standard 5 categories:
 ​
 
-Roleplay results: Just plain text headings like "Call Outcome & Why This Happened", "What Limited This Call" — no color-coded tags at all
+ICP Alignment
+
+Motivation Intensity — "How driven and emotionally motivated is this prospect — how much pain or ambition do they have?"
+
+Prospect Authority & Coachability — "What is the prospect's authority level and how open to being helped are they?"
+
+Funnel Context — "How warm is the prospect when they come onto the call — what have they seen so far and where did they come from?"
+
+Ability to Proceed — "What is the ability of the prospect to proceed today?"
+
+Category order everywhere: ICP Alignment → Motivation Intensity → Prospect Authority & Coachability → Funnel Context → Ability to Proceed.
 ​
 
-The roleplay results page needs the same visual treatment. Send this combined prompt:
+Category titles when clickable → +20% font. Explainer text → larger font + white text color.
+​
 
-text
-# ClosePro — Fix Roleplay Results: Color-Coded Tags + Scoring Timeout
+5E. Prospect Difficulty Banding (Global — Apply Everywhere)
+Apply across Call Analysis, Performance, Roleplays, Prospect Builder:
+​
 
-## BUG 1: Roleplay results missing color-coded section tags
+≤ 24 = Near Impossible
 
-### PROBLEM
-The roleplay results page (e.g., /dashboard/roleplay/[id]/results) shows 
-phase analysis sections as plain text headings. But the regular call analysis 
-page (/dashboard/calls/[id]) uses color-coded tags for each section label 
-throughout the analysis.
+25–29 = Expert
 
-### REFERENCE: How call analysis pages look (the CORRECT styling)
-In the call analysis Objections tab, each section has colored tag styling:
-- "Value" → green background tag
-- "Root Cause" → red colored label  
-- "How It Was Handled" → blue colored label
-- "Higher-Leverage Alternative" → green border box
-- "Why It Surfaced" → gray/neutral label
-- Phase tabs have color-coded timeline bars
+30–35 = Hard
 
-In call analysis phase tabs (Intro, Discovery, Pitch, Close, Objections), 
-section labels use colored text:
-- Red for weaknesses/issues
-- Green for strengths/what went well  
-- Blue for suggestions/coaching
-- Orange for objection types
+36–42 = Realistic
 
-### FIX
-Find the roleplay results component. It likely lives in:
-```bash
-find . -path "*/roleplay*result*" -name "*.tsx" -o -path "*/roleplay*score*" -name "*.tsx" | head -20
-Also find the call analysis component to reference its tag styling:
+43–50 = Easy
 
-bash
-find . -path "*/calls*" -name "*.tsx" | grep -i "analysis\|phase\|objection\|result" | head -20
-Then:
+Replace any older band variants. This is final.
 
-Identify the tag/label components used in call analysis pages.
-Look for components rendering colored badges, tags, or labeled sections.
-They likely use utility classes like:
+Acceptance Criteria:
+Generated images look like realistic avatars on colored backgrounds (not DSLR/suit photos), styled to match the offer/archetype.
 
-text-red-400 or text-red-500 for issues/weaknesses
+Prospect context is always 8–12 lines, maps to all 5 difficulty markers with 2–3 lines each, AND explicitly reflects the offer context. Never contradictory info.
 
-text-green-400 or text-emerald-400 for strengths
+Prospect cards show 2-line descriptors with demographic + problem.
 
-text-blue-400 or text-cyan-400 for coaching/suggestions
+Create Prospect uses the 5 correct categories in the correct order with white text descriptions.
 
-text-orange-400 or text-amber-400 for objections
-
-bg-green-500/20 text-green-400 for tag badges
-
-Apply the SAME tag component/styling to the roleplay results page.
-
-The roleplay results sections should match. Specifically:
-
-For the Phase Analysis section in roleplay results:
-
-"Call Outcome & Why This Happened" → Should have a section header style
-
-"What Limited This Call" → Red colored label (weakness)
-
-"Primary Improvement Focus" → Blue colored label (coaching)
-
-Any strengths mentioned → Green colored label
-
-For individual phase breakdowns (Intro, Discovery, Pitch, Close, Objections):
-
-Phase scores should have colored score circles (red <40, orange 40-59,
-yellow 60-74, green 75+) — same as the performance page
-
-Weakness items → Red labels
-
-Strength items → Green labels
-
-Coaching/suggestions → Blue labels
-
-Objection types → Same tag badges as call analysis (Value, Trust, Fit,
-Logistics categories)
-
-For objections section in roleplay results:
-
-Each objection should show the same card format as call analysis:
-
-Objection type tag (colored badge: Value=purple, Trust=orange,
-Fit=yellow, Logistics=blue)
-
-Timestamp badge
-
-"Why It Surfaced" section
-
-"How It Was Handled" section (blue label)
-
-"Higher-Leverage Alternative" section (green bordered box)
-
-Reuse existing components — do NOT create new tag components.
-Import and use the same ones from the call analysis pages.
-
-Search for the existing tag/badge components:
-
-bash
-grep -rn "className.*bg-.*text-.*rounded\|Badge\|Tag\|Label" \
-  --include="*.tsx" -l | head -20
-BUG 2: Scoring timeout on first attempt
-PROBLEM
-When roleplay ends and scoring begins, the first attempt often shows
-"Analysis is taking longer than expected. Please try again." User has
-to click "Retry scoring" to get results.
-
-FIX
-Find the scoring API call and its timeout:
-
-bash
-grep -rn "taking longer\|retry.*scor\|timeout\|AbortController" \
-  --include="*.ts" --include="*.tsx" | grep -i roleplay | head -20
-The issue is likely:
-a) The polling timeout is too short (e.g., 30s when scoring takes 45s)
-b) Or the initial API call times out before the LLM finishes scoring
-
-Fix:
-
-Increase the polling timeout from whatever it is to 120 seconds
-
-Increase the individual fetch timeout to 90 seconds
-
-Add exponential backoff to the polling interval (start at 2s, increase
-to 5s, then 10s)
-
-If using AbortController, increase the signal timeout
-
-Example fix pattern:
-
-ts
-// BEFORE:
-const SCORING_TIMEOUT = 30000; // 30s
-const POLL_INTERVAL = 2000; // 2s
-
-// AFTER:
-const SCORING_TIMEOUT = 120000; // 120s
-const POLL_INTERVAL_START = 2000; // Start at 2s
-const POLL_INTERVAL_MAX = 10000; // Max 10s between polls
-VERIFICATION
-npm run build — no errors
-
-Report: which components render tags in call analysis
-
-Report: which components were updated for roleplay results
-
-Report: what the scoring timeout was changed from/to
-
-Screenshot description: describe what the roleplay results page
-should look like after changes (which sections get which colors)
-
-List ALL files changed
+Difficulty bands are consistent across every single module.

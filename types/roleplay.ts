@@ -1,6 +1,6 @@
 // Roleplay Types - Section 6 Frontend
 
-export type DifficultyLevel = 'easy' | 'realistic' | 'hard' | 'expert';
+export type DifficultyLevel = 'easy' | 'realistic' | 'hard' | 'expert' | 'near_impossible';
 
 export interface RoleplaySessionListItem {
     id: string;

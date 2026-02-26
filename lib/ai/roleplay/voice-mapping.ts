@@ -345,12 +345,33 @@ export function getProspectVoiceConfig(prospectAvatar: {
   }
 
   // Adjust based on difficulty tier
-  if (prospectAvatar.difficultyTier === 'hard' || prospectAvatar.difficultyTier === 'expert' || prospectAvatar.difficultyTier === 'elite') {
+  if (prospectAvatar.difficultyTier === 'hard' || prospectAvatar.difficultyTier === 'expert' || prospectAvatar.difficultyTier === 'elite' || prospectAvatar.difficultyTier === 'near_impossible') {
     config.speed = Math.min((config.speed || 1.0) + 0.05, 1.25);
     config.stability = Math.min((config.stability || 0.5) + 0.1, 0.85);
   } else if (prospectAvatar.difficultyTier === 'easy') {
     config.stability = Math.max((config.stability || 0.5) - 0.1, 0.35);
   }
+
+  return config;
+}
+
+/**
+ * Get voice configuration optimized for voice mode (real-time conversation).
+ * Wraps getProspectVoiceConfig but bumps stability and similarityBoost for
+ * more consistent voice output during sustained voice conversations.
+ */
+export function getVoiceModeConfig(prospectAvatar: {
+  name: string;
+  voiceStyle?: string | null;
+  positionDescription?: string | null;
+  difficultyTier?: string | null;
+  authorityLevel?: string | null;
+}): VoiceConfig {
+  const config = getProspectVoiceConfig(prospectAvatar);
+
+  // Bump stability and similarity for voice mode consistency (cap at 0.95)
+  config.stability = Math.min(0.95, (config.stability || 0.7) + 0.15);
+  config.similarityBoost = Math.min(0.95, (config.similarityBoost || 0.75) + 0.10);
 
   return config;
 }

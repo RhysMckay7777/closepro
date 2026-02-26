@@ -84,6 +84,7 @@ export default function NewProspectPage() {
       hard: 'bg-orange-500/20 text-orange-600 border-orange-500/50',
       expert: 'bg-red-500/20 text-red-600 border-red-500/50',
       elite: 'bg-red-500/20 text-red-600 border-red-500/50',
+      near_impossible: 'bg-red-500/20 text-red-600 border-red-500/50',
     };
     return colors[tier] || 'bg-gray-500/20 text-gray-600 border-gray-500/50';
   };
@@ -296,7 +297,7 @@ export default function NewProspectPage() {
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-semibold">Difficulty Score</h3>
                   <Badge className={getDifficultyColor(difficulty.tier)}>
-                    {difficulty.tier.toUpperCase()}
+                    {difficulty.tier === 'near_impossible' ? 'NEAR IMPOSSIBLE' : difficulty.tier.toUpperCase()}
                   </Badge>
                 </div>
                 <div className="text-3xl font-bold">{difficulty.index}/50</div>
@@ -335,17 +336,18 @@ export default function NewProspectPage() {
                 </div>
               </div>
 
-              {/* Difficulty Sliders */}
+              {/* Difficulty Dimensions — 5 categories in canonical order */}
               <div className="space-y-6">
                 <h2 className="text-xl font-semibold">Difficulty Dimensions</h2>
-                <p className="text-sm text-muted-foreground">
-                  Adjust each slider to set the prospect's difficulty profile. The total score updates automatically.
+                <p className="text-sm text-foreground">
+                  Adjust each slider to set the prospect&apos;s difficulty profile. The total score updates automatically.
                 </p>
 
-                <div className="space-y-4">
+                <div className="space-y-6">
+                  {/* 1. ICP Alignment */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>ICP Alignment</Label>
+                      <Label className="text-base font-semibold">ICP Alignment</Label>
                       <span className="text-sm font-medium">{formData.positionProblemAlignment}/10</span>
                     </div>
                     <Slider
@@ -355,14 +357,15 @@ export default function NewProspectPage() {
                       max={10}
                       step={1}
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-foreground">
                       How closely does this prospect match your ideal customer profile (ICP) for this offer?
                     </p>
                   </div>
 
+                  {/* 2. Motivation Intensity */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Motivation Intensity</Label>
+                      <Label className="text-base font-semibold">Motivation Intensity</Label>
                       <span className="text-sm font-medium">{formData.painAmbitionIntensity}/10</span>
                     </div>
                     <Slider
@@ -372,14 +375,15 @@ export default function NewProspectPage() {
                       max={10}
                       step={1}
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-foreground">
                       How driven and emotionally motivated is this prospect — how much pain or ambition do they have?
                     </p>
                   </div>
 
+                  {/* 3. Prospect Authority & Coachability */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Prospect Authority &amp; Coachability</Label>
+                      <Label className="text-base font-semibold">Prospect Authority &amp; Coachability</Label>
                       <span className="text-sm font-medium">{formData.authorityPerceivedScore}/10</span>
                     </div>
                     <Slider
@@ -389,14 +393,15 @@ export default function NewProspectPage() {
                       max={10}
                       step={1}
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-foreground">
                       What is the prospect&apos;s authority level and how open to being helped are they? 1–3 Advisor, 4–7 Peer, 8–10 Advisee (coachable).
                     </p>
                   </div>
 
+                  {/* 4. Funnel Context */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Funnel Context</Label>
+                      <Label className="text-base font-semibold">Funnel Context</Label>
                       <span className="text-sm font-medium">{formData.funnelContext}/10</span>
                     </div>
                     <Slider
@@ -406,14 +411,15 @@ export default function NewProspectPage() {
                       max={10}
                       step={1}
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-foreground">
                       How warm is the prospect when they come onto the call — what have they seen so far and where did they come from? (i.e., warm inbound vs cold ads)
                     </p>
                   </div>
 
+                  {/* 5. Ability to Proceed */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Ability to Proceed</Label>
+                      <Label className="text-base font-semibold">Ability to Proceed</Label>
                       <span className="text-sm font-medium">{formData.executionResistance}/10</span>
                     </div>
                     <Slider
@@ -423,7 +429,7 @@ export default function NewProspectPage() {
                       max={10}
                       step={1}
                     />
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-sm text-foreground">
                       What is the ability of the prospect to proceed today? (Do they have the time, the effort, and the finances to go ahead right now?)
                     </p>
                     <p className="text-xs text-muted-foreground">

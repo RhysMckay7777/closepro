@@ -37,6 +37,9 @@ export interface RoleplayContext {
   behaviourState: BehaviourState;
   replayPhase?: string;
   replayContext?: string;
+  practiceMode?: string;
+  practiceContext?: string;
+  turnCount?: number;
   userId?: string; // For loading user-specific training transcript patterns
 }
 
@@ -115,6 +118,10 @@ export async function generateProspectResponse(
 
   // Clean LLM narration artifacts from the response
   prospectResponse = cleanResponse(prospectResponse);
+
+  // Enforce response length limits (programmatic safety net)
+  const turnCount = context.turnCount ?? context.conversationHistory.filter(m => m.role === 'prospect').length;
+  prospectResponse = enforceResponseLimits(prospectResponse, turnCount);
 
   // Determine if this response contains an objection
   const objectionType = detectObjectionInResponse(
@@ -299,7 +306,16 @@ ${getCondensedExamples(3)}
 
 Use these as reference for HOW prospects actually talk — their word choice, sentence length, emotional expression, and objection style.
 
-Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}${buildOriginalProspectPrompt(context.replayContext)}`;
+RESPONSE LENGTH RULES (STRICT):
+- Your opening response MUST be ≤ 8 words. No exceptions.
+- For the first 3 exchanges, keep responses to ≤ 2 sentences.
+- Never exceed 4 sentences in any single response.
+- Do NOT info-dump. Be natural and conversational.
+
+${(context.turnCount !== undefined && context.turnCount < 4 && context.practiceMode !== 'objections') ? `OBJECTION GATE (ACTIVE): NO OBJECTIONS ALLOWED YET.
+Do NOT raise any price concerns, objections, or pushback until at least turn 4.
+This overrides all other objection timing rules.
+` : ''}Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}${buildOriginalProspectPrompt(context.replayContext)}${buildPracticeModePrompt(context.practiceMode, context.practiceContext)}`;
 }
 
 /**
@@ -717,6 +733,104 @@ function cleanResponse(text: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .replace(/  +/g, ' ')
     .trim();
+}
+
+/**
+ * Enforce response length limits as a programmatic safety net.
+ * Turn 0 (opening): max 8 words
+ * Turns 1-3: max 2 sentences
+ * All turns: max 4 sentences
+ */
+function enforceResponseLimits(text: string, turnCount: number): string {
+  if (!text) return text;
+
+  // Split into sentences (handles ., !, ?)
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+
+  if (turnCount === 0) {
+    // Opening: max 8 words
+    const words = text.split(/\s+/).slice(0, 8);
+    return words.join(' ').replace(/[.!?]*$/, '');
+  }
+
+  if (turnCount <= 3) {
+    // First 3 exchanges: max 2 sentences
+    return sentences.slice(0, 2).join(' ').trim();
+  }
+
+  // All turns: max 4 sentences
+  return sentences.slice(0, 4).join(' ').trim();
+}
+
+/**
+ * Build practice-mode-specific prompt addition.
+ * Similar to buildPhaseReplayPrompt but uses user-provided context instead of call data.
+ */
+function buildPracticeModePrompt(practiceMode?: string, practiceContext?: string): string {
+  if (!practiceMode) return '';
+
+  const ctx = practiceContext || 'No specific context provided.';
+
+  switch (practiceMode) {
+    case 'intro':
+      return `
+
+PHASE PRACTICE MODE: INTRODUCTION
+This session focuses ONLY on the introduction phase.
+Scenario context: ${ctx}
+Start as a prospect being contacted. Be slightly guarded initially.
+The closer needs to practice: establishing authority, frame control, tone setting.
+After 2-3 minutes of intro practice, naturally signal you're ready to move on.
+Do NOT extend into deep discovery or pitch — keep it focused on intro skills.`;
+
+    case 'discovery':
+      return `
+
+PHASE PRACTICE MODE: DISCOVERY
+This session focuses ONLY on the discovery phase.
+Scenario context: ${ctx}
+Start as if the intro is done — you have surface interest but haven't shared deep pain yet.
+The closer needs to practice: depth of questioning, emotional leverage, gap creation.
+Allow 5-7 minutes. Reward good questions with deeper answers. Stay surface-level if questions are shallow.
+Do NOT jump to pitch or close.`;
+
+    case 'pitch':
+      return `
+
+PHASE PRACTICE MODE: PITCH
+This session focuses ONLY on the pitch phase.
+Scenario context: ${ctx}
+Start as a prospect who has shared problems and is ready to hear a solution.
+Briefly summarize your situation when asked, then let them pitch.
+The closer needs to practice: structure, personalization, outcome framing.
+Allow 3-5 minutes. React authentically to the pitch.`;
+
+    case 'close':
+      return `
+
+PHASE PRACTICE MODE: CLOSE
+This session focuses ONLY on the close phase.
+Scenario context: ${ctx}
+Start as a prospect who has heard the pitch and sees value but hasn't committed.
+You're interested but have natural hesitation about making a decision.
+The closer needs to practice: assumptive close, leadership, handling silence.
+Allow 3-5 minutes. Commit if they handle the close well.`;
+
+    case 'objections':
+      return `
+
+PHASE PRACTICE MODE: OBJECTIONS
+This session focuses on objection handling.
+Scenario context: ${ctx}
+After 1-2 exchanges of rapport, raise realistic objections based on the scenario context.
+Layer objections naturally — don't dump all concerns at once.
+Be realistic — maintain the objection if they fumble, yield if they handle it well.
+After an objection is resolved (or failed), raise another with a different angle to test consistency.
+Focus purely on objection handling — the closer needs to practice overcoming resistance.`;
+
+    default:
+      return '';
+  }
 }
 
 /**

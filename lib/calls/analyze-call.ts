@@ -87,8 +87,13 @@ export async function analyzeCallAsync(
     const effectiveOverallScore = analysisResult.overallScore || analysisResult.phaseScores?.overall || 0;
 
     // Compute objection booleans from analysis result
+    // Connor's definition: objection = clear resistance after close attempt or price presentation.
+    // Exclude minor clarifying questions — require substantive objection text + pillar classification.
     const objections = analysisResult.objections ?? [];
-    const hasObjections = objections.length > 0;
+    const substantiveObjections = objections.filter(o =>
+      o.objection && o.objection.length > 10 && o.pillar
+    );
+    const hasObjections = substantiveObjections.length > 0;
 
     const insertValues: Record<string, unknown> = {
       callId,

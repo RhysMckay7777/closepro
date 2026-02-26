@@ -14,7 +14,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Loader2, ArrowLeft, Play, Phone, Mic, MessageSquare } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Plus, Loader2, ArrowLeft, Play, Phone, Mic, MessageSquare, Target } from 'lucide-react';
 import Link from 'next/link';
 import { resolveProspectAvatarUrl, getProspectInitials, getProspectPlaceholderColor } from '@/lib/prospect-avatar';
 import { Breadcrumb, BreadcrumbList, BreadcrumbItem, BreadcrumbLink, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
@@ -54,6 +55,8 @@ function ProspectSelectionContent() {
   const [selectedProspect, setSelectedProspect] = useState<ProspectAvatar | null>(null);
   const [imageGenStatus, setImageGenStatus] = useState<'idle' | 'generating' | 'not_configured' | 'complete'>('idle');
   const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
+  const [practiceMode, setPracticeMode] = useState<string | null>(null);
+  const [practiceContext, setPracticeContext] = useState('');
   const hasTriedGenerateRef = useRef(false);
   const avatarPollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -260,6 +263,10 @@ function ProspectSelectionContent() {
 
   const handleProspectSelect = async (prospectId: string) => {
     if (!offerId) return;
+    if (practiceMode && !practiceContext.trim()) {
+      toastError('Please enter a practice context describing the scenario.');
+      return;
+    }
     setSelectedProspect(null); // Close dialog
     try {
       const response = await fetch('/api/roleplay', {
@@ -270,6 +277,7 @@ function ProspectSelectionContent() {
           prospectAvatarId: prospectId,
           inputMode,
           mode: 'manual',
+          ...(practiceMode ? { practiceMode, practiceContext: practiceContext.trim() } : {}),
         }),
       });
 
@@ -287,6 +295,10 @@ function ProspectSelectionContent() {
 
   const handleDifficultySelect = async (difficulty: string) => {
     if (!offerId) return;
+    if (practiceMode && !practiceContext.trim()) {
+      toastError('Please enter a practice context describing the scenario.');
+      return;
+    }
     try {
       const response = await fetch('/api/roleplay', {
         method: 'POST',
@@ -296,6 +308,7 @@ function ProspectSelectionContent() {
           selectedDifficulty: difficulty,
           inputMode,
           mode: 'manual',
+          ...(practiceMode ? { practiceMode, practiceContext: practiceContext.trim() } : {}),
         }),
       });
 
@@ -321,6 +334,7 @@ function ProspectSelectionContent() {
         return 'outline';
       case 'expert':
       case 'elite':
+      case 'near_impossible':
         return 'destructive';
       default:
         return 'outline';
@@ -334,6 +348,7 @@ function ProspectSelectionContent() {
       hard: 'Hard',
       expert: 'Expert',
       elite: 'Expert',
+      near_impossible: 'Near Impossible',
     };
     return labels[tier] ?? `${tier.charAt(0).toUpperCase()}${tier.slice(1)}`;
   };
@@ -345,6 +360,7 @@ function ProspectSelectionContent() {
       hard: 'bg-orange-500/20',
       expert: 'bg-red-500/20',
       elite: 'bg-red-500/20',
+      near_impossible: 'bg-red-500/20',
     };
     return classes[tier] ?? 'bg-muted';
   };
@@ -356,18 +372,38 @@ function ProspectSelectionContent() {
       hard: 'bg-orange-500',
       expert: 'bg-red-500',
       elite: 'bg-red-500',
+      near_impossible: 'bg-red-500',
     };
     return classes[tier] ?? 'bg-muted-foreground';
   };
 
   // getCallTypeTag removed per Rhys's spec — no type label on cards
 
+  /** Extract a 2-line descriptor: (a) demographic anchor, (b) biggest problem/obstacle */
+  const getCardDescriptor = (p: ProspectAvatar): { line1: string; line2: string } => {
+    if (!p.positionDescription) {
+      return { line1: getModeLabel(p.difficultyTier), line2: '' };
+    }
+    const sentences = p.positionDescription.split(/[.!?]+/).map(s => s.trim()).filter(Boolean);
+    // Line 1: First sentence is always identity/demographic (age/role/stage)
+    const line1 = sentences[0]
+      ? sentences[0].slice(0, 60) + (sentences[0].length > 60 ? '…' : '')
+      : getModeLabel(p.difficultyTier);
+    // Line 2: Find the first problem/struggle sentence (usually sentence 2-4)
+    const problemSentence = sentences.slice(1).find(s =>
+      /struggling|dealing|problem|pain|trying|frustrated|worried|skeptic|challenge|block|resist|desperate|stuck|can't|hasn't/i.test(s)
+    ) || sentences[1] || '';
+    const line2 = problemSentence
+      ? problemSentence.slice(0, 70) + (problemSentence.length > 70 ? '…' : '')
+      : '';
+    return { line1, line2 };
+  };
+
+  /** Legacy short title for dialog subtitle */
   const getShortTitle = (p: ProspectAvatar) => {
     if (!p.positionDescription) return getModeLabel(p.difficultyTier);
     const firstSentence = p.positionDescription.split(/[.!?]/)[0]?.trim() ?? '';
-    const match = firstSentence.match(/(?:^|\s)(?:the\s+)?([A-Za-z]+\s+[A-Za-z]+)(?:\s|,|$)/i);
-    if (match) return match[1];
-    return firstSentence.slice(0, 40) + (firstSentence.length > 40 ? '…' : '');
+    return firstSentence.slice(0, 50) + (firstSentence.length > 50 ? '…' : '');
   };
 
   // Fallback: if regenerate on load failed and we have no prospects, try one-time generate
@@ -450,10 +486,17 @@ function ProspectSelectionContent() {
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
                   </Button>
-                  <Button onClick={() => handleProspectSelect(selectedProspect.id)}>
-                    <Phone className="h-4 w-4 mr-2" />
-                    Start Roleplay
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {practiceMode && (
+                      <Badge variant="secondary" className="capitalize">
+                        {practiceMode} Practice
+                      </Badge>
+                    )}
+                    <Button onClick={() => handleProspectSelect(selectedProspect.id)}>
+                      <Phone className="h-4 w-4 mr-2" />
+                      Start Roleplay
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -540,6 +583,48 @@ function ProspectSelectionContent() {
         )}
         {inputMode === 'text' && (
           <p className="text-xs text-muted-foreground mt-1.5">Type your responses. AI prospect replies with text and optional TTS audio.</p>
+        )}
+      </div>
+
+      {/* Phase Practice Mode */}
+      <div className="mb-6">
+        <p className="text-sm text-muted-foreground mb-2">Practice mode:</p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: null, label: 'Full Roleplay' },
+            { value: 'intro', label: 'Practice Intro' },
+            { value: 'discovery', label: 'Practice Discovery' },
+            { value: 'pitch', label: 'Practice Pitch' },
+            { value: 'close', label: 'Practice Close' },
+            { value: 'objections', label: 'Practice Objections' },
+          ].map((mode) => (
+            <Button
+              key={mode.value ?? 'full'}
+              variant={practiceMode === mode.value ? 'default' : 'outline'}
+              size="sm"
+              className="h-9"
+              onClick={() => setPracticeMode(mode.value)}
+            >
+              {mode.value && <Target className="h-3.5 w-3.5 mr-1.5" />}
+              {mode.label}
+            </Button>
+          ))}
+        </div>
+        {practiceMode && (
+          <div className="mt-3 space-y-2">
+            <label className="text-sm font-medium">
+              Practice Context <span className="text-destructive">*</span>
+            </label>
+            <Textarea
+              value={practiceContext}
+              onChange={(e) => setPracticeContext(e.target.value)}
+              placeholder={`Describe the scenario for this ${practiceMode} practice. E.g. "The prospect is a busy gym owner who's been burned by marketing agencies before. They booked via a cold ad and are skeptical about ROI."`}
+              className="min-h-[80px]"
+            />
+            <p className="text-xs text-muted-foreground">
+              This context shapes how the AI prospect behaves during the focused phase practice.
+            </p>
+          </div>
         )}
       </div>
 
@@ -696,9 +781,17 @@ function ProspectSelectionContent() {
                 </div>
                 <div className="p-4 flex-1 flex flex-col">
                   <h3 className="font-bold text-lg mb-0.5">{prospect.name}</h3>
-                  <p className="text-sm text-muted-foreground line-clamp-1 mb-3">
-                    {prospect.positionDescription ? getShortTitle(prospect) : getModeLabel(prospect.difficultyTier)}
-                  </p>
+                  {(() => {
+                    const desc = getCardDescriptor(prospect);
+                    return (
+                      <div className="mb-3 min-h-[2.5rem]">
+                        <p className="text-sm text-muted-foreground line-clamp-1">{desc.line1}</p>
+                        {desc.line2 && (
+                          <p className="text-xs text-muted-foreground/70 line-clamp-1 mt-0.5">{desc.line2}</p>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <div className="mt-auto flex items-center gap-2">
                     <span className={`size-2 rounded-full shrink-0 ${getCardAccentBullet(prospect.difficultyTier)}`} aria-hidden />
                     <span className="text-xs font-medium text-muted-foreground">{getModeLabel(prospect.difficultyTier)}</span>

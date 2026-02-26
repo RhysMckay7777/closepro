@@ -210,6 +210,9 @@ export async function POST(
       ? sessionMetadata.behaviourState
       : initializeBehaviourState(prospectAvatar.difficulty, funnelContext);
 
+    // Calculate turn count (number of prospect messages so far)
+    const turnCount = existingMessages.filter(m => m.role === 'prospect').length;
+
     // Create roleplay context (includes replay phase/context if this is a phase replay session)
     const roleplayContext: RoleplayContext = {
       offer: offerProfile,
@@ -219,6 +222,9 @@ export async function POST(
       behaviourState,
       replayPhase: roleplay[0].replayPhase ?? undefined,
       replayContext: roleplay[0].replayContext ?? undefined,
+      practiceMode: (roleplay[0] as any).practiceMode ?? undefined,
+      practiceContext: (roleplay[0] as any).practiceContext ?? undefined,
+      turnCount,
       userId: session.user.id,
     };
 

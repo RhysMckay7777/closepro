@@ -158,6 +158,8 @@ export async function POST(request: NextRequest) {
       replaySourceCallId,
       replaySourceSessionId,
       replayContext,
+      practiceMode,
+      practiceContext,
     } = body;
 
     // Require offerId - no default offers
@@ -304,6 +306,8 @@ export async function POST(request: NextRequest) {
         replaySourceCallId: replaySourceCallId || null,
         replaySourceSessionId: replaySourceSessionId || null,
         replayContext: typeof replayContext === 'string' ? replayContext : (replayContext ? JSON.stringify(replayContext) : null),
+        practiceMode: practiceMode || null,
+        practiceContext: practiceContext || null,
       })
       .returning();
 

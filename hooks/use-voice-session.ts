@@ -198,8 +198,13 @@ export function useVoiceSession({
         }
       }
 
-      // Force fresh signed URL on reconnection (old one may be stale)
-      signedUrlCacheRef.current = null;
+      // Only clear signed URL cache if it's > 8 minutes old; otherwise reuse for voice consistency
+      if (
+        signedUrlCacheRef.current &&
+        Date.now() - signedUrlCacheRef.current.createdAt > 8 * 60 * 1000
+      ) {
+        signedUrlCacheRef.current = null;
+      }
       const { signedUrl, dynamicVariables } = await getOrFetchSignedUrl();
 
       if (!conv) {
@@ -332,6 +337,20 @@ export function useVoiceSession({
       };
       transcriptRef.current = [...transcriptRef.current, entry];
       onTranscriptUpdate?.([...transcriptRef.current]);
+
+      // Turn gating: after user speaks, if < 4 prospect turns, remind AI to stay brief and avoid objections
+      if (props.role === 'user') {
+        const prospectTurns = transcriptRef.current.filter(e => e.role === 'prospect').length;
+        if (prospectTurns < 4) {
+          try {
+            conversationRef.current?.sendContextualUpdate(
+              'NO OBJECTIONS YET. Keep responses to 1-2 sentences. Be neutral and conversational.'
+            );
+          } catch {
+            // Silently ignore — connection may not be ready
+          }
+        }
+      }
     },
     // Single source of truth for voiceStatus
     onStatusChange: (status: { status: Status }) => {

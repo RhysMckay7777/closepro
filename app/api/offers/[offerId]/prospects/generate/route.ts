@@ -4,7 +4,7 @@ import { headers } from 'next/headers';
 import { db } from '@/db';
 import { offers, prospectAvatars, userOrganizations } from '@/db/schema';
 import { eq } from 'drizzle-orm';
-import { generateRandomProspectInBand, getDefaultBioForDifficulty, generateRandomProspectName, inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
+import { generateRandomProspectInBand, generateProspectContext, generateRandomProspectName, inferGenderFromOffer } from '@/lib/ai/roleplay/prospect-avatar';
 import { generateImageWithGemini, buildGeminiAvatarPrompt, isGeminiImageConfigured } from '@/lib/gemini-image';
 
 export const maxDuration = 300;
@@ -97,22 +97,33 @@ export async function POST(
     const prospectGender = inferGenderFromOffer(offer[0].whoItsFor);
     console.log('[PROSPECT GEN] Gender inferred from whoItsFor:', JSON.stringify(offer[0].whoItsFor), '→', prospectGender);
 
-    const VALID_TIERS = new Set(['easy', 'realistic', 'hard', 'expert']);
+    const VALID_TIERS = new Set(['easy', 'realistic', 'hard', 'expert', 'near_impossible']);
 
     for (const difficulty of difficulties) {
       const prospectProfile = generateRandomProspectInBand(difficulty);
       // Validate difficulty tier — map any invalid values to the expected tier
       const tierStr = prospectProfile.difficultyTier as string;
       if (!VALID_TIERS.has(tierStr)) {
-        prospectProfile.difficultyTier = (tierStr === 'near_impossible' || tierStr === 'elite') ? 'expert' : difficulty;
+        prospectProfile.difficultyTier = (tierStr === 'elite') ? 'expert' : difficulty;
       }
       const name = generateRandomProspectName(usedNames, prospectGender);
-      const positionDescription = getDefaultBioForDifficulty(prospectProfile.difficultyTier, name, {
-        offerCategory: offer[0].offerCategory ?? undefined,
-        whoItsFor: offer[0].whoItsFor ?? undefined,
-        coreProblems: offer[0].coreProblems ?? undefined,
-        offerName: offer[0].name ?? undefined,
-      }, prospectGender);
+      const positionDescription = generateProspectContext({
+        name,
+        gender: prospectGender,
+        positionProblemAlignment: prospectProfile.positionProblemAlignment,
+        painAmbitionIntensity: prospectProfile.painAmbitionIntensity,
+        perceivedNeedForHelp: prospectProfile.perceivedNeedForHelp,
+        authorityLevel: prospectProfile.authorityLevel,
+        funnelContext: prospectProfile.funnelContext,
+        executionResistance: prospectProfile.executionResistance,
+        difficultyTier: prospectProfile.difficultyTier,
+        offer: {
+          offerCategory: offer[0].offerCategory ?? undefined,
+          whoItsFor: offer[0].whoItsFor ?? undefined,
+          coreProblems: offer[0].coreProblems ?? undefined,
+          offerName: offer[0].name ?? undefined,
+        },
+      });
 
       const [newProspect] = await db
         .insert(prospectAvatars)
@@ -177,7 +188,7 @@ export async function POST(
             console.log(`[prospects/generate after()] Generating image for: ${prospect.name} (${i + 1}/${prospectsToPhoto.length})...`);
             try {
               const { url } = await generateImageWithGemini({
-                prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription, prospectGender),
+                prompt: buildGeminiAvatarPrompt(prospect.name, prospect.positionDescription, prospectGender, offer[0].offerCategory),
               });
               if (url) {
                 await db

@@ -51,7 +51,7 @@ export default function CallsPage() {
         // Transform the data to match our Call interface
         const transformedCalls = (data.calls || []).map((call: any) => ({
           id: call.id,
-          date: call.createdAt || call.date,
+          date: call.date || call.createdAt,
           offerName: call.offerName || 'Unknown Offer',
           prospectName: call.prospectName,
           callType: call.callType || 'closing_call',

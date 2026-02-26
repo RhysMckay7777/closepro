@@ -73,7 +73,7 @@ export function generateRandomProspectName(usedNames?: Set<string>, gender: Pros
 }
 
 export type AuthorityLevel = 'advisee' | 'peer' | 'advisor';
-export type DifficultyTier = 'easy' | 'realistic' | 'hard' | 'expert';
+export type DifficultyTier = 'easy' | 'realistic' | 'hard' | 'expert' | 'near_impossible';
 
 export interface ProspectDifficultyProfile {
   // Layer A: Persuasion Difficulty (40 points)
@@ -148,7 +148,7 @@ export function calculateDifficultyIndex(
   // Total difficulty index (0-50)
   const index = layerA + layerB;
 
-  // Determine tier based on 50-point scale (matches canonical DIFFICULTY_BANDS)
+  // Determine tier based on 50-point scale (matches canonical V2_DIFFICULTY_BANDS)
   let tier: DifficultyTier;
   if (index >= 43) {
     tier = 'easy';
@@ -156,8 +156,10 @@ export function calculateDifficultyIndex(
     tier = 'realistic';
   } else if (index >= 30) {
     tier = 'hard';
-  } else {
+  } else if (index >= 25) {
     tier = 'expert';
+  } else {
+    tier = 'near_impossible';
   }
 
   return { index, tier };
@@ -271,44 +273,222 @@ function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-/** Character archetypes for generating realistic, person-driven bios */
-const CHARACTER_ARCHETYPES = {
-  easy: [
-    { role: 'busy parent', context: 'trying to balance family and career, looking for solutions that save time' },
-    { role: 'young professional', context: 'early in their career, eager to learn and improve their situation' },
-    { role: 'small business owner', context: 'just starting out, open to new ideas and ready to invest in growth' },
-    { role: 'career changer', context: 'transitioning to a new field, actively seeking guidance and support' },
-    { role: 'motivated individual', context: 'has clear goals and is ready to take action to achieve them' },
-  ],
-  realistic: [
-    { role: 'busy dad', context: 'trying to figure out his business while managing family responsibilities' },
-    { role: 'working mom', context: 'juggling career advancement with raising kids, needs efficient solutions' },
-    { role: 'mid-level manager', context: 'looking to level up their career but cautious about investments' },
-    { role: 'entrepreneur', context: 'running a small business, weighing options and looking for proven results' },
-    { role: 'professional', context: 'established in their field but exploring ways to improve their situation' },
-    { role: 'secretary', context: 'trained to an MVP level, looking to advance and take on more responsibility' },
-  ],
-  hard: [
-    { role: 'skeptical business owner', context: 'has been burned before, questions everything and needs proof' },
-    { role: 'busy executive', context: 'overwhelmed with options and competing priorities, hard to get attention' },
-    { role: 'budget-conscious professional', context: 'interested but watching every dollar, needs strong ROI justification' },
-    { role: 'experienced professional', context: 'set in their ways, resistant to change unless benefits are clear' },
-    { role: 'time-poor decision maker', context: 'wants results but struggles to find time to commit or evaluate' },
-  ],
-  expert: [
-    { role: 'expert consultant', context: 'deeply knowledgeable, questions methodology and wants data-driven proof' },
-    { role: 'seasoned executive', context: 'has seen many pitches, high standards and requires exceptional value' },
-    { role: 'sophisticated buyer', context: 'evaluates multiple alternatives, needs compelling differentiation' },
-    { role: 'authority figure', context: 'makes decisions for others, requires extensive validation and trust' },
-    { role: 'hostile prospect', context: 'disengaged or negative, multiple blockers and low perceived need' },
-    { role: 'wrong timing prospect', context: 'no budget, timeline far out, or decision by committee required' },
-  ],
+/** Role pools by difficulty tier for prospect context generation */
+const ROLE_POOLS: Record<string, string[]> = {
+  easy: ['aspiring entrepreneur', 'career changer', 'motivated professional', 'eager freelancer', 'new business owner', 'young professional'],
+  realistic: ['small business owner', 'mid-career professional', 'team lead', 'freelance consultant', 'working professional', 'self-employed tradesperson'],
+  hard: ['established business owner', 'senior professional', 'experienced consultant', 'department head', 'seasoned manager', 'veteran practitioner'],
+  expert: ['industry veteran', 'senior executive', 'serial entrepreneur', 'managing director', 'established authority', 'seasoned decision-maker'],
+  near_impossible: ['highly resistant executive', 'deeply skeptical decision-maker', 'overwhelmed CEO', 'hostile prospect', 'burnt-out veteran', 'disengaged authority figure'],
 };
 
+const LOCATIONS = [
+  'London', 'Manchester', 'Birmingham', 'Leeds', 'Bristol', 'Edinburgh',
+  'Liverpool', 'Glasgow', 'Nottingham', 'Newcastle', 'Cardiff', 'Sheffield',
+  'Brighton', 'Southampton', 'Leicester', 'Coventry', 'Belfast', 'Dublin',
+];
+
 /**
- * Generate a character-driven bio using the prospect's name and a character archetype.
- * Creates realistic, person-focused descriptions like "Busy dad George trying to figure out his business".
- * Filters archetypes by gender to avoid mismatches (e.g. no "working mom" for male prospects).
+ * Generate rich 8-12 line prospect context mapped to all 5 difficulty markers + offer.
+ * Each section pulls from both the prospect's dimension scores AND the offer context.
+ *
+ * Sections:
+ *  1. Identity / Demographics (1-2 lines)
+ *  2. Position + Problem as it relates to the offer (2-3 lines)
+ *  3. Motivation Intensity (2-3 lines)
+ *  4. Authority & Coachability (2-3 lines)
+ *  5. Funnel Context (1-2 lines)
+ *  6. Ability to Proceed (1 line)
+ */
+export function generateProspectContext(params: {
+  name: string;
+  gender: ProspectGender;
+  positionProblemAlignment: number;
+  painAmbitionIntensity: number;
+  perceivedNeedForHelp: number;
+  authorityLevel: AuthorityLevel;
+  funnelContext: number;
+  executionResistance: number;
+  difficultyTier: DifficultyTier;
+  offer: {
+    offerCategory?: string;
+    whoItsFor?: string;
+    coreProblems?: string;
+    offerName?: string;
+  };
+}): string {
+  const {
+    name, gender,
+    positionProblemAlignment: icpScore,
+    painAmbitionIntensity: motivationScore,
+    perceivedNeedForHelp: _authorityScore,
+    authorityLevel,
+    funnelContext: funnelScore,
+    executionResistance: abilityScore,
+    difficultyTier,
+    offer,
+  } = params;
+
+  const firstName = name.split(' ')[0] || 'They';
+
+  // Pronouns
+  const he = gender === 'male' ? 'He' : gender === 'female' ? 'She' : 'They';
+  const him = gender === 'male' ? 'him' : gender === 'female' ? 'her' : 'them';
+  const his = gender === 'male' ? 'his' : gender === 'female' ? 'her' : 'their';
+  const His = his.charAt(0).toUpperCase() + his.slice(1);
+  const heLower = he.toLowerCase();
+
+  // Deterministic seeded random from name
+  const nameHash = name.toLowerCase().split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  let seed = nameHash;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const pick = <T>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
+
+  // Age (25-47) and location — deterministic from name
+  const age = 25 + (nameHash % 23);
+  const location = pick(LOCATIONS);
+
+  // Extract offer context for natural integration
+  const offerArea = offer.offerName || offer.offerCategory?.replace(/_/g, ' ') || 'this kind of program';
+  const offerProblems = offer.coreProblems
+    ?.split(/[,;\n]+/)
+    .map(s => s.trim().toLowerCase())
+    .filter(s => s.length > 3) || [];
+  const offerICP = offer.whoItsFor?.slice(0, 200) || '';
+
+  const pickProblem = (): string => {
+    if (offerProblems.length > 0) return pick(offerProblems);
+    return pick(['finding the right approach', 'getting consistent results', 'making real progress', 'staying on track']);
+  };
+
+  const rolePool = ROLE_POOLS[difficultyTier] || ROLE_POOLS.realistic;
+  // Filter roles by gender
+  const genderFiltered = gender === 'female'
+    ? rolePool.filter(r => !r.includes('dad') && !r.includes('father'))
+    : gender === 'male'
+      ? rolePool.filter(r => !r.includes('mom') && !r.includes('mother'))
+      : rolePool;
+  const role = pick(genderFiltered.length > 0 ? genderFiltered : rolePool);
+
+  const lines: string[] = [];
+
+  // ── SECTION 1: Identity / Demographics (1-2 lines) ──
+  lines.push(`${firstName} is a ${age}-year-old ${role} from ${location}.`);
+
+  // ── SECTION 2: Position + Problem aligned to offer (2-3 lines) ──
+  if (icpScore >= 7) {
+    if (offerICP) {
+      lines.push(`${he} closely matches the ideal profile — ${offerICP.toLowerCase().slice(0, 120)}.`);
+    } else {
+      lines.push(`${he} closely fits the target audience for ${offerArea}.`);
+    }
+    lines.push(`${he}'s actively dealing with ${pickProblem()} and has been searching for the right solution.`);
+    if (offerProblems.length > 1) {
+      lines.push(`On top of that, ${heLower}'s also struggling with ${pick(offerProblems.filter(p => p !== offerProblems[0]))}.`);
+    }
+  } else if (icpScore >= 4) {
+    lines.push(`${he}'s somewhat in the market for help with ${pickProblem()}, though ${heLower}'s not a textbook fit for the offer.`);
+    lines.push(`${His} situation has some overlap — ${heLower}'s felt the pain of ${pickProblem()} but isn't sure this approach is right for ${him}.`);
+  } else {
+    lines.push(`${he} doesn't immediately look like an obvious fit for ${offerArea}.`);
+    lines.push(`${His} challenges are adjacent — ${heLower}'s dealing with ${pickProblem()} but from a different angle than most prospects.`);
+    lines.push(`It will take real work to show ${him} why this is relevant to ${his} situation.`);
+  }
+
+  // ── SECTION 3: Motivation Intensity (2-3 lines) ──
+  if (motivationScore >= 8) {
+    lines.push(`${firstName} is highly motivated — there's real urgency behind ${his} interest.`);
+    lines.push(pick([
+      `${he}'s reached a breaking point with ${his} current situation and is desperate for change.`,
+      `Something recent has lit a fire under ${him} — ${heLower}'s done waiting and wants results now.`,
+      `The pain of staying where ${heLower} is has become unbearable, and that's driving ${him} to act.`,
+    ]));
+  } else if (motivationScore >= 5) {
+    lines.push(`${he}'s moderately motivated — there's genuine interest but no burning urgency.`);
+    lines.push(pick([
+      `${he} knows ${heLower} needs to make a change but hasn't hit ${his} tipping point yet.`,
+      `${he}'s been thinking about solving this for a while but keeps putting it off.`,
+      `There's enough dissatisfaction to explore options, but ${heLower}'s not desperate.`,
+    ]));
+  } else {
+    lines.push(`${firstName}'s motivation is low — ${heLower}'s more curious than committed at this point.`);
+    lines.push(pick([
+      `${he} doesn't feel urgent pressure to change and could easily walk away.`,
+      `${he}'s exploring out of mild interest rather than real need.`,
+      `Without a compelling reason, ${heLower}'s likely to stick with the status quo.`,
+    ]));
+  }
+
+  // ── SECTION 4: Authority & Coachability (2-3 lines) ──
+  if (authorityLevel === 'advisee') {
+    lines.push(`${he}'s open to guidance and willing to be led — ${heLower} knows ${heLower} doesn't have all the answers.`);
+    lines.push(pick([
+      `${he} hasn't tried many solutions before and is genuinely looking for expert help.`,
+      `${he}'s the type who follows through when given a clear plan and accountability.`,
+      `${he} respects expertise and is ready to listen without putting up walls.`,
+    ]));
+  } else if (authorityLevel === 'peer') {
+    lines.push(`${he} sees ${him}self as knowledgeable but open to the right perspective.`);
+    lines.push(pick([
+      `${he}'s tried a few things before — some worked, some didn't — and ${heLower}'s cautious about new promises.`,
+      `${he} wants to be convinced through logic and evidence, not high-pressure tactics.`,
+      `${he}'ll engage in a real conversation but won't be pushed into anything ${heLower} doesn't believe in.`,
+    ]));
+  } else {
+    lines.push(`${he} considers ${him}self an expert in ${his} domain and doesn't respond well to being "taught."`);
+    lines.push(pick([
+      `${he}'s been in the game for years and has a "prove it to me" mentality that's hard to crack.`,
+      `${he}'s the type who gives advice, not takes it — getting ${him} to see value requires a peer-level conversation.`,
+      `Previous attempts to sell ${him} things have failed because reps came across as less experienced than ${him}.`,
+    ]));
+  }
+
+  // ── SECTION 5: Funnel Context (1-2 lines) ──
+  const offerNameShort = offer.offerName?.slice(0, 50) || 'the program';
+  if (funnelScore >= 7) {
+    lines.push(pick([
+      `${he} came in warm — ${heLower}'s watched content, read testimonials, and already understands the core offer.`,
+      `${he} was referred by someone who's had success, so ${heLower}'s pre-sold on the concept.`,
+      `${he}'s been following ${offerNameShort} content for weeks and booked the call voluntarily.`,
+    ]));
+  } else if (funnelScore >= 4) {
+    lines.push(pick([
+      `${he} saw an ad or landing page and booked a call — ${heLower}'s aware of ${offerNameShort} but hasn't gone deep.`,
+      `${he} came through a webinar opt-in with moderate awareness of what's being offered.`,
+      `${he}'s done some basic research but still has questions about whether this is legit.`,
+    ]));
+  } else {
+    lines.push(pick([
+      `${he} was cold-approached — ${heLower} didn't seek this out and has almost no context going in.`,
+      `${he} barely knows what ${offerNameShort} is about and is skeptical about why ${heLower}'s even on this call.`,
+      `This is essentially a cold conversation — ${heLower} has zero prior exposure to the brand or offer.`,
+    ]));
+  }
+
+  // ── SECTION 6: Ability to Proceed (1 line) ──
+  if (abilityScore >= 8) {
+    lines.push(pick([
+      `Money, time, and decision authority aren't issues — if ${heLower}'s sold, ${heLower} can move forward today.`,
+      `${he} has the budget and bandwidth to commit immediately if convinced.`,
+    ]));
+  } else if (abilityScore >= 5) {
+    lines.push(pick([
+      `${he} could proceed but would need to reprioritize — ${pick(['budget is tight', 'time is limited', `${heLower} needs to discuss with a partner`])} but not impossible.`,
+      `There's some friction around logistics — ${heLower}'ll need to ${pick(['move things around financially', `clear ${his} schedule`, 'get buy-in from someone else'])} to commit.`,
+    ]));
+  } else {
+    lines.push(pick([
+      `Major logistical blockers: ${pick([`${heLower} genuinely can't afford it right now`, `${his} time is completely locked up`, 'someone else controls the budget'])}.`,
+      `Proceeding today is near-impossible — ${pick([`the money simply isn't there`, `${heLower}'s overcommitted on time`, `${heLower} needs approval from others first`])}.`,
+    ]));
+  }
+
+  return lines.join(' ');
+}
+
+/**
+ * Legacy wrapper — generates a short character-driven bio.
+ * Use generateProspectContext() for the full 8-12 line version when scores are available.
  */
 export function getDefaultBioForDifficulty(
   tier: DifficultyTier | 'realistic' | 'hard' | 'expert' | 'elite' | 'easy' | 'near_impossible',
@@ -321,43 +501,20 @@ export function getDefaultBioForDifficulty(
   },
   gender?: ProspectGender
 ): string {
-  // Map near_impossible/elite → expert for backward compat
-  const key = (tier === 'near_impossible' || tier === 'elite' ? 'expert' : tier) as DifficultyTier;
-  const archetypes = CHARACTER_ARCHETYPES[key] ?? CHARACTER_ARCHETYPES.realistic;
-
-  // Filter archetypes by gender to avoid mismatches
-  const FEMALE_ROLES = ['working mom', 'busy mom', 'mother'];
-  const MALE_ROLES = ['busy dad', 'father'];
-  let filtered = archetypes;
-  if (gender === 'male') {
-    filtered = archetypes.filter(a => !FEMALE_ROLES.some(r => a.role.toLowerCase().includes(r)));
-  } else if (gender === 'female') {
-    filtered = archetypes.filter(a => !MALE_ROLES.some(r => a.role.toLowerCase().includes(r)));
-  }
-  if (filtered.length === 0) filtered = archetypes; // safety fallback
-
-  const archetype = filtered[randomInt(0, filtered.length - 1)];
-
-  // Extract first name from prospect name if provided
-  const firstName = prospectName?.split(' ')[0] || 'They';
-
-  // Generate character-driven bio, enriched with offer context when available
-  let bio = `${archetype.role.charAt(0).toUpperCase() + archetype.role.slice(1)} ${firstName} ${archetype.context}.`;
-
-  if (offerContext?.whoItsFor) {
-    bio += ` Matches ICP: ${offerContext.whoItsFor.slice(0, 120)}.`;
-  } else if (offerContext?.offerCategory) {
-    bio += ` Industry: ${offerContext.offerCategory.replace(/_/g, ' ')}.`;
-  }
-
-  // Post-generation sanity check: replace gender-mismatched words
-  if (gender === 'male') {
-    bio = bio.replace(/\bmom\b/gi, 'dad').replace(/\bmother\b/gi, 'father').replace(/\bwife\b/gi, 'husband').replace(/\bher\b/gi, 'his');
-  } else if (gender === 'female') {
-    bio = bio.replace(/\bdad\b/gi, 'mom').replace(/\bfather\b/gi, 'mother').replace(/\bhusband\b/gi, 'wife').replace(/\bhis\b/gi, 'her');
-  }
-
-  return bio;
+  // Legacy fallback — delegates to generateProspectContext with default mid-range scores
+  const mappedTier: DifficultyTier = (tier === 'elite' ? 'expert' : tier) as DifficultyTier;
+  return generateProspectContext({
+    name: prospectName || 'Prospect',
+    gender: gender || 'any',
+    positionProblemAlignment: mappedTier === 'easy' ? 8 : mappedTier === 'realistic' ? 6 : mappedTier === 'hard' ? 4 : 3,
+    painAmbitionIntensity: mappedTier === 'easy' ? 8 : mappedTier === 'realistic' ? 6 : mappedTier === 'hard' ? 4 : 2,
+    perceivedNeedForHelp: mappedTier === 'easy' ? 8 : mappedTier === 'realistic' ? 5 : mappedTier === 'hard' ? 3 : 2,
+    authorityLevel: mappedTier === 'easy' ? 'advisee' : mappedTier === 'realistic' ? 'peer' : 'advisor',
+    funnelContext: mappedTier === 'easy' ? 8 : mappedTier === 'realistic' ? 5 : mappedTier === 'hard' ? 3 : 2,
+    executionResistance: mappedTier === 'easy' ? 8 : mappedTier === 'realistic' ? 6 : mappedTier === 'hard' ? 4 : 2,
+    difficultyTier: mappedTier,
+    offer: offerContext || {},
+  });
 }
 
 /**
@@ -521,7 +678,15 @@ export function generateBehaviourProfile(
         responseSpeed: 'normal',
       };
 
-    // near_impossible removed — expert is now the hardest tier
+    case 'near_impossible':
+      return {
+        objectionFrequency: 'high',
+        objectionIntensity: 'high',
+        answerDepth: 'shallow',
+        openness: 'closed',
+        willingnessToBeChallenged: 'low',
+        responseSpeed: 'slow',
+      };
 
     default:
       return {

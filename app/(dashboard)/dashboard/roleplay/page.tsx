@@ -75,14 +75,15 @@ function RoleplayPageContent() {
       let offerId: string | null = null;
       let phaseAnalysis: any = null;
       let actionPoints: any[] = [];
+      let callData: any = null;
 
       if (replayCallId) {
         // Fetch from call status API
         const res = await fetch(`/api/calls/${replayCallId}/status`);
         if (!res.ok) throw new Error('Failed to fetch original call');
-        const data = await res.json();
-        offerId = data.call?.offerId || null;
-        const analysis = data.analysis;
+        callData = await res.json();
+        offerId = callData.call?.offerId || null;
+        const analysis = callData.analysis;
         if (analysis) {
           phaseAnalysis = safeParse(analysis.phaseAnalysis, null);
           actionPoints = safeParse(analysis.actionPoints, []) as any[];
@@ -91,9 +92,9 @@ function RoleplayPageContent() {
         // Fetch from roleplay session API
         const res = await fetch(`/api/roleplay/${replaySessionId}`);
         if (!res.ok) throw new Error('Failed to fetch original session');
-        const data = await res.json();
-        offerId = data.session?.offerId || null;
-        const analysis = data.analysis;
+        callData = await res.json();
+        offerId = callData.session?.offerId || null;
+        const analysis = callData.analysis;
         if (analysis) {
           phaseAnalysis = safeParse(analysis.phaseAnalysis, null);
           actionPoints = safeParse(analysis.actionPoints, []) as any[];
@@ -139,9 +140,9 @@ function RoleplayPageContent() {
 
       // Part 2D: Extract prospect profile from the original call transcript
       // This allows the AI prospect to mimic the real prospect's behavior
-      if (replayCallId && data?.call?.transcript) {
-        const transcript = data.call.transcript as string;
-        const prospectName = data.call.prospectName || 'Unknown';
+      if (replayCallId && callData?.call?.transcript) {
+        const transcript = callData.call.transcript as string;
+        const prospectName = callData.call.prospectName || 'Unknown';
         // Extract prospect lines (lines after "Prospect:" or similar)
         const prospectLines: string[] = [];
         const lines = transcript.split('\n');
@@ -176,6 +177,33 @@ function RoleplayPageContent() {
         };
       }
 
+      // Auto-generate practiceContext from phase weakness data
+      let autoPracticeMode: string | null = null;
+      let autoPracticeContext = '';
+
+      if (effectivePhase && effectivePhase !== 'skill') {
+        const phaseKey = effectivePhase === 'objection' ? 'objections' : effectivePhase;
+        autoPracticeMode = phaseKey;
+
+        const phaseData = phaseAnalysis?.[phaseKey];
+        if (phaseData) {
+          const parts: string[] = [];
+          if (phaseData.summary) parts.push(phaseData.summary);
+          if (Array.isArray(phaseData.whatLimitedImpact)) {
+            const limitations = phaseData.whatLimitedImpact
+              .map((item: any) => typeof item === 'string' ? item : item.description)
+              .filter(Boolean)
+              .slice(0, 3);
+            if (limitations.length > 0) {
+              parts.push('Weaknesses: ' + limitations.join('; '));
+            }
+          } else if (typeof phaseData.whatLimitedImpact === 'string') {
+            parts.push('Weaknesses: ' + phaseData.whatLimitedImpact);
+          }
+          autoPracticeContext = parts.join(' ').slice(0, 500);
+        }
+      }
+
       setReplayStatus('Creating practice session...');
 
       // Create the session
@@ -191,6 +219,7 @@ function RoleplayPageContent() {
           replaySourceCallId: replayCallId || null,
           replaySourceSessionId: replaySessionId || null,
           replayContext: JSON.stringify(replayContext),
+          ...(autoPracticeMode ? { practiceMode: autoPracticeMode, practiceContext: autoPracticeContext } : {}),
         }),
       });
 
@@ -313,6 +342,7 @@ function RoleplayPageContent() {
         return 'outline';
       case 'expert':
       case 'elite':
+      case 'near_impossible':
         return 'destructive';
       default:
         return 'outline';
@@ -465,7 +495,7 @@ function RoleplayPageContent() {
                     <TableCell>
                       {session.actualDifficultyTier ? (
                         <Badge variant={getDifficultyBadgeVariant(session.actualDifficultyTier)}>
-                          {session.actualDifficultyTier === 'elite' ? 'Expert' : session.actualDifficultyTier.charAt(0).toUpperCase() + session.actualDifficultyTier.slice(1)}
+                          {session.actualDifficultyTier === 'elite' ? 'Expert' : session.actualDifficultyTier === 'near_impossible' ? 'Near Impossible' : session.actualDifficultyTier.charAt(0).toUpperCase() + session.actualDifficultyTier.slice(1)}
                         </Badge>
                       ) : (
                         <span className="text-muted-foreground">—</span>

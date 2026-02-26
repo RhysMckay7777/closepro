@@ -20,7 +20,11 @@
       "WebFetch(domain:flexprice.io)",
       "Bash(npm install:*)",
       "Bash(npm ls:*)",
-      "Bash(xargs cat:*)"
+      "Bash(xargs cat:*)",
+      "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && npx drizzle-kit generate 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && node -e \"\nconst { neon } = require\\('@neondatabase/serverless'\\);\nconst sql = neon\\(process.env.DATABASE_URL || require\\('dotenv'\\).config\\(\\).parsed?.DATABASE_URL || ''\\);\n\n\\(async \\(\\) => {\n  try {\n    await sql\\\\`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS practice_mode text\\\\`;\n    await sql\\\\`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS practice_context text\\\\`;\n    console.log\\('Migration successful: practice_mode and practice_context columns added'\\);\n  } catch \\(e\\) {\n    console.error\\('Migration failed:', e.message\\);\n  }\n}\\)\\(\\);\n\" 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && node migrate-practice-mode.mjs 2>&1)",
+      "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && npx tsx migrate-practice-mode.mjs 2>&1)"
     ]
   }
 }

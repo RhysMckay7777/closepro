@@ -99,7 +99,20 @@ export function initializeBehaviourState(
       };
       break;
 
-    // near_impossible removed — expert is now the hardest tier
+    case 'near_impossible':
+      baseState = {
+        objectionFrequency: 'high',
+        objectionIntensity: 'high',
+        answerDepth: 'shallow',
+        openness: 'closed',
+        willingnessToBeChallenged: 'low',
+        responseSpeed: 'slow',
+        currentResistance: 9,
+        engagement: 2,
+        trustLevel: 1,
+        valuePerception: 1,
+      };
+      break;
 
     default:
       baseState = {
@@ -218,12 +231,19 @@ export function adaptBehaviour(
 }
 
 /**
- * Determine if prospect should raise objection based on current state
+ * Determine if prospect should raise objection based on current state.
+ * Hard gate: NO objections before turn 4 (8 messages = 4 exchanges) unless practiceMode is 'objections'.
  */
 export function shouldRaiseObjection(
   state: BehaviourState,
-  conversationLength: number // messages so far
+  conversationLength: number, // messages so far
+  practiceMode?: string
 ): boolean {
+  // Hard gate: block objections before 4 exchanges (8 messages) unless practicing objections
+  if (conversationLength < 8 && practiceMode !== 'objections') {
+    return false;
+  }
+
   const { objectionFrequency, currentResistance, trustLevel, valuePerception } = state;
 
   // Base probability from frequency
@@ -421,6 +441,7 @@ export function getOpeningLine(context: OpeningLineContext): string {
       break;
     case 'expert':
     case 'elite' as any:
+    case 'near_impossible':
       templateKey = 'expert';
       break;
   }
@@ -467,6 +488,7 @@ You are a typical prospect with normal skepticism. You:
     case 'hard':
       return `
 You are a skeptical prospect who has been burned before. You:
+- Start NEUTRAL. Skepticism emerges gradually after turn 3-4, not from the opening.
 - Give short answers initially, require earning deeper responses
 - Challenge claims and ask for proof
 - Raise multiple objections, some quite pointed
@@ -486,7 +508,19 @@ You are a high-authority prospect who sees themselves as superior. You:
 - Have little patience for sales tactics
 - Need to see unique value for someone at your level
 `;
-    // near_impossible removed — expert is now the hardest tier
+    case 'near_impossible':
+      return `
+You are an extremely difficult prospect with severe constraints across multiple dimensions. You:
+- Start NEUTRAL but quickly become guarded once the conversation moves beyond pleasantries
+- Give minimal information — one-word or one-sentence answers unless deeply probed
+- Have extreme skepticism from past negative experiences — you've been burned badly
+- Have severe execution barriers (money, time, authority, or all three)
+- Challenge everything — credentials, claims, timelines, and outcomes
+- Are dismissive of generic pitches — only hyper-specific, evidence-backed claims get traction
+- May have a spouse, boss, or external blocker who must approve any decision
+- Need overwhelming proof of value AND a way past your execution barriers to even consider proceeding
+- Even if convinced on value, logistics objections are very hard to overcome
+`;
     default:
       return getBehaviourInstructions('realistic');
   }

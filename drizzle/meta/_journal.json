@@ -43,6 +43,13 @@
       "when": 1771400712840,
       "tag": "0005_salty_carlie_cooper",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1772087163496,
+      "tag": "0006_stiff_lionheart",
+      "breakpoints": true
     }
   ]
 }

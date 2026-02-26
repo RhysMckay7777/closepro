@@ -251,13 +251,15 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
                   ))}
                 </div>
               )}
-              {/* Replay button */}
-              <Link href={buildReplayUrl(phase, callId, sessionId)}>
-                <Button variant="outline" size="sm" className="mt-2">
-                  <Play className="h-4 w-4 mr-2" />
-                  {replayLabels[phase]}
-                </Button>
-              </Link>
+              {/* Replay button — only show when phase score < 75 (hide for "Above Expectation") */}
+              {(score == null || score < 75) && (
+                <Link href={buildReplayUrl(phase, callId, sessionId)}>
+                  <Button variant="outline" size="sm" className="mt-2">
+                    <Play className="h-4 w-4 mr-2" />
+                    {replayLabels[phase]}
+                  </Button>
+                </Link>
+              )}
             </div>
           );
         })}
@@ -330,12 +332,14 @@ export function PhaseAnalysisTabs({ phaseScores, phaseAnalysis, overallScore, ca
                       <p className="text-sm">{block.higherLeverageAlternative}</p>
                     </div>
                   )}
-                  <Link href={buildReplayUrl('objection', callId, sessionId, i)}>
-                    <Button variant="outline" size="sm" className="mt-1">
-                      <Play className="h-4 w-4 mr-2" />
-                      Re-run This Objection
-                    </Button>
-                  </Link>
+                  {(phaseScores?.objections == null || phaseScores.objections < 75) && (
+                    <Link href={buildReplayUrl('objection', callId, sessionId, i)}>
+                      <Button variant="outline" size="sm" className="mt-1">
+                        <Play className="h-4 w-4 mr-2" />
+                        Re-run This Objection
+                      </Button>
+                    </Link>
+                  )}
                 </div>
               ));
             })()}

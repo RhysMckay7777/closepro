@@ -10,7 +10,7 @@ import { OfferProfile } from '@/lib/ai/roleplay/offer-intelligence';
 import { ProspectAvatar } from '@/lib/ai/roleplay/prospect-avatar';
 import { FunnelContext } from '@/lib/ai/roleplay/funnel-context';
 import { initializeBehaviourState } from '@/lib/ai/roleplay/behaviour-rules';
-import { getVoiceIdFromProspect, getProspectVoiceConfig } from '@/lib/ai/roleplay/voice-mapping';
+import { getVoiceIdFromProspect, getVoiceModeConfig } from '@/lib/ai/roleplay/voice-mapping';
 import { getTranscriptPatternsForUser } from '@/lib/ai/roleplay/transcript-patterns';
 
 const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
@@ -173,6 +173,9 @@ export async function GET(
       behaviourState,
       replayPhase: roleplay[0].replayPhase ?? undefined,
       replayContext: roleplay[0].replayContext ?? undefined,
+      practiceMode: (roleplay[0] as any).practiceMode ?? undefined,
+      practiceContext: (roleplay[0] as any).practiceContext ?? undefined,
+      turnCount: 0,
       userId: session.user.id,
     };
 
@@ -196,8 +199,8 @@ export async function GET(
       offerData[0].offerCategory,
     );
 
-    // Get voice ID and voice settings
-    const voiceConfig = getProspectVoiceConfig({
+    // Get voice ID and voice settings (use voice-mode config for higher stability)
+    const voiceConfig = getVoiceModeConfig({
       name: prospectName,
       voiceStyle: prospectVoiceStyle,
     });
@@ -246,8 +249,9 @@ export async function GET(
     }
 
     // Extend ElevenLabs idle timeout from 20s (default) to 180s (max)
+    // Also increase silence duration for better turn-taking (800ms instead of default ~300ms)
     const separator = rawSignedUrl.includes('?') ? '&' : '?';
-    const signedUrl = `${rawSignedUrl}${separator}inactivity_timeout=180`;
+    const signedUrl = `${rawSignedUrl}${separator}inactivity_timeout=180&turn_end_threshold=0.8`;
 
     // Build dynamic variables for ElevenLabs agent template
     // These get injected into {{prospect_context}}, {{offer_info}}, {{first_message}} placeholders
@@ -275,7 +279,16 @@ export async function GET(
       offerData[0].mechanismHighLevel ? `Mechanism: ${offerData[0].mechanismHighLevel}` : '',
     ].filter(Boolean).join('\n');
 
+    // Add practice mode dynamic variables
+    const practice_mode = (roleplay[0] as any).practiceMode || '';
+    const practice_context = (roleplay[0] as any).practiceContext || '';
 
+    // Append voice consistency rule to system prompt
+    systemPrompt += `
+
+VOICE CONSISTENCY RULE:
+Maintain the EXACT same voice tone, pace, and speaking style throughout.
+Do NOT change vocal quality, accent, or cadence at any point.`;
 
     return NextResponse.json({
       signedUrl,
@@ -283,6 +296,7 @@ export async function GET(
         prospect_context,
         offer_info,
         first_message: initialMessage.content,
+        ...(practice_mode ? { practice_mode, practice_context } : {}),
       },
       voiceId,
       // Keep systemPrompt and firstMessage for text-mode fallback

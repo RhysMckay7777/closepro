@@ -8,15 +8,6 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Loader2, AlertCircle, Download, FileDown } from 'lucide-react';
 import Link from 'next/link';
 
-const RANGE_OPTIONS = [
-  { value: 'all_time', label: 'All Time' },
-  { value: 'this_week', label: 'This Week' },
-  { value: 'this_month', label: 'This Month' },
-  { value: 'last_month', label: 'Last Month' },
-  { value: 'last_quarter', label: 'Last Quarter' },
-  { value: 'last_year', label: 'Last Year' },
-] as const;
-
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
@@ -109,6 +100,7 @@ interface PerformanceData {
       handlingImprovements?: string;
       preEmptionImprovements?: string;
       structuralMetrics?: Record<string, number | string>;
+      bandLabel?: string;
     }>;
     objectionsGrouped: Record<string, Array<{
       theme: string;
@@ -141,18 +133,17 @@ const DIFFICULTY_LABELS: Record<string, string> = {
   hard: 'Hard',
   expert: 'Expert',
   elite: 'Expert',
+  near_impossible: 'Near Impossible',
 };
 
 export default function PerformancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [performance, setPerformance] = useState<PerformanceData | null>(null);
-  const [range, setRange] = useState<string>('all_time');
-  // Month-specific selection
+  // Month/Year selector — only timeframe control (replaces old Range/Month toggle)
   const defaultMonthYear = getDefaultMonthYear();
   const [selectedMonth, setSelectedMonth] = useState(defaultMonthYear.month);
   const [selectedYear, setSelectedYear] = useState(defaultMonthYear.year);
-  const [selectionMode, setSelectionMode] = useState<'range' | 'month'>('range');
   const [dataSource, setDataSource] = useState<'all' | 'calls' | 'roleplays'>('all');
   const [phaseTab, setPhaseTab] = useState<string>('overall');
 
@@ -160,7 +151,7 @@ export default function PerformancePage() {
 
   useEffect(() => {
     fetchPerformance();
-  }, [range, selectedMonth, selectedYear, selectionMode, dataSource]);
+  }, [selectedMonth, selectedYear, dataSource]);
 
   const fetchPerformance = async () => {
     try {
@@ -168,16 +159,12 @@ export default function PerformancePage() {
       setError(null);
       let url = `/api/performance`;
       const params: string[] = [];
-      if (selectionMode === 'month') {
-        params.push(`month=${selectedYear}-${selectedMonth}`);
-      } else {
-        params.push(`range=${range}`);
-      }
+      params.push(`month=${selectedYear}-${selectedMonth}`);
       if (dataSource !== 'all') {
         params.push(`source=${dataSource}`);
       }
       url += `?${params.join('&')}`;
-      console.log('[Performance] Fetching:', url, { selectionMode, range, selectedMonth, selectedYear, dataSource });
+      console.log('[Performance] Fetching:', url, { selectedMonth, selectedYear, dataSource });
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
         throw new Error('Failed to fetch performance data');
@@ -313,6 +300,19 @@ export default function PerformancePage() {
     return 'text-red-500';
   };
 
+  // 2G: Closer Performance Banding
+  const getBandLabel = (score: number): string => {
+    if (score >= 75) return 'Above Expectation';
+    if (score >= 60) return 'At Expectation';
+    return 'Below Expectation';
+  };
+
+  const getBandColor = (score: number): string => {
+    if (score >= 75) return 'bg-green-500/20 text-green-400 border-green-500/30';
+    if (score >= 60) return 'bg-blue-500/20 text-blue-400 border-blue-500/30';
+    return 'bg-red-500/20 text-red-400 border-red-500/30';
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto p-4 sm:p-6">
@@ -371,77 +371,43 @@ export default function PerformancePage() {
             Track your sales performance over time
           </p>
         </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
-          {/* Mode toggle buttons */}
-          <div className="flex rounded-md border border-border overflow-hidden">
-            <button
-              className={`px-3 py-1.5 text-xs font-medium ${selectionMode === 'range' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
-              onClick={() => setSelectionMode('range')}
-            >
-              Range
-            </button>
-            <button
-              className={`px-3 py-1.5 text-xs font-medium ${selectionMode === 'month' ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-muted/80'}`}
-              onClick={() => setSelectionMode('month')}
-            >
-              Month
-            </button>
-          </div>
-          {/* Range selector */}
-          {selectionMode === 'range' && (
-            <Select value={range} onValueChange={setRange}>
-              <SelectTrigger className="w-full sm:w-[160px]">
-                <SelectValue placeholder="Time range" />
-              </SelectTrigger>
-              <SelectContent>
-                {RANGE_OPTIONS.map((opt) => (
-                  <SelectItem key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {/* Month/Year selector */}
-          {selectionMode === 'month' && (
-            <div className="flex gap-2">
-              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {MONTHS.map((m, idx) => (
-                    <SelectItem key={idx} value={String(idx + 1).padStart(2, '0')}>
-                      {m}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v, 10))}>
-                <SelectTrigger className="w-[90px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {years.map((y) => (
-                    <SelectItem key={y} value={String(y)}>
-                      {y}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+        <div className="flex items-center gap-2">
+          {/* Month/Year selector — the only timeframe control */}
+          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+            <SelectTrigger className="w-[140px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MONTHS.map((m, idx) => (
+                <SelectItem key={idx} value={String(idx + 1).padStart(2, '0')}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v, 10))}>
+            <SelectTrigger className="w-[100px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {years.map((y) => (
+                <SelectItem key={y} value={String(y)}>
+                  {y}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
-      {/* Data source toggle */}
+      {/* Data source toggle — 2H: +20% font on label */}
       <div className="flex items-center gap-2">
-        <span className="text-base text-muted-foreground">Data source:</span>
+        <span className="text-lg text-muted-foreground">Data source:</span>
         <div className="inline-flex rounded-lg overflow-hidden border border-white/10">
           {(['all', 'calls', 'roleplays'] as const).map((src) => (
             <button
               key={src}
-              className={`px-4 py-1.5 text-xs font-medium transition-colors ${dataSource === src
+              className={`px-4 py-1.5 text-sm font-medium transition-colors ${dataSource === src
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-muted/30 hover:bg-muted/50 text-muted-foreground'
                 }`}
@@ -456,67 +422,72 @@ export default function PerformancePage() {
       {/* ═══ V2 PERFORMANCE LAYOUT ═══ */}
       {performance.v2 ? (
         <>
-          {/* Section 1: 4-Box Snapshot Strip */}
+          {/* Section 1: 4-Box Snapshot Strip — 2H: +15% on titles & sub-text */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {/* Overall Score */}
             <Card className="border border-white/10 bg-gradient-to-br from-indigo-500/10 to-purple-500/5 backdrop-blur-xl">
               <CardContent className="pt-5 pb-4 text-center">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">Overall Score</p>
+                <p className="text-base font-medium text-muted-foreground uppercase tracking-wider mb-1">Overall Score</p>
                 <p className={`text-4xl font-black ${getScoreColor(performance.v2.snapshot.overallScore)}`}>
                   {performance.v2.snapshot.overallScore || '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Total Calls Analysed: {performance.totalCalls}</p>
+                {performance.v2.snapshot.overallScore > 0 && (
+                  <Badge className={`mt-1.5 ${getBandColor(performance.v2.snapshot.overallScore)}`}>
+                    {getBandLabel(performance.v2.snapshot.overallScore)}
+                  </Badge>
+                )}
+                <p className="text-base text-muted-foreground mt-1">Total Sessions Analysed: {performance.totalAnalyses}</p>
               </CardContent>
             </Card>
-            {/* Close Rate */}
+            {/* Close Rate — 2A: matches Figures exactly */}
             <Card className="border border-white/10 bg-gradient-to-br from-green-500/10 to-emerald-500/5 backdrop-blur-xl">
               <CardContent className="pt-5 pb-4 text-center">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">Close Rate</p>
+                <p className="text-base font-medium text-muted-foreground uppercase tracking-wider mb-1">Close Rate</p>
                 <p className={`text-4xl font-black ${performance.v2.snapshot.closeRate !== null ? getScoreColor(performance.v2.snapshot.closeRate) : 'text-muted-foreground'}`}>
                   {performance.v2.snapshot.closeRate !== null ? `${performance.v2.snapshot.closeRate}%` : '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Calls Taken: {performance.v2.snapshot.callsTaken}</p>
-                <p className="text-sm text-muted-foreground">Calls Closed: {performance.v2.snapshot.callsClosed}</p>
+                <p className="text-base text-muted-foreground mt-1">Calls Taken: {performance.v2.snapshot.callsTaken}</p>
+                <p className="text-base text-muted-foreground">Calls Closed: {performance.v2.snapshot.callsClosed}</p>
               </CardContent>
             </Card>
-            {/* Avg Difficulty */}
+            {/* Avg Difficulty — 2C: renamed */}
             <Card className="border border-white/10 bg-gradient-to-br from-amber-500/10 to-orange-500/5 backdrop-blur-xl">
               <CardContent className="pt-5 pb-4 text-center">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">Average Prospect Difficulty</p>
+                <p className="text-base font-medium text-muted-foreground uppercase tracking-wider mb-1">Average Prospect Difficulty</p>
                 <p className="text-4xl font-black text-amber-400">
                   {performance.v2.snapshot.avgDifficulty ?? '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p className="text-base text-muted-foreground mt-1">
                   {performance.v2.snapshot.avgDifficultyTier ? performance.v2.snapshot.avgDifficultyTier.charAt(0).toUpperCase() + performance.v2.snapshot.avgDifficultyTier.slice(1) : 'No data'}
                 </p>
               </CardContent>
             </Card>
-            {/* Objection Conversion */}
+            {/* Objection Conversion — 2B */}
             <Card className="border border-white/10 bg-gradient-to-br from-rose-500/10 to-pink-500/5 backdrop-blur-xl">
               <CardContent className="pt-5 pb-4 text-center">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-1">Objection Conversion</p>
+                <p className="text-base font-medium text-muted-foreground uppercase tracking-wider mb-1">Objection Conversion</p>
                 <p className={`text-4xl font-black ${performance.v2.snapshot.objectionConversionRate !== null ? getScoreColor(performance.v2.snapshot.objectionConversionRate) : 'text-muted-foreground'}`}>
                   {performance.v2.snapshot.objectionConversionRate !== null ? `${performance.v2.snapshot.objectionConversionRate}%` : '—'}
                 </p>
-                <p className="text-sm text-muted-foreground mt-1">Objection Calls: {performance.v2.snapshot.objectionCallsTotal}</p>
-                <p className="text-sm text-muted-foreground">Objections Resolved: {performance.v2.snapshot.objectionsResolved}</p>
+                <p className="text-base text-muted-foreground mt-1">Objection Calls: {performance.v2.snapshot.objectionCallsTotal}</p>
+                <p className="text-base text-muted-foreground">Objections Resolved: {performance.v2.snapshot.objectionsResolved}</p>
               </CardContent>
             </Card>
           </div>
 
-          {/* Section 2: Phase Analysis Tabs */}
+          {/* Section 2: Phase Analysis Tabs — 2H: +20% on section headers */}
           <Card className="border border-white/10 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader className="pb-3">
-              <CardTitle>Phase Performance Analysis</CardTitle>
-              <CardDescription>Deep-dive into each call phase across your sessions</CardDescription>
+              <CardTitle className="text-xl">Phase Performance Analysis</CardTitle>
+              <CardDescription className="text-base">Deep-dive into each call phase across your sessions</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Phase tab buttons */}
+              {/* Phase tab buttons — 2F */}
               <div className="flex flex-wrap rounded-lg border border-white/10 overflow-hidden mb-6">
                 {['overall', 'intro', 'discovery', 'pitch', 'close', 'objections'].map((tab) => (
                   <button
                     key={tab}
-                    className={`flex-1 min-w-[80px] px-3 py-2.5 text-xs font-medium transition-colors ${phaseTab === tab
+                    className={`flex-1 min-w-[80px] px-3 py-2.5 text-sm font-medium transition-colors ${phaseTab === tab
                       ? 'bg-primary text-primary-foreground'
                       : 'bg-muted/20 hover:bg-muted/40 text-muted-foreground'
                       }`}
@@ -533,7 +504,7 @@ export default function PerformancePage() {
               {/* Active phase content */}
               {(() => {
                 const phase = performance.v2!.phases[phaseTab];
-                if (!phase) return <p className="text-muted-foreground text-sm text-center py-6">No data for this phase yet.</p>;
+                if (!phase) return <p className="text-muted-foreground text-base text-center py-6">No data for this phase yet.</p>;
 
                 // For objections tab, show grouped objections instead
                 if (phaseTab === 'objections') {
@@ -544,35 +515,37 @@ export default function PerformancePage() {
                       {/* Score + guidance row */}
                       <div className="flex items-center gap-6">
                         <div className="flex-shrink-0">
-                          <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center ${phase.averageScore >= 80 ? 'border-green-500 text-green-500' :
+                          <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center ${phase.averageScore >= 75 ? 'border-green-500 text-green-500' :
                             phase.averageScore >= 60 ? 'border-blue-500 text-blue-500' :
-                              phase.averageScore >= 40 ? 'border-orange-500 text-orange-500' :
-                                'border-red-500 text-red-500'
+                              'border-red-500 text-red-500'
                             }`}>
                             <span className="text-2xl font-black">{phase.averageScore || '—'}</span>
                           </div>
                         </div>
                         <div className="flex-1">
-                          <p className="text-base text-muted-foreground">{phase.scoreGuidance}</p>
-                          {phase.summary && <p className="text-base mt-2">{phase.summary}</p>}
+                          {phase.bandLabel && phase.averageScore > 0 && (
+                            <Badge className={`mb-1.5 ${getBandColor(phase.averageScore)}`}>{phase.bandLabel}</Badge>
+                          )}
+                          <p className="text-lg text-muted-foreground">{phase.scoreGuidance}</p>
+                          {phase.summary && <p className="text-lg mt-2">{phase.summary}</p>}
                         </div>
                       </div>
 
-                      {/* Handling & Pre-emption Improvements */}
+                      {/* Handling & Pre-emption Improvements — 2H: +20% */}
                       {phase.handlingImprovements && (
                         <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 p-3">
-                          <p className="text-sm font-bold text-amber-400 mb-1">Handling Improvements</p>
-                          <p className="text-base">{phase.handlingImprovements}</p>
+                          <p className="text-base font-bold text-amber-400 mb-1">Handling Improvements</p>
+                          <p className="text-lg">{phase.handlingImprovements}</p>
                         </div>
                       )}
                       {phase.preEmptionImprovements && (
                         <div className="rounded-lg bg-blue-500/5 border border-blue-500/20 p-3">
-                          <p className="text-sm font-bold text-blue-400 mb-1">Pre-emption Opportunities</p>
-                          <p className="text-base">{phase.preEmptionImprovements}</p>
+                          <p className="text-base font-bold text-blue-400 mb-1">Pre-emption Opportunities</p>
+                          <p className="text-lg">{phase.preEmptionImprovements}</p>
                         </div>
                       )}
 
-                      {/* Grouped objections by category — enriched ObjectionTheme cards */}
+                      {/* Grouped objections by category — 3D: font sizes match readability spec */}
                       {hasAny ? (
                         <div className="space-y-6">
                           {(['value', 'trust', 'fit', 'logistics'] as const).map(cat => {
@@ -587,45 +560,46 @@ export default function PerformancePage() {
                             const colors = catColors[cat];
                             return (
                               <div key={cat}>
-                                <h4 className={`text-sm font-bold capitalize mb-3 ${colors.text}`}>{cat} Objections ({themes.length})</h4>
-                                <div className="space-y-4">
+                                <h4 className={`text-lg font-bold capitalize mb-3 ${colors.text}`}>{cat} Objections ({themes.length})</h4>
+                                <div className="space-y-5">
                                   {themes.slice(0, 5).map((theme, i) => (
-                                    <div key={i} className={`rounded-lg border ${colors.border} ${colors.bg} p-4 space-y-3`}>
-                                      {/* Theme header + frequency */}
+                                    <div key={i} className={`rounded-lg border ${colors.border} ${colors.bg} p-5 space-y-4`}>
+                                      {/* 3B Field 1: Theme header (grouped label) + Field 2: Calls observed */}
                                       <div className="flex items-center justify-between">
-                                        <h5 className="text-sm font-bold">{theme.theme}</h5>
-                                        <Badge variant="outline" className="text-xs shrink-0">
+                                        <h5 className="text-lg font-bold">{theme.theme}</h5>
+                                        <Badge variant="outline" className="text-sm shrink-0">
                                           Observed in {theme.callsObserved} of {theme.totalCalls} calls
                                         </Badge>
                                       </div>
 
-                                      {/* Example citations */}
+                                      {/* 3B Field 3: Example references — call date + prospect name + timestamp (show up to 3) */}
                                       {theme.examples.length > 0 && (
-                                        <div className="space-y-1">
-                                          {theme.examples.slice(0, 2).map((ex, j) => (
-                                            <p key={j} className="text-xs text-muted-foreground italic">
-                                              On {ex.callDate}, Prospect {ex.prospectName}{ex.timestamp ? `, at ${ex.timestamp}` : ''} — "{ex.description}"
+                                        <div className="space-y-1.5 rounded bg-background/30 p-3">
+                                          <p className="text-sm font-semibold text-muted-foreground mb-1">Example References</p>
+                                          {theme.examples.slice(0, 3).map((ex, j) => (
+                                            <p key={j} className="text-base text-muted-foreground italic">
+                                              On {ex.callDate}, Prospect {ex.prospectName}{ex.timestamp ? `, at ${ex.timestamp}` : ''} — &quot;{ex.description}&quot;
                                             </p>
                                           ))}
                                         </div>
                                       )}
 
-                                      {/* Root Cause */}
-                                      <div className="rounded bg-background/50 p-2.5">
-                                        <p className="text-xs font-semibold text-red-400 mb-0.5">Root Cause</p>
-                                        <p className="text-xs text-muted-foreground">{theme.rootCause}</p>
+                                      {/* 3B Field 4: Root Cause (4-6 lines minimum) */}
+                                      <div className="rounded bg-background/50 p-3">
+                                        <p className="text-base font-semibold text-red-400 mb-1">Root Cause</p>
+                                        <p className="text-base text-muted-foreground leading-relaxed">{theme.rootCause}</p>
                                       </div>
 
-                                      {/* Pre-emption */}
-                                      <div className="rounded bg-background/50 p-2.5">
-                                        <p className="text-xs font-semibold text-blue-400 mb-0.5">Pre-emption</p>
-                                        <p className="text-xs text-muted-foreground">{theme.preEmption}</p>
+                                      {/* 3B Field 5: Pre-emption with phase placement (4-6 lines minimum) — 3C */}
+                                      <div className="rounded bg-background/50 p-3">
+                                        <p className="text-base font-semibold text-blue-400 mb-1">Pre-emption &amp; Phase Placement</p>
+                                        <p className="text-base text-muted-foreground leading-relaxed">{theme.preEmption}</p>
                                       </div>
 
-                                      {/* Handling Improvement */}
-                                      <div className="rounded bg-background/50 p-2.5">
-                                        <p className="text-xs font-semibold text-green-400 mb-0.5">Handling Improvement</p>
-                                        <p className="text-xs text-muted-foreground">{theme.handlingImprovement}</p>
+                                      {/* 3B Field 6: Handling Improvement (4-6 lines minimum) */}
+                                      <div className="rounded bg-background/50 p-3">
+                                        <p className="text-base font-semibold text-green-400 mb-1">Handling Improvement</p>
+                                        <p className="text-base text-muted-foreground leading-relaxed">{theme.handlingImprovement}</p>
                                       </div>
                                     </div>
                                   ))}
@@ -635,48 +609,50 @@ export default function PerformancePage() {
                           })}
                         </div>
                       ) : (
-                        <p className="text-sm text-muted-foreground text-center py-4">No objections recorded in this period.</p>
+                        <p className="text-base text-muted-foreground text-center py-4">No objections recorded in this period.</p>
                       )}
                     </div>
                   );
                 }
 
-                // Standard phase tab (Overall / Intro / Discovery / Pitch / Close)
+                // Standard phase tab (Overall / Intro / Discovery / Pitch / Close) — 2H: +20% font sizes
                 return (
                   <div className="space-y-6">
-                    {/* Score ring + guidance */}
+                    {/* Score ring + guidance — 2G: banding thresholds 75/60 */}
                     <div className="flex items-center gap-6">
                       <div className="flex-shrink-0">
-                        <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center ${phase.averageScore >= 80 ? 'border-green-500 text-green-500' :
+                        <div className={`w-20 h-20 rounded-full border-4 flex items-center justify-center ${phase.averageScore >= 75 ? 'border-green-500 text-green-500' :
                           phase.averageScore >= 60 ? 'border-blue-500 text-blue-500' :
-                            phase.averageScore >= 40 ? 'border-orange-500 text-orange-500' :
-                              'border-red-500 text-red-500'
+                            'border-red-500 text-red-500'
                           }`}>
                           <span className="text-2xl font-black">{phase.averageScore || '—'}</span>
                         </div>
                       </div>
                       <div className="flex-1">
-                        <p className="text-base text-muted-foreground">{phase.scoreGuidance}</p>
-                        {phase.sessionCount > 0 && <p className="text-sm text-muted-foreground mt-1">Based on {phase.sessionCount} session{phase.sessionCount !== 1 ? 's' : ''}</p>}
+                        {phase.bandLabel && phase.averageScore > 0 && (
+                          <Badge className={`mb-1.5 ${getBandColor(phase.averageScore)}`}>{phase.bandLabel}</Badge>
+                        )}
+                        <p className="text-lg text-muted-foreground">{phase.scoreGuidance}</p>
+                        {phase.sessionCount > 0 && <p className="text-base text-muted-foreground mt-1">Based on {phase.sessionCount} session{phase.sessionCount !== 1 ? 's' : ''}</p>}
                       </div>
                     </div>
 
-                    {/* Summary */}
+                    {/* Summary — 2H: text-base → text-lg */}
                     {phase.summary && (
                       <div className="rounded-lg bg-muted/20 p-4 border border-white/5">
-                        <p className="text-base">{phase.summary}</p>
+                        <p className="text-lg">{phase.summary}</p>
                       </div>
                     )}
 
-                    {/* Score Improvement Summary (Overall tab only) */}
+                    {/* Score Improvement Summary (Overall tab only) — 2H: +20% */}
                     {phaseTab === 'overall' && phase.scoreImprovementSummary && (
                       <div className="rounded-lg bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 p-4">
-                        <p className="text-sm font-bold text-primary mb-1">Score Improvement Summary</p>
-                        <p className="text-base">{phase.scoreImprovementSummary}</p>
+                        <p className="text-base font-bold text-primary mb-1">Score Improvement Summary</p>
+                        <p className="text-lg">{phase.scoreImprovementSummary}</p>
                       </div>
                     )}
 
-                    {/* Structural Metrics (Intro / Discovery / Pitch / Close) */}
+                    {/* Structural Metrics (Intro / Discovery / Pitch / Close) — 2H: labels text-xs → text-sm */}
                     {phase.structuralMetrics && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {Object.entries(phase.structuralMetrics)
@@ -687,32 +663,32 @@ export default function PerformancePage() {
                             return (
                               <div key={key} className="rounded-lg bg-muted/30 border border-white/5 p-3 text-center">
                                 <p className="text-2xl font-black">{String(value)}%</p>
-                                <p className="text-xs text-muted-foreground capitalize">{label}</p>
+                                <p className="text-sm text-muted-foreground capitalize">{label}</p>
                               </div>
                             );
                           })}
                         <div className="rounded-lg bg-muted/10 border border-white/5 p-3 text-center">
                           <p className="text-2xl font-black text-muted-foreground">{phase.structuralMetrics.callsAnalysed}</p>
-                          <p className="text-xs text-muted-foreground">Calls Analysed</p>
+                          <p className="text-sm text-muted-foreground">Calls Analysed</p>
                         </div>
                       </div>
                     )
                     }
 
-                    {/* Strength patterns */}
+                    {/* Strength patterns — 2H: heading text-base → text-lg, body text-base → text-lg, examples text-xs → text-sm */}
                     {phase.strengthPatterns.length > 0 && (
                       <div>
-                        <h4 className="text-base font-bold text-green-400 mb-2">Strength Patterns</h4>
+                        <h4 className="text-lg font-bold text-green-400 mb-2">Strength Patterns</h4>
                         <div className="space-y-2">
                           {phase.strengthPatterns.map((p, i) => (
-                            <div key={i} className="flex flex-col gap-1 text-base">
+                            <div key={i} className="flex flex-col gap-1 text-lg">
                               <div className="flex items-start gap-2">
                                 <span className="text-green-500 mt-0.5 shrink-0">+</span>
                                 <span className="flex-1">{p.text}</span>
                                 {p.frequency > 1 && <Badge variant="outline" className="text-xs border-green-500/30 text-green-400 bg-green-500/10 shrink-0">{p.frequency} of {p.totalCalls} calls</Badge>}
                               </div>
                               {p.examples?.slice(0, 2).map((ex, j) => (
-                                <p key={j} className="text-xs text-muted-foreground/70 pl-5 italic">
+                                <p key={j} className="text-sm text-muted-foreground/70 pl-5 italic">
                                   {ex.callDate} — {ex.prospectName}{ex.offerName ? ` (${ex.offerName})` : ''}
                                 </p>
                               ))}
@@ -722,24 +698,24 @@ export default function PerformancePage() {
                       </div>
                     )}
 
-                    {/* Weakness patterns */}
+                    {/* Weakness patterns — 2H: heading text-base → text-lg, body +20%, why/change text-xs → text-sm, examples text-xs → text-sm */}
                     {phase.weaknessPatterns.length > 0 && (
                       <div>
-                        <h4 className="text-base font-bold text-red-400 mb-2">Repeating Weaknesses</h4>
+                        <h4 className="text-lg font-bold text-red-400 mb-2">Repeating Weaknesses</h4>
                         <div className="space-y-3">
                           {phase.weaknessPatterns.map((w, i) => (
                             <div key={i} className="rounded-lg bg-red-500/5 border border-red-500/10 p-3 space-y-1">
                               <div className="flex items-start gap-2">
                                 <span className="text-red-500 mt-0.5 shrink-0">−</span>
-                                <span className="text-base font-medium flex-1">{w.text}</span>
+                                <span className="text-lg font-medium flex-1">{w.text}</span>
                                 {w.frequency > 1 && <Badge variant="outline" className="text-xs border-red-500/30 text-red-400 bg-red-500/10 shrink-0">{w.frequency} of {w.totalCalls} calls</Badge>}
                               </div>
-                              {w.whyItMatters && <p className="text-xs text-muted-foreground pl-5"><span className="font-semibold">Why:</span> {w.whyItMatters}</p>}
-                              {w.whatToChange && <p className="text-xs text-blue-400 pl-5"><span className="font-semibold">Change:</span> {w.whatToChange}</p>}
+                              {w.whyItMatters && <p className="text-sm text-muted-foreground pl-5"><span className="font-semibold">Why:</span> {w.whyItMatters}</p>}
+                              {w.whatToChange && <p className="text-sm text-blue-400 pl-5"><span className="font-semibold">Change:</span> {w.whatToChange}</p>}
                               {w.examples && w.examples.length > 0 && (
                                 <div className="pl-5 space-y-0.5">
                                   {w.examples.slice(0, 3).map((ex, j) => (
-                                    <p key={j} className="text-xs text-muted-foreground/60 italic">
+                                    <p key={j} className="text-sm text-muted-foreground/60 italic">
                                       {ex.callDate} — {ex.prospectName}{ex.offerName ? ` (${ex.offerName})` : ''}: {ex.description}
                                     </p>
                                   ))}
@@ -751,9 +727,9 @@ export default function PerformancePage() {
                       </div>
                     )}
 
-                    {/* Empty state */}
+                    {/* Empty state — 2H: text-sm → text-base */}
                     {phase.strengthPatterns.length === 0 && phase.weaknessPatterns.length === 0 && !phase.summary && (
-                      <p className="text-sm text-muted-foreground text-center py-6">Complete more sessions to see patterns for {phaseTab}.</p>
+                      <p className="text-base text-muted-foreground text-center py-6">Complete more sessions to see patterns for {phaseTab}.</p>
                     )}
                   </div>
                 );
@@ -761,11 +737,11 @@ export default function PerformancePage() {
             </CardContent>
           </Card>
 
-          {/* Section 3: Priority Action Plan */}
+          {/* Section 3: Priority Action Plan — 2H: +20% font sizes */}
           <Card className="border border-amber-500/20 bg-gradient-to-br from-amber-500/5 to-card/40 backdrop-blur-xl shadow-xl">
             <CardHeader>
-              <CardTitle>Priority Action Plan</CardTitle>
-              <CardDescription>Your top behavioral changes ranked by impact — max 3 at a time</CardDescription>
+              <CardTitle className="text-xl">Priority Action Plan</CardTitle>
+              <CardDescription className="text-base">Your top behavioral changes ranked by impact — max 3 at a time</CardDescription>
             </CardHeader>
             <CardContent>
               {performance.v2.priorityActionPlan.length > 0 ? (
@@ -776,12 +752,12 @@ export default function PerformancePage() {
                         <span className="text-sm font-black text-amber-400">{idx + 1}</span>
                       </div>
                       <div className="flex-1 space-y-1.5">
-                        <p className="text-base font-bold">{action.title}</p>
-                        {action.impact && <p className="text-base text-muted-foreground">{action.impact}</p>}
-                        {action.whatToChange && <p className="text-base text-blue-400">→ {action.whatToChange}</p>}
+                        <p className="text-lg font-bold">{action.title}</p>
+                        {action.impact && <p className="text-lg text-muted-foreground">{action.impact}</p>}
+                        {action.whatToChange && <p className="text-lg text-blue-400">→ {action.whatToChange}</p>}
                         {action.microDrill && (
                           <div className="rounded bg-primary/5 border border-primary/10 p-2 mt-1">
-                            <p className="text-xs text-primary"><span className="font-bold">Drill:</span> {action.microDrill}</p>
+                            <p className="text-sm text-primary"><span className="font-bold">Drill:</span> {action.microDrill}</p>
                           </div>
                         )}
                         {action.observedCount > 1 && (
@@ -794,7 +770,7 @@ export default function PerformancePage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">
+                <p className="text-base text-muted-foreground text-center py-4">
                   Complete more sessions to generate your action plan.
                 </p>
               )}

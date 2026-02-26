@@ -4,7 +4,7 @@ import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
 import { salesCalls, callAnalysis, roleplaySessions, roleplayAnalysis, offers } from '@/db/schema';
-import { eq, and, gte, lt, lte, desc, sql } from 'drizzle-orm';
+import { eq, and, gte, lt, lte, desc, sql, or, isNull } from 'drizzle-orm';
 import { SCORING_CATEGORIES, CATEGORY_LABELS, type ScoringCategoryId } from '@/lib/training/scoring-categories';
 import { CORE_PRINCIPLES } from '@/lib/training/core-principles';
 
@@ -239,6 +239,9 @@ interface AnalysisRow {
   skillScores: any;
   categoryFeedback: any;
   createdAt: Date;
+  /** The effective date for attribution: callDate (if set) or createdAt (fallback).
+   *  Used for filtering, sorting, weekly chart attribution, and month selection. */
+  effectiveDate: Date;
   type: 'call' | 'roleplay';
   // Join fields
   offerId?: string | null;
@@ -257,6 +260,9 @@ interface AnalysisRow {
   phaseAnalysisData?: any;
   actionPointsData?: any;
   prospectDifficultyScore?: number | null;
+  // Objection tracking flags (v2 schema columns, nullable for backward compat)
+  objectionPresent?: boolean | null;
+  objectionResolved?: boolean | null;
 }
 
 /** Compute per-category averages, trends, and text summaries from a set of analyses. */
@@ -267,8 +273,8 @@ function computeSkillBreakdown(
   const categoryScores: Record<string, { total: number; count: number }> = {};
   const categoryTexts: Record<string, { strengths: string[]; weaknesses: string[]; actionPoints: string[] }> = {};
 
-  // Per-analysis per-category scores for trend computation
-  const perAnalysisScores: Array<{ createdAt: Date; scores: Record<string, number> }> = [];
+  // Per-analysis per-category scores for trend computation (uses effectiveDate for correct week attribution)
+  const perAnalysisScores: Array<{ effectiveDate: Date; scores: Record<string, number> }> = [];
 
   let loggedSample = false;
   for (const analysis of analyses) {
@@ -285,7 +291,7 @@ function computeSkillBreakdown(
       loggedSample = true;
     }
     if (Object.keys(scores).length > 0) {
-      perAnalysisScores.push({ createdAt: new Date(analysis.createdAt), scores });
+      perAnalysisScores.push({ effectiveDate: new Date(analysis.effectiveDate), scores });
     }
 
     for (const [cat, score] of Object.entries(scores)) {
@@ -328,7 +334,7 @@ function computeSkillBreakdown(
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekEnd.getDate() + 7);
 
-      const weekAnalyses = perAnalysisScores.filter(a => a.createdAt >= weekStart && a.createdAt < weekEnd && a.scores[cat] != null);
+      const weekAnalyses = perAnalysisScores.filter(a => a.effectiveDate >= weekStart && a.effectiveDate < weekEnd && a.scores[cat] != null);
       if (weekAnalyses.length > 0) {
         weeklyScores.push(Math.round(weekAnalyses.reduce((s, a) => s + (a.scores[cat] ?? 0), 0) / weekAnalyses.length) / 10);
       } else {
@@ -448,6 +454,9 @@ export async function GET(request: NextRequest) {
     const userId = session.user.id;
 
     // ── Fetch call analyses (with categoryFeedback + priorityFixes + v2 phase data) ──
+    // Use COALESCE(callDate, createdAt) for filtering/sorting so manually backdated
+    // calls appear in the correct period (call_date is truth, createdAt is fallback).
+    const callDateCoalesce = sql`COALESCE(${salesCalls.callDate}, ${salesCalls.createdAt})`;
     const callAnalysesRaw = await db
       .select({
         id: callAnalysis.id,
@@ -459,9 +468,12 @@ export async function GET(request: NextRequest) {
         phaseAnalysis: callAnalysis.phaseAnalysis,
         actionPoints: callAnalysis.actionPoints,
         objectionDetails: callAnalysis.objectionDetails,
+        objectionPresent: callAnalysis.objectionPresent,
+        objectionResolved: callAnalysis.objectionResolved,
         priorityFixes: callAnalysis.priorityFixes,
         prospectDifficulty: callAnalysis.prospectDifficulty,
         createdAt: salesCalls.createdAt,
+        callDate: salesCalls.callDate,
         callResult: salesCalls.result,
         prospectName: salesCalls.prospectName,
       })
@@ -470,11 +482,11 @@ export async function GET(request: NextRequest) {
       .where(
         and(
           eq(salesCalls.userId, userId),
-          gte(salesCalls.createdAt, startDate),
-          lte(salesCalls.createdAt, endDate)
+          gte(callDateCoalesce, startDate),
+          lte(callDateCoalesce, endDate)
         )
       )
-      .orderBy(desc(salesCalls.createdAt));
+      .orderBy(desc(callDateCoalesce));
 
     // Parse JSON fields — with v2 fallback chain for skillScores
     const callAnalyses: AnalysisRow[] = callAnalysesRaw.map(a => {
@@ -497,6 +509,7 @@ export async function GET(request: NextRequest) {
         objectionData: a.objectionDetails,
         priorityFixesData: a.priorityFixes,
         createdAt: a.createdAt,
+        effectiveDate: a.callDate ? new Date(a.callDate) : new Date(a.createdAt),
         type: 'call' as const,
         entityId: a.callId,
         analysisId: a.id,
@@ -506,6 +519,8 @@ export async function GET(request: NextRequest) {
         actionPointsData: safeParse(a.actionPoints as any),
         prospectDifficultyScore: a.prospectDifficulty ?? null,
         callResult: (a as any).callResult ?? null,
+        objectionPresent: a.objectionPresent ?? null,
+        objectionResolved: a.objectionResolved ?? null,
       };
     });
 
@@ -562,6 +577,7 @@ export async function GET(request: NextRequest) {
         objectionData: a.objectionAnalysis,
         priorityFixesData: a.priorityFixes,
         createdAt: a.createdAt,
+        effectiveDate: new Date(a.createdAt), // Roleplays don't have callDate — use createdAt
         type: 'roleplay' as const,
         offerId: a.offerId,
         offerCategory: a.offerCategory,
@@ -578,11 +594,11 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // ── Combine and sort (respect source filter) ──
+    // ── Combine and sort by effectiveDate (callDate for calls, createdAt for roleplays) ──
     const filteredCalls = sourceParam === 'roleplays' ? [] : callAnalyses;
     const filteredRoleplays = sourceParam === 'calls' ? [] : roleplayAnalyses;
     const allAnalyses = [...filteredCalls, ...filteredRoleplays]
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      .sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
 
     console.log('[Performance API] FULL DEBUG:', {
       rangeParam,
@@ -628,6 +644,8 @@ export async function GET(request: NextRequest) {
     }
 
     // ── FIX P10: Weekly chart data anchored to endDate, not now ──
+    // Uses effectiveDate (callDate for calls, createdAt for roleplays) so a call
+    // on Feb 15 uploaded Feb 20 is attributed to the Feb 15 week.
     const generateWeeklyData = (analyses: AnalysisRow[]) => {
       const weekly: Array<{ week: string; score: number; count: number }> = [];
       for (let i = 11; i >= 0; i--) {
@@ -638,7 +656,7 @@ export async function GET(request: NextRequest) {
         weekEnd.setDate(weekEnd.getDate() + 7);
 
         const weekAnalyses = analyses.filter(a => {
-          const date = new Date(a.createdAt);
+          const date = new Date(a.effectiveDate);
           return date >= weekStart && date < weekEnd;
         });
         const weekScore = weekAnalyses.length > 0
@@ -933,8 +951,8 @@ export async function GET(request: NextRequest) {
       for (const [, fb] of Object.entries(feedback)) {
         if (fb.howItAffectedOutcome) {
           const sourceName = analysis.type === 'call'
-            ? `Call: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`
-            : `Roleplay: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`;
+            ? `Call: ${new Date(analysis.effectiveDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`
+            : `Roleplay: ${new Date(analysis.effectiveDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`;
           allActionSteps.push({
             action: fb.howItAffectedOutcome,
             reason: fb.whatWasMissing || '',
@@ -959,8 +977,8 @@ export async function GET(request: NextRequest) {
         const reason = fix.whyItMatters || fix.whyItMattered || fix.problem || '';
         if (action) {
           const sourceName = analysis.type === 'call'
-            ? `Call: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`
-            : `Roleplay: ${new Date(analysis.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`;
+            ? `Call: ${new Date(analysis.effectiveDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`
+            : `Roleplay: ${new Date(analysis.effectiveDate).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit' })}`;
           allActionSteps.push({ action, reason, source: sourceName });
         }
       }
@@ -1050,8 +1068,8 @@ export async function GET(request: NextRequest) {
     const thisMonthStart = new Date();
     thisMonthStart.setDate(1);
     thisMonthStart.setHours(0, 0, 0, 0);
-    const weekAnalyses = allAnalyses.filter(a => new Date(a.createdAt) >= weekAgo);
-    const monthAnalyses = allAnalyses.filter(a => new Date(a.createdAt) >= thisMonthStart);
+    const weekAnalyses = allAnalyses.filter(a => new Date(a.effectiveDate) >= weekAgo);
+    const monthAnalyses = allAnalyses.filter(a => new Date(a.effectiveDate) >= thisMonthStart);
     const weekAvg = weekAnalyses.length > 0
       ? Math.round(weekAnalyses.reduce((s, a) => s + (a.overallScore ?? 0), 0) / weekAnalyses.length)
       : 0;
@@ -1108,20 +1126,74 @@ export async function GET(request: NextRequest) {
     type PhaseKey = typeof PHASE_KEYS[number];
 
     // ── V2 Snapshot ─────────────────────────────────────────
-    // Connor's final definition: closed / total calls taken
-    const allCallsWithResult = allAnalyses.filter(a => {
-      return a.type === 'call' && (a as any).callResult;
-    });
-    const closedCalls = allCallsWithResult.filter(a =>
-      (a as any).callResult === 'closed'
-    );
-    const closeRate = allCallsWithResult.length > 0
-      ? Math.round((closedCalls.length / allCallsWithResult.length) * 100)
-      : null;
+    // Close Rate: Must match Figures page exactly. Pull from the SAME dataset
+    // as /api/performance/figures (all calls including manual entries, not just analysed).
+    // Formula: Sales Made / Calls Showed (calls that weren't no-shows), 1 decimal precision.
+    let figuresCloseRate: number | null = null;
+    let figuresCallsTaken = 0;
+    let figuresCallsClosed = 0;
+    try {
+      const figuresRows = await db
+        .select({
+          callDate: salesCalls.callDate,
+          createdAt: salesCalls.createdAt,
+          originalCallId: salesCalls.originalCallId,
+          result: salesCalls.result,
+        })
+        .from(salesCalls)
+        .where(
+          and(
+            eq(salesCalls.userId, userId),
+            or(
+              eq(salesCalls.addToSalesFigures, true),
+              isNull(salesCalls.addToSalesFigures)
+            ),
+            or(
+              eq(salesCalls.status, 'manual'),
+              and(
+                eq(salesCalls.status, 'completed'),
+                or(
+                  eq(salesCalls.analysisIntent, 'update_figures'),
+                  eq(salesCalls.analysisIntent, 'analysis_only'),
+                  isNull(salesCalls.analysisIntent)
+                )
+              )
+            )
+          )
+        );
 
-    // Display values for underneath the big number:
-    const callsTaken = allCallsWithResult.length;
-    const callsClosed = closedCalls.length;
+      const figDateFor = (row: { callDate: Date | null; createdAt: Date }) =>
+        row.callDate ? new Date(row.callDate) : new Date(row.createdAt);
+      const figMonthRows = figuresRows.filter(r => {
+        const d = figDateFor(r);
+        return d >= startDate && d <= endDate;
+      });
+      const figBaseRows = figMonthRows.filter(r => !r.originalCallId);
+      const figCallsShowed = figBaseRows.filter(r => r.result !== 'no_show').length;
+      const figSalesMade = figMonthRows.filter(r =>
+        r.result === 'closed' || r.result === 'deposit'
+      ).length;
+
+      figuresCallsTaken = figCallsShowed;
+      figuresCallsClosed = figSalesMade;
+      figuresCloseRate = figCallsShowed > 0
+        ? Math.round((figSalesMade / figCallsShowed) * 1000) / 10
+        : null;
+    } catch (figErr: unknown) {
+      logger.warn('PERFORMANCE', 'Figures-compatible close rate query failed, falling back', figErr as Record<string, unknown>);
+      // Fallback to analysed-only close rate
+      const allCallsWithResult = allAnalyses.filter(a => a.type === 'call' && (a as any).callResult);
+      const closedCalls = allCallsWithResult.filter(a => (a as any).callResult === 'closed');
+      figuresCallsTaken = allCallsWithResult.length;
+      figuresCallsClosed = closedCalls.length;
+      figuresCloseRate = allCallsWithResult.length > 0
+        ? Math.round((closedCalls.length / allCallsWithResult.length) * 1000) / 10
+        : null;
+    }
+
+    const closeRate = figuresCloseRate;
+    const callsTaken = figuresCallsTaken;
+    const callsClosed = figuresCallsClosed;
 
     // Avg difficulty
     const diffScores = allAnalyses.filter(a => typeof a.prospectDifficultyScore === 'number' && a.prospectDifficultyScore > 0).map(a => a.prospectDifficultyScore!);
@@ -1130,26 +1202,42 @@ export async function GET(request: NextRequest) {
       ? (avgDifficulty >= 43 ? 'easy' : avgDifficulty >= 36 ? 'realistic' : avgDifficulty >= 30 ? 'hard' : avgDifficulty >= 25 ? 'expert' : 'near_impossible')
       : null;
 
-    // Objection conversion rate: calls WITH objections that still closed
-    // Computed from existing objectionDetails JSON — works for all historical calls
-    const callsWithObjDetails = allAnalyses.filter(a => {
+    // Objection conversion rate: calls with objections that still closed.
+    // Uses schema flags (objectionPresent/objectionResolved) when available,
+    // falls back to computing from objectionDetails JSON for older calls.
+    // Connor's definition: "objection call" = closer attempts to close or price presented,
+    // prospect raises clear resistance — NOT minor clarifying questions.
+    const callsWithObjections = allAnalyses.filter(a => {
       if (a.type !== 'call') return false;
+      // Prefer schema flag (set using substantive check in analyze-call.ts)
+      if (a.objectionPresent === true) return true;
+      if (a.objectionPresent === false) return false;
+      // Fallback for older calls: check objectionDetails JSON — apply same substantive filter
       try {
         const details = typeof a.objectionData === 'string'
           ? JSON.parse(a.objectionData)
           : a.objectionData;
-        return Array.isArray(details) && details.length > 0;
+        if (!Array.isArray(details)) return false;
+        // Only count as objection call if at least one substantive objection exists
+        return details.some((o: Record<string, unknown>) =>
+          typeof o.quote === 'string' && (o.quote as string).length > 10 &&
+          typeof o.whySurfaced === 'string' && (o.whySurfaced as string).length > 10
+        );
       } catch { return false; }
     });
-    const resolvedObjectionCalls = callsWithObjDetails.filter(a =>
-      (a as any).callResult === 'closed'
-    );
-    const objectionConversionRate = callsWithObjDetails.length > 0
-      ? Math.round((resolvedObjectionCalls.length / callsWithObjDetails.length) * 100)
+    const resolvedObjectionCalls = callsWithObjections.filter(a => {
+      // Prefer schema flag
+      if (a.objectionResolved === true) return true;
+      if (a.objectionResolved === false) return false;
+      // Fallback: objection present AND deal closed
+      return (a as any).callResult === 'closed';
+    });
+    const objectionConversionRate = callsWithObjections.length > 0
+      ? Math.round((resolvedObjectionCalls.length / callsWithObjections.length) * 100)
       : null;
 
     // Display values for objection conversion sub-labels:
-    const objectionCallsTotal = callsWithObjDetails.length;
+    const objectionCallsTotal = callsWithObjections.length;
     const objectionsResolved = resolvedObjectionCalls.length;
 
     const v2Snapshot = {
@@ -1186,6 +1274,7 @@ export async function GET(request: NextRequest) {
       handlingImprovements?: string;
       preEmptionImprovements?: string;
       structuralMetrics?: Record<string, number | string>;
+      bandLabel?: string; // 2G: 'Above Expectation' | 'At Expectation' | 'Below Expectation'
     }
 
     /** Format a date as DD/MM */
@@ -1212,7 +1301,7 @@ export async function GET(request: NextRequest) {
 
         const pName = a.prospectName || 'Unknown';
         const oName = a.offerName || undefined;
-        const dateStr = a.createdAt?.toISOString?.() || '';
+        const dateStr = a.effectiveDate?.toISOString?.() || a.createdAt?.toISOString?.() || '';
 
         // Score
         if (ps && typeof ps === 'object') {
@@ -1268,57 +1357,93 @@ export async function GET(request: NextRequest) {
       }
 
       const avgScore = scores.length > 0 ? Math.round(scores.reduce((s, v) => s + v, 0) / scores.length) : 0;
+      const scoredCount = scores.length;
+      const phaseLabel = phase === 'overall' ? 'overall performance' : phase;
+      const phaseCap = phase === 'overall' ? 'Overall' : phase.charAt(0).toUpperCase() + phase.slice(1);
 
       // Frequency-count strength/weakness patterns with examples
       const strengthGroups = groupByKeywordsWithExamples(strengths, totalCalls);
       const weaknessGroups = groupWeaknessByKeywordsWithExamples(weaknesses, totalCalls);
 
-      // Generate guidance
+      // 2G: Closer Performance Banding
+      const bandLabel = avgScore >= 75 ? 'Above Expectation' : avgScore >= 60 ? 'At Expectation' : 'Below Expectation';
+
+      // Generate guidance — explicitly reference session count (2D consistency: matches top metric + averaging dataset)
       let scoreGuidance = '';
       if (avgScore === 0) {
-        scoreGuidance = `No data yet for ${phase === 'overall' ? 'overall performance' : phase}. Complete more sessions to see insights.`;
-      } else if (avgScore >= 80) {
-        scoreGuidance = `Strong ${phase} performance averaging ${avgScore}/100. Focus on consistency and marginal gains.`;
+        scoreGuidance = `No data yet for ${phaseLabel}. Complete more sessions to see insights.`;
+      } else if (avgScore >= 75) {
+        scoreGuidance = `${phaseCap}: ${bandLabel}. Averaging ${avgScore}/100 across ${scoredCount} of ${totalCalls} analysed session${totalCalls !== 1 ? 's' : ''} this month. Focus on consistency and marginal gains.`;
       } else if (avgScore >= 60) {
-        scoreGuidance = `Developing ${phase} skills at ${avgScore}/100. Address the top weakness pattern to push above 80.`;
+        scoreGuidance = `${phaseCap}: ${bandLabel}. Averaging ${avgScore}/100 across ${scoredCount} of ${totalCalls} analysed session${totalCalls !== 1 ? 's' : ''}. Address the top weakness pattern to push above 75.`;
       } else {
-        scoreGuidance = `${phase === 'overall' ? 'Overall' : phase.charAt(0).toUpperCase() + phase.slice(1)} needs focused practice at ${avgScore}/100. Prioritize the most frequent weakness below.`;
+        scoreGuidance = `${phaseCap}: ${bandLabel}. Averaging ${avgScore}/100 across ${scoredCount} of ${totalCalls} analysed session${totalCalls !== 1 ? 's' : ''}. Prioritize the most frequent weakness below.`;
       }
 
-      // Composite summary synthesis — combine themes across all summaries
-      const validSummaries = summaries.filter(s => s.length > 20);
+      // ── 2E (Priority 1 fix): True aggregate summary synthesized from patterns, NOT single-call text ──
+      // Uses already-computed strengthGroups/weaknessGroups which have frequency + examples.
       let compositeSummary = '';
-      if (validSummaries.length === 0) {
+      if (scoredCount === 0) {
         compositeSummary = '';
-      } else if (validSummaries.length === 1) {
-        compositeSummary = `Across ${scores.length} session${scores.length !== 1 ? 's' : ''} ${label}: ${validSummaries[0]}`;
       } else {
-        // Extract key themes from multiple summaries
-        const themeCounts = new Map<string, number>();
-        for (const s of validSummaries) {
-          const kw = getKW(s);
-          for (const k of kw) {
-            themeCounts.set(k, (themeCounts.get(k) || 0) + 1);
+        const parts: string[] = [];
+        parts.push(`Across ${totalCalls} analysed session${totalCalls !== 1 ? 's' : ''} in ${label}, ${phaseCap.toLowerCase()} averaged ${avgScore}/100 (${bandLabel}).`);
+
+        // Describe top strength pattern with frequency + specific call citation
+        if (strengthGroups.length > 0) {
+          const topS = strengthGroups[0];
+          let strengthLine = `Most consistent strength: "${topS.text}" — observed in ${topS.frequency} of ${topS.totalCalls} calls.`;
+          if (topS.examples.length > 0) {
+            const ex = topS.examples[0];
+            strengthLine += ` Example: ${ex.callDate}, ${ex.prospectName}${ex.offerName ? ` (${ex.offerName})` : ''}.`;
+          }
+          parts.push(strengthLine);
+        }
+
+        // Describe top weakness pattern with frequency + specific call citation
+        if (weaknessGroups.length > 0) {
+          const topW = weaknessGroups[0];
+          let weakLine = `Most frequent weakness: "${topW.text}" — flagged in ${topW.frequency} of ${topW.totalCalls} calls.`;
+          if (topW.examples.length > 0) {
+            const ex = topW.examples[0];
+            weakLine += ` Example: ${ex.callDate}, ${ex.prospectName}${ex.offerName ? ` (${ex.offerName})` : ''}.`;
+          }
+          if (topW.whyItMatters) {
+            weakLine += ` Why it matters: ${topW.whyItMatters}`;
+          }
+          parts.push(weakLine);
+        }
+
+        // Score spread insight (shows it's aggregated, not single-call)
+        if (scores.length >= 3) {
+          const minS = Math.min(...scores);
+          const maxS = Math.max(...scores);
+          if (maxS - minS > 15) {
+            parts.push(`Score range: ${minS}–${maxS}, indicating inconsistency across sessions. Focus on reducing the gap by addressing the weakness pattern above.`);
+          } else {
+            parts.push(`Scores ranged ${minS}–${maxS}, showing relatively consistent performance across sessions.`);
           }
         }
-        const topThemes = [...themeCounts.entries()]
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(([theme]) => theme);
-        // Use the most detailed summary as a base, prepend context
-        const bestBase = validSummaries.sort((a, b) => b.length - a.length)[0];
-        const themeNote = topThemes.length > 0 ? ` Key themes: ${topThemes.join(', ')}.` : '';
-        compositeSummary = `Across ${scores.length} session${scores.length !== 1 ? 's' : ''} ${label}: ${bestBase}${themeNote}`;
+
+        // Second weakness if present (shows breadth)
+        if (weaknessGroups.length >= 2) {
+          const w2 = weaknessGroups[1];
+          parts.push(`Secondary area for improvement: "${w2.text}" (${w2.frequency} of ${w2.totalCalls} calls).`);
+        }
+
+        compositeSummary = parts.join(' ');
       }
 
       return {
         phase,
         averageScore: avgScore,
-        sessionCount: scores.length,
+        // 2D: sessionCount = total analysed calls in this period, NOT just those with phase data
+        sessionCount: totalCalls,
         summary: compositeSummary,
         strengthPatterns: strengthGroups.slice(0, 5),
         weaknessPatterns: weaknessGroups.slice(0, 5),
         scoreGuidance,
+        bandLabel,
       };
     }
 
@@ -1514,7 +1639,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // ── V2 Objections tab — Enriched ObjectionTheme structure ─────────────
+    // ── V2 Objections tab — Enriched ObjectionTheme structure (Prompt 3) ─────────────
     interface ObjectionTheme {
       theme: string;
       category: 'value' | 'trust' | 'fit' | 'logistics';
@@ -1530,6 +1655,10 @@ export async function GET(request: NextRequest) {
       preEmption: string;
       handlingImprovement: string;
       rawPhrases: string[];
+      // 3B: Collect all per-block insights for rich synthesis
+      _allWhySurfaced: string[];
+      _allHowHandled: string[];
+      _allHigherLeverage: string[];
     }
 
     /** Generate a clean theme label from a raw objection quote */
@@ -1576,18 +1705,22 @@ export async function GET(request: NextRequest) {
     for (const a of allAnalyses) {
       const pa = a.phaseAnalysisData;
       if (!pa?.objections?.blocks) continue;
-      const callId = a.entityId || a.createdAt?.toISOString?.() || '';
+      const callId = a.entityId || a.effectiveDate?.toISOString?.() || '';
       const pName = a.prospectName || 'Unknown';
-      const dateStr = a.createdAt?.toISOString?.() || '';
+      const dateStr = a.effectiveDate?.toISOString?.() || a.createdAt?.toISOString?.() || '';
 
       for (const block of pa.objections.blocks) {
         const cat = (block.type || 'value') as 'value' | 'trust' | 'fit' | 'logistics';
         if (!v2ObjGrouped[cat]) v2ObjGrouped[cat] = [];
         const rawQuote = block.quote || 'Unnamed objection';
+        const derivedLabel = deriveThemeLabel(rawQuote, cat);
 
-        // Try to group with existing theme by keyword overlap
+        // 3A: Try to group — first by derived theme label, then by keyword overlap (≥2)
         let matched: ObjectionTheme | null = null;
         for (const theme of v2ObjGrouped[cat]) {
+          // Match 1: same derived label = definite merge (prevents near-duplicate themes)
+          if (theme.theme === derivedLabel) { matched = theme; break; }
+          // Match 2: keyword overlap ≥2 = likely same concept
           const ok = getKW(theme.rawPhrases.join(' '));
           const bk = getKW(rawQuote);
           let common = 0;
@@ -1611,20 +1744,14 @@ export async function GET(request: NextRequest) {
               description: rawQuote.slice(0, 100),
             });
           }
-          // Keep best root cause / pre-emption / handling
-          if (block.whySurfaced && block.whySurfaced.length > (matched.rootCause || '').length) {
-            matched.rootCause = block.whySurfaced;
-          }
-          if (block.higherLeverageAlternative && block.higherLeverageAlternative.length > (matched.preEmption || '').length) {
-            matched.preEmption = block.higherLeverageAlternative;
-          }
-          if (block.howHandled && block.howHandled.length > (matched.handlingImprovement || '').length) {
-            matched.handlingImprovement = block.howHandled;
-          }
+          // 3B: Collect ALL insights for later synthesis (don't just keep best — aggregate all)
+          if (block.whySurfaced) matched._allWhySurfaced.push(block.whySurfaced);
+          if (block.howHandled) matched._allHowHandled.push(block.howHandled);
+          if (block.higherLeverageAlternative) matched._allHigherLeverage.push(block.higherLeverageAlternative);
         } else {
           // Create new theme
           const newTheme: ObjectionTheme = {
-            theme: deriveThemeLabel(rawQuote, cat),
+            theme: derivedLabel,
             category: cat,
             callsObserved: 1,
             totalCalls: totalCallsForObj,
@@ -1634,18 +1761,66 @@ export async function GET(request: NextRequest) {
               timestamp: block.timestamp || undefined,
               description: rawQuote.slice(0, 100),
             }],
-            rootCause: block.whySurfaced || `This ${cat} objection likely arose because the prospect's ${cat}-related concerns were not adequately addressed earlier in the call.`,
-            preEmption: block.higherLeverageAlternative || `Strengthen ${cat} anchoring during the pitch phase to reduce this type of objection.`,
-            handlingImprovement: block.howHandled || `When this objection arises, acknowledge the concern, reframe with evidence, and temperature check before re-closing.`,
+            rootCause: '', // will be synthesized after grouping
+            preEmption: '', // will be synthesized after grouping
+            handlingImprovement: '', // will be synthesized after grouping
             rawPhrases: [rawQuote],
+            _allWhySurfaced: block.whySurfaced ? [block.whySurfaced] : [],
+            _allHowHandled: block.howHandled ? [block.howHandled] : [],
+            _allHigherLeverage: block.higherLeverageAlternative ? [block.higherLeverageAlternative] : [],
           };
           v2ObjGrouped[cat].push(newTheme);
           themeCallSets.set(newTheme, new Set([callId]));
         }
       }
     }
-    // Sort each category by callsObserved descending
+
+    // ── 3B+3C: Synthesize rich coaching content (4-6 lines) with phase placement ──
+    const PHASE_PLACEMENT: Record<string, string> = {
+      value: 'During discovery (after identifying goals) and before price presentation: run a value confirmation sequence — ask the prospect to articulate what achieving their goal is worth to them, then anchor the investment against that value. In the pitch phase, stack tangible outcomes and ROI before revealing the number.',
+      trust: 'During the intro phase (first 2-3 minutes): establish credibility with a brief relevant case study or result. In discovery, demonstrate expertise by naming their problem before they do. Before the close, use a specific social proof example that mirrors their situation.',
+      fit: 'During discovery (before presenting the solution): ask targeted situational questions that surface potential fit concerns early — time availability, decision-making authority, current commitments. Address each one before moving to the pitch so the prospect self-qualifies.',
+      logistics: 'During the pitch phase (after presenting the offer): proactively walk through the onboarding process, timeline, and what the first 30 days look like. Before the close, address common logistical questions (start date, schedule flexibility, cancellation) so they don\'t become last-minute objections.',
+    };
+
     for (const cat of Object.keys(v2ObjGrouped)) {
+      for (const theme of v2ObjGrouped[cat]) {
+        // Deduplicate collected insights
+        const uniqueWhy = [...new Set(theme._allWhySurfaced.filter(s => s.length > 10))];
+        const uniqueHandled = [...new Set(theme._allHowHandled.filter(s => s.length > 10))];
+        const uniqueLeverage = [...new Set(theme._allHigherLeverage.filter(s => s.length > 10))];
+
+        // 3B: Root Cause — synthesize from all whySurfaced observations (4-6 lines)
+        if (uniqueWhy.length > 0) {
+          const combined = uniqueWhy.slice(0, 4).join(' Additionally, ');
+          theme.rootCause = `Across ${theme.callsObserved} call${theme.callsObserved !== 1 ? 's' : ''} where this objection appeared: ${combined}. This pattern suggests a systematic gap in how ${cat === 'value' ? 'value is anchored' : cat === 'trust' ? 'credibility is established' : cat === 'fit' ? 'prospect fit is validated' : 'logistics are addressed'} before the prospect raises resistance. When the closer moves to price or commitment without first confirming the prospect\'s readiness, this objection becomes almost inevitable.`;
+        } else {
+          theme.rootCause = `This ${cat} objection likely arose because the prospect's ${cat}-related concerns were not adequately addressed earlier in the call. Without sufficient ${cat === 'value' ? 'value anchoring and ROI framing' : cat === 'trust' ? 'credibility signals and social proof' : cat === 'fit' ? 'situational qualification and fit confirmation' : 'logistical clarity and process explanation'} before the commitment point, resistance is the natural response. The closer should examine whether the discovery phase surfaced and resolved these concerns before advancing.`;
+        }
+
+        // 3C: Pre-emption — synthesize with explicit call-phase placement (4-6 lines)
+        const phasePlacement = PHASE_PLACEMENT[cat] || PHASE_PLACEMENT.value;
+        if (uniqueLeverage.length > 0) {
+          const combined = uniqueLeverage.slice(0, 3).join(' Alternatively, ');
+          theme.preEmption = `${phasePlacement} Specifically for this "${theme.theme}" pattern: ${combined}. By addressing this concern before it becomes an objection, the closer maintains forward momentum and avoids a defensive dynamic during the close.`;
+        } else {
+          theme.preEmption = `${phasePlacement} For this "${theme.theme}" pattern specifically, the closer should build a pre-emptive frame earlier in the call that makes this objection feel already answered by the time commitment is discussed. Embed proof points, situational relevance, and outcome clarity into each preceding phase so the prospect arrives at the decision point with confidence rather than resistance.`;
+        }
+
+        // 3B: Handling Improvement — synthesize from all howHandled observations (4-6 lines)
+        if (uniqueHandled.length > 0) {
+          const combined = uniqueHandled.slice(0, 3).join(' Another approach observed: ');
+          theme.handlingImprovement = `When this objection surfaces live, the recommended approach based on ${theme.callsObserved} observation${theme.callsObserved !== 1 ? 's' : ''}: ${combined}. The key is to acknowledge the concern without agreeing with the premise, then redirect to the cost of inaction. Use a temperature check ("On a scale of 1-10, where are you?") to gauge where to take the conversation next, and address the real underlying concern rather than the surface-level objection.`;
+        } else {
+          theme.handlingImprovement = `When this ${cat} objection arises, first acknowledge the concern genuinely without dismissing it — "I completely understand, and that's actually a really smart question." Then reframe by connecting back to the prospect's stated goals and the cost of not solving the problem. Use a specific example or case study of someone in a similar situation. Finally, temperature check to see if the objection is truly the blocker or if there's something deeper. Avoid rushing past the objection — give it space, then guide the conversation back to commitment with a soft trial close.`;
+        }
+
+        // Clean up internal collection arrays from the response
+        delete (theme as unknown as Record<string, unknown>)._allWhySurfaced;
+        delete (theme as unknown as Record<string, unknown>)._allHowHandled;
+        delete (theme as unknown as Record<string, unknown>)._allHigherLeverage;
+      }
+      // Sort each category by callsObserved descending
       v2ObjGrouped[cat].sort((a, b) => b.callsObserved - a.callsObserved);
     }
 
@@ -1695,8 +1870,8 @@ export async function GET(request: NextRequest) {
       range: rangeLabel ?? rangeParam,
       period: periodLabel,
       totalAnalyses,
-      totalCalls: callAnalyses.length,
-      totalRoleplays: roleplayAnalyses.length,
+      totalCalls: filteredCalls.length,
+      totalRoleplays: filteredRoleplays.length,
       averageOverall,
       averageRoleplayScore,
       trend,
@@ -1721,7 +1896,7 @@ export async function GET(request: NextRequest) {
         id: a.entityId ?? a.analysisId ?? '',
         type: a.type,
         overallScore: a.overallScore,
-        createdAt: a.createdAt,
+        createdAt: a.effectiveDate,
         difficultyTier: a.actualDifficultyTier ?? a.selectedDifficulty ?? null,
       })),
       // V2 Performance data — phase-based analysis engine

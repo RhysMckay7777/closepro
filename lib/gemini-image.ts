@@ -134,22 +134,23 @@ export async function generateImageWithGemini(
 }
 
 /**
- * Build a prompt for realistic human headshot photo.
- * CRITICAL: Must produce a real photograph, never a cartoon/illustration.
+ * Build a prompt for a credible realistic avatar (~80-85% realism).
+ * Plain colored background, head+shoulders or mid-chest framing.
+ * Context-conditioned: uses offer type + prospect context + archetype for wardrobe/vibe.
  */
 export function buildGeminiAvatarPrompt(
     name?: string,
     context?: string | null,
-    gender?: 'male' | 'female' | 'any' | null
+    gender?: 'male' | 'female' | 'any' | null,
+    offerCategory?: string | null
 ): string {
-    const parts = [
-        'Generate a REAL photograph — a professional headshot photo taken with a DSLR camera.',
-        'This must look like a genuine photograph of a real human being.',
-        'Ultra-realistic photo with natural lighting, real skin texture with pores and imperfections, natural hair.',
-        'Head and shoulders framing against a soft blurred bokeh background.',
-        'Shot on Canon EOS R5, 85mm f/1.4 lens, shallow depth of field.',
-        'Do NOT generate any cartoon, anime, illustration, drawing, sketch, CGI, 3D render, vector art, or any non-photographic style whatsoever.',
-        'The output MUST be indistinguishable from a real photograph taken by a professional photographer.',
+    const parts: string[] = [
+        'Generate a realistic digital portrait of a person — approximately 80-85% photorealistic.',
+        'This should look like a credible, realistic avatar. NOT a perfect DSLR photograph, and NOT a cartoon.',
+        'Natural lighting, real skin texture, natural hair. Slightly stylized but fully believable as a real person.',
+        'Head and shoulders framing, or mid-chest crop.',
+        'Plain solid colored background — pick a muted, professional tone (slate, warm gray, soft blue, or sage green).',
+        'Do NOT generate any cartoon, anime, illustration, sketch, CGI, or 3D render.',
     ];
 
     if (gender === 'male') {
@@ -163,13 +164,31 @@ export function buildGeminiAvatarPrompt(
         const hash = seed.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
         const ages = ['late 20s', 'early 30s', 'mid 30s', 'early 40s', 'mid 40s'];
         const age = ages[hash % ages.length];
-        parts.push(`The person is a ${age} professional.`);
+        parts.push(`The person appears to be in their ${age}.`);
+    }
+
+    // Context-conditioned wardrobe/vibe from offer category + prospect context
+    const cat = (offerCategory || '').toLowerCase();
+    const ctx = (context || '').toLowerCase();
+
+    if (cat.includes('fitness') || cat.includes('health') || ctx.includes('gym') || ctx.includes('fitness')) {
+        parts.push('Wearing casual athletic or activewear. Healthy, energetic appearance.');
+    } else if (cat.includes('real_estate') || cat.includes('property') || ctx.includes('property')) {
+        parts.push('Wearing smart casual attire. Confident, approachable look.');
+    } else if (cat.includes('trades') || cat.includes('construction') || ctx.includes('electrician') || ctx.includes('plumb')) {
+        parts.push('Wearing practical work attire or clean casual clothes. Down-to-earth appearance.');
+    } else if (cat.includes('tech') || cat.includes('saas') || cat.includes('software')) {
+        parts.push('Wearing a clean t-shirt or casual button-down. Modern, tech-savvy appearance.');
+    } else if (cat.includes('creative') || cat.includes('design') || cat.includes('marketing')) {
+        parts.push('Wearing casual creative attire. Expressive, modern style.');
+    } else {
+        parts.push('Wearing smart casual clothes. Natural, approachable expression.');
     }
 
     if (context?.trim()) {
-        const safe = context.trim().slice(0, 100).replace(/[^\w\s,.-]/g, '');
+        const safe = context.trim().slice(0, 150).replace(/[^\w\s,.'()-]/g, '');
         if (safe) {
-            parts.push(`They work in: ${safe}.`);
+            parts.push(`Context about the person: ${safe}.`);
         }
     }
 

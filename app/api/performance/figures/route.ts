@@ -336,7 +336,7 @@ export async function GET(request: NextRequest) {
     const filteredSalesList = (callIdsWithInstalments.size > 0
       ? salesList.filter((r) => !callIdsWithInstalments.has(r.callId) || r.isInstalment)
       : salesList
-    ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    ).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const totalCommission = filteredSalesList.reduce((s, row) => s + row.commissionAmount, 0);
 

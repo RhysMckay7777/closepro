@@ -481,6 +481,10 @@ export const roleplaySessions = pgTable('roleplay_sessions', {
   replaySourceSessionId: text('replay_source_session_id'), // Original roleplay session ID
   replayContext: text('replay_context'), // JSON: phase feedback, objection block, or action point data
 
+  // Phase Practice Mode (Prompt 4) — separate from replay fields
+  practiceMode: text('practice_mode'), // null=full, 'intro'|'discovery'|'pitch'|'close'|'objections'
+  practiceContext: text('practice_context'), // user-provided scenario context
+
   startedAt: timestamp('started_at').notNull().defaultNow(),
   completedAt: timestamp('completed_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
