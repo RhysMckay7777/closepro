@@ -22,6 +22,16 @@ export interface BehaviourState {
   // Trust & Value
   trustLevel: number; // 0-10, dynamic
   valuePerception: number; // 0-10, dynamic
+
+  // Phase Tracking (Connor's Discovery Phase v3.0)
+  currentPhase: 'intro' | 'discovery' | 'pitch' | 'close' | 'objections';
+  discoveryTurnCount: number;  // turns within discovery phase
+  discoveryDepthLevel: 'early' | 'mid' | 'late';  // progressive opening arc
+  peerUnlockLevel: number;  // 0 = locked, 1-3 = progressively unlocked
+
+  // Close Phase Tracking (Connor's Close Phase v3.0)
+  closeObjectionLayer: number;  // 1-3 = current objection layer
+  closeHandlingQuality: 'good' | 'average' | 'poor' | 'manipulative';
 }
 
 /**
@@ -148,6 +158,16 @@ export function initializeBehaviourState(
   }
   // High execution resistance (8-10) - no adjustment needed
 
+  // Initialize phase tracking (Connor's Discovery Phase v3.0)
+  baseState.currentPhase = 'intro';
+  baseState.discoveryTurnCount = 0;
+  baseState.discoveryDepthLevel = 'early';
+  baseState.peerUnlockLevel = 0;
+
+  // Initialize close phase state (Connor's Close Phase v3.0)
+  baseState.closeObjectionLayer = 1;
+  baseState.closeHandlingQuality = 'average';
+
   return baseState as BehaviourState;
 }
 
@@ -166,6 +186,14 @@ export function adaptBehaviour(
     appliedPressure?: boolean;
     lostControl?: boolean;
     overExplained?: boolean;
+    // Discovery Phase v3.0 — Peer Unlock triggers
+    reframedForUnlock?: boolean;
+    namedPattern?: boolean;
+    directlyChallenged?: boolean;
+    transitionedToPhase?: 'discovery' | 'pitch' | 'close' | 'objections';
+    // Close Phase v3.0 — Handling quality
+    handledObjectionWell?: boolean;
+    handledManipulatively?: boolean;
   }
 ): BehaviourState {
   const newState = { ...currentState };
@@ -225,6 +253,66 @@ export function adaptBehaviour(
     // Premature pressure backfires
     newState.currentResistance = Math.min(10, newState.currentResistance + 2);
     newState.trustLevel = Math.max(0, newState.trustLevel - 1);
+  }
+
+  // ═══ Discovery Phase v3.0 — Peer Unlock Mechanics ═══
+  // Peer unlock: good reframes/challenges increase unlock level (max 3)
+  if (repAction.reframedForUnlock || repAction.namedPattern || repAction.directlyChallenged) {
+    newState.peerUnlockLevel = Math.min(3, newState.peerUnlockLevel + 1);
+    // Also boost openness and reduce resistance
+    newState.openness = newState.openness === 'closed' ? 'cautious' :
+      newState.openness === 'cautious' ? 'open' : 'open';
+    newState.currentResistance = Math.max(0, newState.currentResistance - 0.5);
+  }
+
+  // Bad question after unlock can partially re-close (peer only)
+  if ((repAction.lostControl || repAction.overExplained) && newState.peerUnlockLevel > 0) {
+    newState.peerUnlockLevel = Math.max(0, newState.peerUnlockLevel - 1);
+  }
+
+  // Phase transitions
+  if (repAction.transitionedToPhase) {
+    newState.currentPhase = repAction.transitionedToPhase;
+    if (repAction.transitionedToPhase === 'discovery') {
+      newState.discoveryTurnCount = 0;
+      newState.discoveryDepthLevel = 'early';
+    }
+  }
+
+  // Discovery turn count & progressive opening arc
+  if (newState.currentPhase === 'discovery') {
+    newState.discoveryTurnCount += 1;
+    if (newState.discoveryTurnCount <= 5) {
+      newState.discoveryDepthLevel = 'early';
+    } else if (newState.discoveryTurnCount <= 15) {
+      newState.discoveryDepthLevel = 'mid';
+    } else {
+      newState.discoveryDepthLevel = 'late';
+    }
+  }
+
+  // ═══ Close Phase v3.0 — Handling Quality & Objection Layer ═══
+  if (newState.currentPhase === 'close') {
+    // Track handling quality
+    if (repAction.handledManipulatively) {
+      newState.closeHandlingQuality = 'manipulative';
+      // Manipulative handling → trust drops, prospect disengages
+      newState.trustLevel = Math.max(0, newState.trustLevel - 2);
+      newState.engagement = Math.max(0, newState.engagement - 2);
+      newState.openness = 'closed';
+    } else if (repAction.handledObjectionWell) {
+      newState.closeHandlingQuality = 'good';
+      // Good handling → progress to next objection layer
+      newState.closeObjectionLayer = Math.min(3, newState.closeObjectionLayer + 1);
+      newState.trustLevel = Math.min(10, newState.trustLevel + 1);
+      newState.openness = newState.openness === 'closed' ? 'cautious' :
+        newState.openness === 'cautious' ? 'open' : 'open';
+    } else if (repAction.lostControl || repAction.overExplained) {
+      newState.closeHandlingQuality = 'poor';
+      // Poor handling → harden, shorter responses
+      newState.currentResistance = Math.min(10, newState.currentResistance + 1);
+    }
+    // Average handling: no objection layer progression, stay in same loop
   }
 
   return newState;

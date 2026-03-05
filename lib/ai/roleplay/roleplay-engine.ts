@@ -7,7 +7,11 @@ import { OfferProfile, generateOfferSummary, getDefaultSalesStyle } from './offe
 import { ProspectAvatar, ProspectDifficultyProfile, DifficultyTier } from './prospect-avatar';
 import { FunnelContext } from './funnel-context';
 import { BehaviourState, initializeBehaviourState, adaptBehaviour, shouldRaiseObjection, getObjectionType, getOpeningLine, getBehaviourInstructions, OpeningLineContext } from './behaviour-rules';
-import { ROLEPLAY_BEHAVIORAL_RULES, PROSPECT_DIFFICULTY_MODEL, PROSPECT_BACKSTORY_INSTRUCTIONS } from '@/lib/training';
+import { ROLEPLAY_BEHAVIORAL_RULES, PROSPECT_DIFFICULTY_MODEL, PROSPECT_BACKSTORY_INSTRUCTIONS, DISCOVERY_PHASE_BEHAVIOUR, PEER_UNLOCK_TRIGGERS, DISCOVERY_EXIT_PATTERNS } from '@/lib/training';
+import { CLOSE_PHASE_BEHAVIOUR, CLOSE_ENTRY_PATTERNS, GOOD_HANDLING_PATTERNS, MANIPULATIVE_HANDLING_PATTERNS } from '@/lib/training/close-phase-behaviour';
+import { PITCH_PHASE_BEHAVIOUR, PITCH_TO_CLOSE_PATTERNS } from '@/lib/training/pitch-phase-behaviour';
+import { INTRO_PHASE_BEHAVIOUR, INTRO_EXIT_PATTERNS } from '@/lib/training/intro-phase-behaviour';
+import { formatCharacterSheet, DRIFT_PREVENTION_RULES } from '@/lib/training/character-sheet-wrapper';
 import { getCondensedExamples } from '@/lib/ai/knowledge/real-call-examples';
 import { getTranscriptPatternsForUser } from './transcript-patterns';
 
@@ -54,8 +58,8 @@ export async function generateProspectResponse(
   updatedBehaviourState: BehaviourState;
   metadata?: RoleplayMessage['metadata'];
 }> {
-  // Analyze rep action to adapt behaviour
-  const repAction = analyzeRepAction(repMessage, context.conversationHistory);
+  // Analyze rep action to adapt behaviour (includes discovery phase v3.0 unlock detection)
+  const repAction = analyzeRepAction(repMessage, context.conversationHistory, context.behaviourState);
   const updatedBehaviourState = adaptBehaviour(context.behaviourState, repAction);
 
   // Build system prompt with all layers
@@ -168,6 +172,8 @@ ${prospectAvatar.painDrivers?.length ? `Pain Drivers: ${prospectAvatar.painDrive
 ${prospectAvatar.ambitionDrivers?.length ? `Ambition Drivers: ${prospectAvatar.ambitionDrivers.join(', ')}` : ''}
 
 ${PROSPECT_BACKSTORY_INSTRUCTIONS}
+
+${context.prospectAvatar.characterSheet ? formatCharacterSheet(context.prospectAvatar.characterSheet) + '\n' + DRIFT_PREVENTION_RULES : ''}
 
 CURRENT BEHAVIOUR STATE:
 Resistance Level: ${behaviourState.currentResistance}/10
@@ -309,13 +315,23 @@ Use these as reference for HOW prospects actually talk — their word choice, se
 RESPONSE LENGTH RULES (STRICT):
 - Your opening response MUST be ≤ 8 words. No exceptions.
 - For the first 3 exchanges, keep responses to ≤ 2 sentences.
-- Never exceed 4 sentences in any single response.
+- HARD CAP: Never exceed 10 sentences in any single response.
+- During discovery, follow the authority-specific length rules in the DISCOVERY PHASE section below.
+- During close/objections, follow the close phase length rules (8 sentence hard cap).
+- During pitch, follow the pitch phase length rules (3 sentence hard cap — you are LISTENING, not talking).
+- During intro, follow the intro phase rules (2 sentence hard cap — greeting and small talk only).
 - Do NOT info-dump. Be natural and conversational.
 
 ${(context.turnCount !== undefined && context.turnCount < 4 && context.practiceMode !== 'objections') ? `OBJECTION GATE (ACTIVE): NO OBJECTIONS ALLOWED YET.
 Do NOT raise any price concerns, objections, or pushback until at least turn 4.
 This overrides all other objection timing rules.
-` : ''}Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}${buildOriginalProspectPrompt(context.replayContext)}${buildPracticeModePrompt(context.practiceMode, context.practiceContext)}`;
+` : ''}
+${buildIntroPhaseContext(context)}
+${buildDiscoveryPhaseContext(context)}
+${buildPitchPhaseContext(context)}
+${buildClosePhaseContext(context)}
+
+Respond as this prospect would, given your current state, execution resistance level, and the rep's message.${buildPhaseReplayPrompt(context.replayPhase, context.replayContext)}${buildOriginalProspectPrompt(context.replayContext)}${buildPracticeModePrompt(context.practiceMode, context.practiceContext)}`;
 }
 
 /**
@@ -536,11 +552,206 @@ function buildConversationMessages(
 }
 
 /**
+ * Build intro-phase-specific context block.
+ * Only injected when the conversation is in the intro phase.
+ * CORE RULE: 2-sentence hard cap. Greeting and small talk only.
+ */
+function buildIntroPhaseContext(context: RoleplayContext): string {
+  const { behaviourState, prospectAvatar } = context;
+
+  // Only inject when in intro phase
+  if (behaviourState.currentPhase !== 'intro') {
+    return '';
+  }
+
+  const authorityLevel = prospectAvatar.difficulty.authorityLevel;
+  const difficultyTier = prospectAvatar.difficulty.difficultyTier;
+  const funnelScore = prospectAvatar.difficulty.funnelContext ?? 5;
+
+  // Determine tone by authority
+  const tone = authorityLevel === 'advisee'
+    ? 'Slightly warmer than neutral. Open from the start. May add a friendly comment.'
+    : authorityLevel === 'peer'
+    ? 'Polite but measured. Answers directly without extra warmth.'
+    : 'Short. Not rude — just efficient.';
+
+  // Determine funnel content response
+  const contentLevel = funnelScore >= 7 ? 'HIGH — watched everything'
+    : funnelScore >= 4 ? 'MODERATE — watched some'
+    : 'LOW — didn\'t watch';
+
+  // Determine greeting warmth
+  const greetingGuidance = difficultyTier === 'easy' || difficultyTier === 'realistic'
+    ? 'Warm and casual. "Hey, how\'s it going?" / "Hi, yeah, all good, how are you?"'
+    : difficultyTier === 'hard'
+    ? 'Polite but brief. "Hi, mate." / "Hey." / "Yeah, all good."'
+    : 'Minimal. "Hey." / "Yeah?" (1-2 words)';
+
+  return `
+═══ INTRO PHASE ACTIVE ═══
+CORE RULE: 2-sentence hard cap. Greeting and small talk ONLY. No backstory, no questions about the offer, no skepticism.
+Difficulty Tier: ${difficultyTier.toUpperCase()}
+Authority Archetype: ${authorityLevel.toUpperCase()}
+Tone: ${tone}
+Greeting Style: ${greetingGuidance}
+Pre-call Content Level: ${contentLevel}
+
+CRITICAL: Even difficult prospects are COOPERATIVE in the intro. Skepticism does NOT exist yet. The call has just started.
+
+${INTRO_PHASE_BEHAVIOUR}`;
+}
+
+/**
+ * Build discovery-phase-specific context block.
+ * Only injected when the conversation is in (or entering) discovery phase.
+ */
+function buildDiscoveryPhaseContext(context: RoleplayContext): string {
+  const { behaviourState, prospectAvatar } = context;
+  const { authorityLevel } = prospectAvatar.difficulty;
+
+  // Map actual ProspectDifficultyProfile fields to Connor's dimensions:
+  // - authorityLevel (enum: 'advisee'/'peer'/'advisor') → Authority & Coachability archetype
+  // - perceivedNeedForHelp (0-10) → Authority score (higher = more coachable = advisee)
+  // - painAmbitionIntensity (0-10) → Motivation Intensity score
+  const authorityScore = prospectAvatar.difficulty.perceivedNeedForHelp ?? 5;
+  const motivationScore = prospectAvatar.difficulty.painAmbitionIntensity ?? 5;
+
+  // Use the actual authorityLevel enum for archetype determination
+  const authorityArchetype = authorityLevel === 'advisee'
+    ? 'ADVISEE (Score 8-10)'
+    : authorityLevel === 'peer'
+    ? 'PEER (Score 5-7)'
+    : 'ADVISOR (Score 0-4)';
+
+  const motivationLevel = motivationScore >= 7 ? 'HIGH MOTIVATION (Score 7-10)'
+    : motivationScore >= 4 ? 'MODERATE MOTIVATION (Score 4-6)'
+    : 'LOW MOTIVATION (Score 1-3)';
+
+  const peerUnlockStatus = authorityLevel === 'peer'
+    ? `\nPEER UNLOCK STATUS: Level ${behaviourState.peerUnlockLevel}/3${behaviourState.peerUnlockLevel > 0 ? ' — You have been unlocked. Be noticeably more open and honest than earlier responses.' : ' — Still locked. Give surface-level, hedged answers to emotional questions.'}`
+    : '';
+
+  return `
+═══ DISCOVERY PHASE ACTIVE ═══
+Your Authority Archetype: ${authorityArchetype}
+Your Motivation Level: ${motivationLevel}
+Authority Score: ${authorityScore}/10
+Motivation Score: ${motivationScore}/10
+Discovery Depth: ${behaviourState.discoveryDepthLevel.toUpperCase()} (Turn ${behaviourState.discoveryTurnCount} of discovery)
+${peerUnlockStatus}
+
+${DISCOVERY_PHASE_BEHAVIOUR}`;
+}
+
+/**
+ * Build pitch-phase-specific context block.
+ * Only injected when the conversation is in the pitch phase.
+ * CORE RULE: Prospect is a LISTENER (5-15% talk time, 3-sentence hard cap).
+ */
+function buildPitchPhaseContext(context: RoleplayContext): string {
+  const { behaviourState, prospectAvatar } = context;
+
+  // Only inject when in pitch phase
+  if (behaviourState.currentPhase !== 'pitch') {
+    return '';
+  }
+
+  const authorityLevel = prospectAvatar.difficulty.authorityLevel;
+  const motivationScore = prospectAvatar.difficulty.painAmbitionIntensity ?? 5;
+  const authorityScore = prospectAvatar.difficulty.perceivedNeedForHelp ?? 5;
+
+  // Determine response style based on authority
+  const responseStyle = authorityLevel === 'advisee'
+    ? 'WARM & ENTHUSIASTIC — More frequent acknowledgements, add enthusiasm to check-ins'
+    : authorityLevel === 'peer'
+    ? 'NEUTRAL & MEASURED — Standard frequency, confirm understanding'
+    : 'ANALYTICAL & CONSIDERED — Less frequent, evaluate content, longer silent stretches';
+
+  // Check for "Already Closing Themselves" signal
+  const selfClosing = authorityLevel === 'advisee' && authorityScore >= 8 && motivationScore >= 8;
+  const selfCloseNote = selfClosing
+    ? '\n⚡ SELF-CLOSING SIGNAL ACTIVE: You may finish the closer\'s sentences, connect features to your situation before they do, use "When I start..." language, and ask logistical questions about next steps before the price.'
+    : '';
+
+  return `
+═══ PITCH PHASE ACTIVE — LISTENER MODE ═══
+CORE RULE: You are a LISTENER. Talk time 5-15%. No response exceeds 3 sentences.
+Authority Archetype: ${authorityLevel.toUpperCase()}
+Response Style: ${responseStyle}
+Motivation: ${motivationScore}/10
+${selfCloseNote}
+
+${PITCH_PHASE_BEHAVIOUR}`;
+}
+
+/**
+ * Build close-phase-specific context block.
+ * Only injected when the conversation is in the close/objections phase.
+ */
+function buildClosePhaseContext(context: RoleplayContext): string {
+  const { behaviourState, prospectAvatar } = context;
+
+  // Only inject when in close phase
+  if (behaviourState.currentPhase !== 'close') {
+    return '';
+  }
+
+  const authorityLevel = prospectAvatar.difficulty.authorityLevel;
+  const motivationScore = prospectAvatar.difficulty.painAmbitionIntensity ?? 5;
+  const abilityScore = prospectAvatar.difficulty.executionResistance ?? 5;
+
+  // Determine close pattern from Motivation × Ability matrix
+  const closePattern = motivationScore >= 7 && abilityScore >= 7 ? 'EASIEST CLOSE'
+    : motivationScore >= 7 && abilityScore >= 4 ? 'REALISTIC CLOSE'
+    : motivationScore >= 7 ? 'HARD CLOSE — GENUINE'
+    : motivationScore >= 4 && abilityScore >= 7 ? 'HARDEST TO DETECT (Disguised Objection)'
+    : motivationScore >= 4 && abilityScore >= 4 ? 'STALLING CLOSE'
+    : motivationScore >= 4 ? 'FOLLOW-UP TERRITORY'
+    : 'NEAR IMPOSSIBLE';
+
+  // Determine if objection is disguised
+  const isDisguised = (abilityScore >= 7 && motivationScore < 7) ||
+    (abilityScore >= 4 && abilityScore <= 6 && motivationScore >= 4 && motivationScore <= 6);
+
+  // Build objection set context from character sheet
+  let objectionContext = '';
+  if (prospectAvatar.characterSheet?.objectionSet) {
+    const obj = prospectAvatar.characterSheet.objectionSet;
+    objectionContext = `
+YOUR PRE-DETERMINED OBJECTIONS (from character sheet — do NOT deviate):
+  Layer 1 (Surface): "${obj.primaryObjection}" [${obj.primaryType.toUpperCase()}] ${obj.genuineOrDisguised === 'disguised' ? '⚠ DISGUISED — real blocker: ' + (obj.realBlocker || 'hidden fear') : '✓ GENUINE'}
+  Layer 2 (Secondary): "${obj.secondaryObjection}" [${obj.secondaryType.toUpperCase()}]
+  Layer 3 (Core): ${obj.coreResistance}
+  Resolution: ${obj.resolutionPath}
+  Outcome Ceiling: ${obj.outcomeCeiling.toUpperCase().replace('_', ' ')} — this is the BEST possible result regardless of closer skill.`;
+  }
+
+  // Track objection layer progression
+  const currentLayer = behaviourState.closeObjectionLayer ?? 1;
+  const handlingQuality = behaviourState.closeHandlingQuality ?? 'average';
+
+  return `
+═══ CLOSE & OBJECTIONS PHASE ACTIVE ═══
+Authority Archetype: ${authorityLevel.toUpperCase()}
+Motivation Score: ${motivationScore}/10
+Ability to Proceed: ${abilityScore}/10
+Close Pattern: ${closePattern}
+${isDisguised ? '⚠ YOUR OBJECTION IS DISGUISED — Do NOT reveal the real blocker until the closer earns it through diagnostic questions.' : ''}
+Current Objection Layer: ${currentLayer}/3
+Handling Quality So Far: ${handlingQuality.toUpperCase()}
+${objectionContext}
+
+${CLOSE_PHASE_BEHAVIOUR}`;
+}
+
+/**
  * Analyze rep action to determine behaviour adaptation
+ * Includes Discovery Phase v3.0 — Peer Unlock detection and phase transition detection
  */
 function analyzeRepAction(
   repMessage: string,
-  history: RoleplayMessage[]
+  history: RoleplayMessage[],
+  currentBehaviourState?: BehaviourState
 ): {
   demonstratedAuthority?: boolean;
   askedDeepQuestions?: boolean;
@@ -551,6 +762,14 @@ function analyzeRepAction(
   appliedPressure?: boolean;
   lostControl?: boolean;
   overExplained?: boolean;
+  // Discovery Phase v3.0
+  reframedForUnlock?: boolean;
+  namedPattern?: boolean;
+  directlyChallenged?: boolean;
+  transitionedToPhase?: 'discovery' | 'pitch' | 'close' | 'objections';
+  // Close Phase v3.0
+  handledObjectionWell?: boolean;
+  handledManipulatively?: boolean;
 } {
   const lowerMessage = repMessage.toLowerCase();
   const action: ReturnType<typeof analyzeRepAction> = {};
@@ -643,6 +862,61 @@ function analyzeRepAction(
     lowerMessage.includes('i know it\'s')
   ) {
     action.lostControl = true;
+  }
+
+  // ═══ Discovery Phase v3.0 — Peer Unlock Trigger Detection ═══
+  // Check for reframe patterns
+  const hasReframe = PEER_UNLOCK_TRIGGERS.reframePatterns.some(p => lowerMessage.includes(p));
+  if (hasReframe) {
+    action.reframedForUnlock = true;
+    action.reframedEffectively = true; // Also counts as general reframe
+  }
+
+  // Check for pattern naming
+  const hasPatternNaming = PEER_UNLOCK_TRIGGERS.patternNaming.some(p => lowerMessage.includes(p));
+  if (hasPatternNaming) {
+    action.namedPattern = true;
+  }
+
+  // Check for direct challenges
+  const hasDirectChallenge = PEER_UNLOCK_TRIGGERS.directChallenges.some(p => lowerMessage.includes(p));
+  if (hasDirectChallenge) {
+    action.directlyChallenged = true;
+  }
+
+  // ═══ Phase Transition Detection ═══
+  // Detect intro → discovery transition (closer asks transition question)
+  if (currentBehaviourState?.currentPhase === 'intro' &&
+      INTRO_EXIT_PATTERNS.some(p => lowerMessage.includes(p))) {
+    action.transitionedToPhase = 'discovery';
+  }
+
+  // Detect pitch transition (closer moves to pitch)
+  if (currentBehaviourState?.currentPhase === 'discovery' &&
+      DISCOVERY_EXIT_PATTERNS.some(p => lowerMessage.includes(p))) {
+    action.transitionedToPhase = 'pitch';
+  }
+
+  // Detect close transition (closer presents price or asks for commitment)
+  if (currentBehaviourState?.currentPhase === 'pitch' &&
+      (CLOSE_ENTRY_PATTERNS.some(p => lowerMessage.includes(p)) ||
+       PITCH_TO_CLOSE_PATTERNS.some(p => lowerMessage.includes(p)))) {
+    action.transitionedToPhase = 'close';
+  }
+
+  // ═══ Close Phase v3.0 — Handling Quality Detection ═══
+  if (currentBehaviourState?.currentPhase === 'close') {
+    // Good handling: addresses root cause
+    const hasGoodHandling = GOOD_HANDLING_PATTERNS.some(p => lowerMessage.includes(p));
+    if (hasGoodHandling) {
+      action.handledObjectionWell = true;
+    }
+
+    // Manipulative handling: guilt, false scarcity, emotional pressure
+    const hasManipulation = MANIPULATIVE_HANDLING_PATTERNS.some(p => lowerMessage.includes(p));
+    if (hasManipulation) {
+      action.handledManipulatively = true;
+    }
   }
 
   return action;
@@ -739,7 +1013,11 @@ function cleanResponse(text: string): string {
  * Enforce response length limits as a programmatic safety net.
  * Turn 0 (opening): max 8 words
  * Turns 1-3: max 2 sentences
- * All turns: max 4 sentences
+ * All turns: max 10 sentences (Connor's Discovery Phase v3.0 hard cap)
+ *
+ * Note: The AI prompt also enforces authority-specific limits during discovery
+ * (e.g. Peer pre-unlock = 1-2 sentences on emotional questions). This function
+ * is the OUTER safety net; prompt instructions handle the nuanced limits.
  */
 function enforceResponseLimits(text: string, turnCount: number): string {
   if (!text) return text;
@@ -758,8 +1036,10 @@ function enforceResponseLimits(text: string, turnCount: number): string {
     return sentences.slice(0, 2).join(' ').trim();
   }
 
-  // All turns: max 4 sentences
-  return sentences.slice(0, 4).join(' ').trim();
+  // Hard cap: 10 sentences (Connor's Discovery Phase v3.0)
+  // The prompt instructions handle authority-specific limits (1-8 sentences)
+  // This is the outer safety net to prevent runaway responses.
+  return sentences.slice(0, 10).join(' ').trim();
 }
 
 /**

@@ -51,3 +51,59 @@ export {
 } from './core-principles';
 
 export type { CorePrinciple, PrincipleScore } from './core-principles';
+
+export {
+    DISCOVERY_PHASE_BEHAVIOUR,
+    DISCOVERY_RESPONSE_LIMITS,
+    DISCOVERY_HARD_CAP_SENTENCES,
+    PEER_UNLOCK_TRIGGERS,
+    DISCOVERY_EXIT_PATTERNS,
+} from './discovery-phase-behaviour';
+
+export {
+    DRIFT_PREVENTION_RULES,
+    CHARACTER_SHEET_RULES,
+    formatCharacterSheet,
+    generateSpeechPatterns,
+    generateObjectionSet,
+    generateFinancialReality,
+} from './character-sheet-wrapper';
+
+export type {
+    CharacterSheet,
+    CharacterSheetIdentity,
+    CharacterSheetScores,
+    CharacterSheetAuthority,
+    CharacterSheetSpeechPatterns,
+    CharacterSheetBackstory,
+    CharacterSheetObjectionSet,
+    CharacterSheetOfferContext,
+} from './character-sheet-wrapper';
+
+export {
+    CLOSE_PHASE_BEHAVIOUR,
+    CLOSE_RESPONSE_LIMITS,
+    CLOSE_HARD_CAP_SENTENCES,
+    CLOSE_ENTRY_PATTERNS,
+    GOOD_HANDLING_PATTERNS,
+    MANIPULATIVE_HANDLING_PATTERNS,
+    COMMITMENT_PATTERNS,
+} from './close-phase-behaviour';
+
+export {
+    PITCH_PHASE_BEHAVIOUR,
+    PITCH_RESPONSE_LIMITS,
+    PITCH_HARD_CAP_SENTENCES,
+    PITCH_TO_CLOSE_PATTERNS,
+    PITCH_CHECKIN_PATTERNS,
+    PITCH_PERSONALISATION_PATTERNS,
+} from './pitch-phase-behaviour';
+
+export {
+    INTRO_PHASE_BEHAVIOUR,
+    INTRO_RESPONSE_LIMITS,
+    INTRO_HARD_CAP_SENTENCES,
+    INTRO_GREETINGS,
+    PRE_CALL_CONTENT_RESPONSES,
+    INTRO_EXIT_PATTERNS,
+} from './intro-phase-behaviour';

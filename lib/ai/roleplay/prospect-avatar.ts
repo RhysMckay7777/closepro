@@ -1,5 +1,11 @@
 // Layer 2: Prospect Avatar & Difficulty Intelligence (50-Point Model)
 
+import {
+  CharacterSheet, CharacterSheetIdentity, CharacterSheetScores,
+  CharacterSheetAuthority, CharacterSheetBackstory, CharacterSheetOfferContext,
+  generateSpeechPatterns, generateObjectionSet, generateFinancialReality,
+} from '@/lib/training/character-sheet-wrapper';
+
 // Realistic prospect names for auto-generated avatars (no "Auto-Generated X Prospect")
 const FIRST_NAMES = [
   'James', 'Maria', 'David', 'Sarah', 'Michael', 'Emma', 'Chris', 'Lisa', 'Alex', 'Jennifer',
@@ -133,6 +139,10 @@ export interface ProspectAvatar {
     openness?: 'closed' | 'cautious' | 'open';
     responseSpeed?: 'slow' | 'normal' | 'fast';
   };
+
+  // Character Sheet v3.0 (Connor's Character Sheet Wrapper)
+  // Generated once at session start, locked for entire call.
+  characterSheet?: CharacterSheet;
 }
 
 /**
@@ -721,4 +731,214 @@ export function generateBehaviourProfile(
         responseSpeed: 'normal',
       };
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// Character Sheet Generation (Connor v3.0)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Generate a complete 7-section character sheet from prospect data.
+ * Rule 1: Scores are ALREADY generated — this builds identity/backstory/objections
+ * to FIT those scores.
+ */
+export function generateCharacterSheet(params: {
+  name: string;
+  gender: ProspectGender;
+  difficulty: ProspectDifficultyProfile;
+  offer: {
+    offerCategory?: string;
+    offerName?: string;
+    priceRange?: string;
+    coreOutcome?: string;
+    whoItsFor?: string;
+    coreProblems?: string;
+    guaranteesRefundTerms?: string;
+  };
+  existingContext?: string; // From generateProspectContext(), used to populate backstory
+}): CharacterSheet {
+  const { name, gender, difficulty, offer, existingContext } = params;
+  const firstName = name.split(' ')[0] || name;
+
+  // Deterministic seeded random from name
+  const nameHash = name.toLowerCase().split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+  let seed = nameHash;
+  const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+  const pick = <T>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
+
+  // Age and location — deterministic from name
+  const age = 25 + (nameHash % 23);
+  const location = pick(LOCATIONS);
+  const isUK = ['London', 'Manchester', 'Birmingham', 'Leeds', 'Bristol', 'Edinburgh',
+    'Liverpool', 'Glasgow', 'Nottingham', 'Newcastle', 'Cardiff', 'Sheffield',
+    'Brighton', 'Southampton', 'Leicester', 'Coventry', 'Belfast', 'Dublin'].includes(location);
+  const currency = isUK ? '£' : '$';
+
+  // Job and income from role pools
+  const rolePool = ROLE_POOLS[difficulty.difficultyTier] || ROLE_POOLS.realistic;
+  const role = pick(rolePool);
+  const incomeBase = difficulty.executionResistance >= 7 ? 3000 + (nameHash % 4) * 1000
+    : difficulty.executionResistance >= 4 ? 2000 + (nameHash % 3) * 500
+    : 1000 + (nameHash % 3) * 300;
+  const income = `${currency}${incomeBase.toLocaleString()}/month`;
+
+  // Family status — affects whether partner objection is valid
+  const hasPartner = rand() > 0.35; // 65% have a partner
+  const hasChildren = hasPartner && rand() > 0.5;
+  const partnerGender = gender === 'male' ? 'wife' : gender === 'female' ? 'husband' : 'partner';
+  const familyStatus = hasPartner
+    ? hasChildren
+      ? `Lives with ${partnerGender} and ${Math.ceil(rand() * 3)} child${Math.ceil(rand() * 3) > 1 ? 'ren' : ''}`
+      : `In a relationship with ${partnerGender}`
+    : 'Single, no dependents';
+
+  const livingSituation = difficulty.executionResistance >= 7
+    ? pick(['Owns a home, mortgage manageable', 'Renting a decent flat, stable'])
+    : difficulty.executionResistance >= 4
+    ? pick(['Renting, shared with partner', 'Small flat, rent takes up 40% of income'])
+    : pick(['Renting, behind on payments', 'Living with parents to save money', 'Shared housing, barely covering rent']);
+
+  // Section 1: Identity
+  const identity: CharacterSheetIdentity = {
+    name: firstName,
+    age,
+    gender: gender === 'any' ? (rand() > 0.5 ? 'male' : 'female') : gender as 'male' | 'female',
+    location: `${location}, ${isUK ? 'UK' : 'US'}`,
+    job: `${role}, working ${difficulty.executionResistance <= 4 ? 'long hours' : 'standard hours'}`,
+    income,
+    familyStatus,
+    livingSituation,
+  };
+
+  // Section 2: Difficulty Scores
+  const scores: CharacterSheetScores = {
+    icpAlignment: difficulty.positionProblemAlignment,
+    motivationIntensity: difficulty.painAmbitionIntensity,
+    authorityAndCoachability: difficulty.perceivedNeedForHelp,
+    funnelContext: difficulty.funnelContext,
+    abilityToProceed: difficulty.executionResistance,
+    total: difficulty.difficultyIndex,
+    difficultyBand: difficulty.difficultyTier.charAt(0).toUpperCase() + difficulty.difficultyTier.slice(1).replace('_', ' '),
+  };
+
+  // Section 3: Authority Archetype
+  const authorityDescriptions = {
+    advisee: {
+      corePosture: 'Open to being helped. Respects the closer\'s authority and expertise.',
+      howTheyShare: 'Detailed, emotional, volunteers context unprompted. Shares story behind facts.',
+      howTheyPushBack: 'Transparent — asks questions rather than challenging. Rarely pushes back.',
+      howTheyDecide: 'Follows the closer\'s lead if trust and value are established.',
+    },
+    peer: {
+      corePosture: 'Evaluative. Respects competence but needs to see proof before trusting.',
+      howTheyShare: 'Factual, measured, surface-level until trust is earned. Hedged language.',
+      howTheyPushBack: 'Evaluative — compares options, mentions competitors, asks pointed questions.',
+      howTheyDecide: 'Evaluates independently. Needs to feel like they made the choice, not that they were sold.',
+    },
+    advisor: {
+      corePosture: 'Positions as an equal or superior. Has opinions about everything.',
+      howTheyShare: 'A lot of detail but on THEIR terms. Talks about their experience and analysis.',
+      howTheyPushBack: 'Controlling — challenges questions, redirects to their expertise, asks questions back.',
+      howTheyDecide: 'Takes control of the decision. Will resist any feeling of being "sold to."',
+    },
+  };
+
+  const archDesc = authorityDescriptions[difficulty.authorityLevel];
+  const authority: CharacterSheetAuthority = {
+    archetype: difficulty.authorityLevel,
+    corePosture: archDesc.corePosture,
+    howTheyShare: archDesc.howTheyShare,
+    howTheyPushBack: archDesc.howTheyPushBack,
+    howTheyDecide: archDesc.howTheyDecide,
+  };
+
+  // Section 4: Speech Patterns
+  const speechPatterns = generateSpeechPatterns(location, age, difficulty.authorityLevel);
+
+  // Section 5: Backstory
+  const motivationIntensity = difficulty.painAmbitionIntensity;
+  const coreProblem = motivationIntensity >= 7
+    ? pick([
+      `Reached a breaking point — the current job is destroying ${identity.gender === 'male' ? 'his' : 'her'} confidence and energy.`,
+      `Can\'t keep doing this for another year. The financial pressure is building and something has to change.`,
+    ])
+    : motivationIntensity >= 4
+    ? pick([
+      `Knows the current situation isn\'t ideal but hasn\'t hit rock bottom yet. More uncomfortable than desperate.`,
+      `Wants more from life but keeps putting off the change. Comfortable enough to keep delaying.`,
+    ])
+    : pick([
+      `No urgent problem. Just curious and exploring options. Could walk away without losing sleep.`,
+      `Life is fine. A friend mentioned this and it sounded interesting. No real pressure to act.`,
+    ]);
+
+  const coreAmbition = motivationIntensity >= 7
+    ? `Wants to hit ${currency}${(5000 + (nameHash % 10) * 1000).toLocaleString()}/month within 6 months. Has a specific vision of what that life looks like.`
+    : motivationIntensity >= 4
+    ? `Would like to make ${currency}${(3000 + (nameHash % 5) * 1000).toLocaleString()}/month eventually. Flexible on timeline.`
+    : 'Just wants to make a bit more than currently. No specific target.';
+
+  const whyNow = motivationIntensity >= 7
+    ? pick(['Recent event forced a reckoning — can\'t ignore it anymore.', 'Deadline approaching that makes this urgent.'])
+    : motivationIntensity >= 4
+    ? pick(['Saw some content that resonated.', 'Friend suggested it and the timing felt right.'])
+    : pick(['A friend told them about it.', 'Saw an ad and clicked. No specific trigger.']);
+
+  const financialReality = generateFinancialReality(
+    difficulty.executionResistance,
+    income,
+    location
+  );
+
+  const backstory: CharacterSheetBackstory = {
+    currentSituation: existingContext?.slice(0, 200) || `Works as a ${role} in ${location}. ${livingSituation}. ${familyStatus}.`,
+    coreProblem,
+    coreAmbition,
+    whyNow,
+    whatTheyTried: pick([
+      'Tried dropshipping — lost money. Looked at trading — seemed like a scam.',
+      'Explored appointment setting, had a bad experience with a pushy sales call.',
+      'Started a YouTube channel but never monetized it. Got discouraged.',
+      'Bought a course before but never finished it. Felt like a waste.',
+      'No previous attempts. This is the first time seriously looking into it.',
+    ]),
+    keyRelationships: hasPartner ? `${partnerGender.charAt(0).toUpperCase() + partnerGender.slice(1)} — ${rand() > 0.5 ? 'supportive but cautious about money' : 'skeptical about online programs'}.` : 'No partner involved in the decision.',
+    financialReality,
+    timeAvailability: difficulty.executionResistance >= 7
+      ? `${10 + (nameHash % 15)} hours per week available. Could make more if needed.`
+      : difficulty.executionResistance >= 4
+      ? `${5 + (nameHash % 10)} hours per week, squeezed around the day job.`
+      : '2-3 hours per week at best. Already stretched thin.',
+  };
+
+  // Section 6: Objection Set
+  const objectionSet = generateObjectionSet(
+    difficulty.authorityLevel,
+    difficulty.executionResistance,
+    hasPartner
+  );
+
+  // Section 7: Offer Context
+  const priceStr = offer.priceRange || '5000-15000';
+  const priceMatch = priceStr.match(/(\d+)/g);
+  const maxPrice = priceMatch && priceMatch.length > 1 ? parseInt(priceMatch[1]) : 10000;
+
+  const offerContext: CharacterSheetOfferContext = {
+    offerType: offer.offerCategory?.replace(/_/g, ' ') || 'sales coaching',
+    offerName: offer.offerName || 'The Program',
+    price: `${currency}${maxPrice.toLocaleString()}`,
+    paymentOptions: `PIF / ${Math.ceil(maxPrice / 1000)}-month plan / ${currency}${Math.round(maxPrice * 0.1)} deposit`,
+    corePromise: offer.coreOutcome || 'Build a high-income skill and replace your current income',
+    guarantee: offer.guaranteesRefundTerms || undefined,
+  };
+
+  return {
+    identity,
+    scores,
+    authority,
+    speechPatterns,
+    backstory,
+    objectionSet,
+    offerContext,
+  };
 }
