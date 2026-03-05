@@ -7,7 +7,8 @@ import { roleplaySessions, offers, prospectAvatars } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { buildVoiceSystemPrompt, generateInitialProspectMessage, RoleplayContext } from '@/lib/ai/roleplay/roleplay-engine';
 import { OfferProfile } from '@/lib/ai/roleplay/offer-intelligence';
-import { ProspectAvatar } from '@/lib/ai/roleplay/prospect-avatar';
+import { ProspectAvatar, generateCharacterSheet } from '@/lib/ai/roleplay/prospect-avatar';
+import { CharacterSheet } from '@/lib/training/character-sheet-wrapper';
 import { FunnelContext } from '@/lib/ai/roleplay/funnel-context';
 import { initializeBehaviourState } from '@/lib/ai/roleplay/behaviour-rules';
 import { getVoiceIdFromProspect, getVoiceModeConfig } from '@/lib/ai/roleplay/voice-mapping';
@@ -159,6 +160,49 @@ export async function GET(
     } else {
       prospectAvatar = createDefaultProspect(roleplay[0].selectedDifficulty || 'intermediate');
       funnelContext = { type: 'warm_inbound', score: 5 };
+    }
+
+    // ═══ Character Sheet — Generate ONCE, lock for entire voice session ═══
+    // Connor's Character Sheet Wrapper: "Generated at session start, locked for the entire call."
+    const sessionMetadataRaw = roleplay[0].metadata ? JSON.parse(roleplay[0].metadata) : {};
+    let characterSheet: CharacterSheet | undefined = sessionMetadataRaw.characterSheet;
+
+    if (!characterSheet) {
+      try {
+        const prospectGender: 'male' | 'female' | 'any' = roleplay[0].prospectAvatarId
+          ? ((await db.select({ gender: prospectAvatars.gender }).from(prospectAvatars).where(eq(prospectAvatars.id, roleplay[0].prospectAvatarId)).limit(1))[0]?.gender as 'male' | 'female') || 'any'
+          : 'any';
+
+        characterSheet = generateCharacterSheet({
+          name: prospectName,
+          gender: prospectGender,
+          difficulty: prospectAvatar.difficulty,
+          offer: {
+            offerCategory: offerProfile.offerCategory,
+            offerName: offerData[0].name || undefined,
+            priceRange: offerProfile.priceRange,
+            coreOutcome: offerProfile.coreOutcome,
+            whoItsFor: offerProfile.whoItsFor,
+            coreProblems: offerProfile.primaryProblemsSolved?.join(', '),
+            guaranteesRefundTerms: offerProfile.guaranteesRefundTerms,
+          },
+          existingContext: prospectAvatar.positionDescription,
+        });
+        // Persist to session metadata so it's locked for the entire call
+        sessionMetadataRaw.characterSheet = characterSheet;
+        await db
+          .update(roleplaySessions)
+          .set({ metadata: JSON.stringify(sessionMetadataRaw) })
+          .where(eq(roleplaySessions.id, sessionId));
+      } catch (err) {
+        logger.warn('ROLEPLAY', 'Failed to generate character sheet for voice session', { sessionId, error: String(err) });
+        // Non-fatal — voice session continues without character sheet
+      }
+    }
+
+    // Attach character sheet to prospect avatar (activates drift prevention + objection lock)
+    if (characterSheet) {
+      prospectAvatar.characterSheet = characterSheet;
     }
 
     // Build behaviour state

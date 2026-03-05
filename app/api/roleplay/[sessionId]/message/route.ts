@@ -8,7 +8,8 @@ import { eq, and } from 'drizzle-orm';
 import { users } from '@/db/schema';
 import { generateProspectResponse, RoleplayContext, RoleplayMessage } from '@/lib/ai/roleplay/roleplay-engine';
 import { OfferProfile } from '@/lib/ai/roleplay/offer-intelligence';
-import { ProspectAvatar } from '@/lib/ai/roleplay/prospect-avatar';
+import { ProspectAvatar, generateCharacterSheet } from '@/lib/ai/roleplay/prospect-avatar';
+import { CharacterSheet } from '@/lib/training/character-sheet-wrapper';
 import { FunnelContext } from '@/lib/ai/roleplay/funnel-context';
 import { BehaviourState, initializeBehaviourState } from '@/lib/ai/roleplay/behaviour-rules';
 
@@ -156,6 +157,8 @@ export async function POST(
     // Get prospect avatar or create default
     let prospectAvatar: ProspectAvatar;
     let funnelContext: FunnelContext;
+    let prospectName = 'Prospect';
+    let prospectGender: 'male' | 'female' | 'any' = 'any';
 
     if (roleplay[0].prospectAvatarId) {
       const avatarData = await db
@@ -181,6 +184,8 @@ export async function POST(
           painDrivers: avatarData[0].painDrivers ? JSON.parse(avatarData[0].painDrivers) : undefined,
           ambitionDrivers: avatarData[0].ambitionDrivers ? JSON.parse(avatarData[0].ambitionDrivers) : undefined,
         };
+        prospectName = avatarData[0].name;
+        prospectGender = (avatarData[0].gender as 'male' | 'female') || 'any';
 
         funnelContext = {
           type: 'warm_inbound',
@@ -197,6 +202,46 @@ export async function POST(
       funnelContext = { type: 'warm_inbound', score: 5 };
     }
 
+    // ═══ Character Sheet — Generate ONCE, lock for entire session ═══
+    // Connor's Character Sheet Wrapper: "Generated at session start, locked for the entire call."
+    // Check session metadata first — if already generated, reuse it (identity lock).
+    const sessionMetadataRaw = roleplay[0].metadata ? JSON.parse(roleplay[0].metadata) : {};
+    let characterSheet: CharacterSheet | undefined = sessionMetadataRaw.characterSheet;
+
+    if (!characterSheet) {
+      try {
+        characterSheet = generateCharacterSheet({
+          name: prospectName,
+          gender: prospectGender,
+          difficulty: prospectAvatar.difficulty,
+          offer: {
+            offerCategory: offerProfile.offerCategory,
+            offerName: offerData[0].name || undefined,
+            priceRange: offerProfile.priceRange,
+            coreOutcome: offerProfile.coreOutcome,
+            whoItsFor: offerProfile.whoItsFor,
+            coreProblems: offerProfile.primaryProblemsSolved?.join(', '),
+            guaranteesRefundTerms: offerProfile.guaranteesRefundTerms,
+          },
+          existingContext: prospectAvatar.positionDescription,
+        });
+        // Persist to session metadata so it's locked for the entire call
+        sessionMetadataRaw.characterSheet = characterSheet;
+        await db
+          .update(roleplaySessions)
+          .set({ metadata: JSON.stringify(sessionMetadataRaw) })
+          .where(eq(roleplaySessions.id, sessionId));
+      } catch (err) {
+        console.error('[roleplay-engine] Failed to generate character sheet:', err);
+        // Non-fatal — roleplay continues without character sheet
+      }
+    }
+
+    // Attach character sheet to prospect avatar (activates drift prevention + objection lock)
+    if (characterSheet) {
+      prospectAvatar.characterSheet = characterSheet;
+    }
+
     // Build conversation history
     const conversationHistory: RoleplayMessage[] = existingMessages.map(msg => ({
       role: msg.role as 'rep' | 'prospect',
@@ -205,9 +250,9 @@ export async function POST(
     }));
 
     // Load persisted behaviour state from session metadata, or initialize on first message
-    const sessionMetadata = roleplay[0].metadata ? JSON.parse(roleplay[0].metadata) : {};
-    const behaviourState: BehaviourState = isValidBehaviourState(sessionMetadata.behaviourState)
-      ? sessionMetadata.behaviourState
+    // Note: sessionMetadataRaw was already parsed above during character sheet loading
+    const behaviourState: BehaviourState = isValidBehaviourState(sessionMetadataRaw.behaviourState)
+      ? sessionMetadataRaw.behaviourState
       : initializeBehaviourState(prospectAvatar.difficulty, funnelContext);
 
     // Calculate turn count (number of prospect messages so far)
@@ -246,11 +291,16 @@ export async function POST(
     }).returning({ id: roleplayMessages.id });
 
     // Update session metadata with behaviour state (store in metadata JSON)
-    const currentMetadata = roleplay[0].metadata ? JSON.parse(roleplay[0].metadata) : {};
-    currentMetadata.behaviourState = updatedBehaviourState;
+    // Merge with existing metadata (which includes characterSheet from above)
+    const updatedMetadata = roleplay[0].metadata ? JSON.parse(roleplay[0].metadata) : {};
+    updatedMetadata.behaviourState = updatedBehaviourState;
+    // Ensure character sheet is preserved in metadata
+    if (characterSheet && !updatedMetadata.characterSheet) {
+      updatedMetadata.characterSheet = characterSheet;
+    }
     await db
       .update(roleplaySessions)
-      .set({ metadata: JSON.stringify(currentMetadata) })
+      .set({ metadata: JSON.stringify(updatedMetadata) })
       .where(eq(roleplaySessions.id, sessionId));
 
     return NextResponse.json({
