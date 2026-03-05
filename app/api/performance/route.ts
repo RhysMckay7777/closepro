@@ -456,143 +456,157 @@ export async function GET(request: NextRequest) {
     // ── Fetch call analyses (with categoryFeedback + priorityFixes + v2 phase data) ──
     // Use COALESCE(callDate, createdAt) for filtering/sorting so manually backdated
     // calls appear in the correct period (call_date is truth, createdAt is fallback).
-    const callDateCoalesce = sql`COALESCE(${salesCalls.callDate}, ${salesCalls.createdAt})`;
-    const callAnalysesRaw = await db
-      .select({
-        id: callAnalysis.id,
-        callId: salesCalls.id,
-        overallScore: callAnalysis.overallScore,
-        skillScores: callAnalysis.skillScores,
-        categoryFeedback: callAnalysis.categoryFeedback,
-        phaseScores: callAnalysis.phaseScores,
-        phaseAnalysis: callAnalysis.phaseAnalysis,
-        actionPoints: callAnalysis.actionPoints,
-        objectionDetails: callAnalysis.objectionDetails,
-        objectionPresent: callAnalysis.objectionPresent,
-        objectionResolved: callAnalysis.objectionResolved,
-        priorityFixes: callAnalysis.priorityFixes,
-        prospectDifficulty: callAnalysis.prospectDifficulty,
-        createdAt: salesCalls.createdAt,
-        callDate: salesCalls.callDate,
-        callResult: salesCalls.result,
-        prospectName: salesCalls.prospectName,
-      })
-      .from(callAnalysis)
-      .innerJoin(salesCalls, eq(callAnalysis.callId, salesCalls.id))
-      .where(
-        and(
-          eq(salesCalls.userId, userId),
-          gte(callDateCoalesce, startDate),
-          lte(callDateCoalesce, endDate)
+    let callAnalyses: AnalysisRow[] = [];
+    try {
+      const callDateCoalesce = sql`COALESCE(${salesCalls.callDate}, ${salesCalls.createdAt})`;
+      const callAnalysesRaw = await db
+        .select({
+          id: callAnalysis.id,
+          callId: salesCalls.id,
+          overallScore: callAnalysis.overallScore,
+          skillScores: callAnalysis.skillScores,
+          categoryFeedback: callAnalysis.categoryFeedback,
+          phaseScores: callAnalysis.phaseScores,
+          phaseAnalysis: callAnalysis.phaseAnalysis,
+          actionPoints: callAnalysis.actionPoints,
+          objectionDetails: callAnalysis.objectionDetails,
+          objectionPresent: callAnalysis.objectionPresent,
+          objectionResolved: callAnalysis.objectionResolved,
+          priorityFixes: callAnalysis.priorityFixes,
+          prospectDifficulty: callAnalysis.prospectDifficulty,
+          createdAt: salesCalls.createdAt,
+          callDate: salesCalls.callDate,
+          callResult: salesCalls.result,
+          prospectName: salesCalls.prospectName,
+        })
+        .from(callAnalysis)
+        .innerJoin(salesCalls, eq(callAnalysis.callId, salesCalls.id))
+        .where(
+          and(
+            eq(salesCalls.userId, userId),
+            gte(callDateCoalesce, startDate),
+            lte(callDateCoalesce, endDate)
+          )
         )
-      )
-      .orderBy(desc(callDateCoalesce));
+        .orderBy(desc(callDateCoalesce));
 
-    // Parse JSON fields — with v2 fallback chain for skillScores
-    const callAnalyses: AnalysisRow[] = callAnalysesRaw.map(a => {
-      const parsedSkillScores = safeParse(a.skillScores as any);
-      const parsedCategoryFeedback = safeParse(a.categoryFeedback as any);
-      const parsedPhaseScores = safeParse(a.phaseScores as any);
-      // Fallback chain: skillScores → categoryFeedback (has .score per cat) → derived from phaseScores
-      const isEmpty = (obj: any) => !obj || typeof obj !== 'object' || Object.keys(obj).length === 0;
-      let effectiveSkillScores = parsedSkillScores;
-      if (isEmpty(effectiveSkillScores) && !isEmpty(parsedCategoryFeedback)) {
-        effectiveSkillScores = parsedCategoryFeedback; // parseSkillScoresFlat handles { score: X } objects
-      }
-      if (isEmpty(effectiveSkillScores) && parsedPhaseScores) {
-        effectiveSkillScores = deriveSkillScoresFromPhases(parsedPhaseScores);
-      }
-      return {
-        overallScore: a.overallScore,
-        skillScores: effectiveSkillScores,
-        categoryFeedback: parsedCategoryFeedback,
-        objectionData: a.objectionDetails,
-        priorityFixesData: a.priorityFixes,
-        createdAt: a.createdAt,
-        effectiveDate: a.callDate ? new Date(a.callDate) : new Date(a.createdAt),
-        type: 'call' as const,
-        entityId: a.callId,
-        analysisId: a.id,
-        prospectName: (a as any).prospectName ?? null,
-        phaseScoresData: parsedPhaseScores,
-        phaseAnalysisData: safeParse(a.phaseAnalysis as any),
-        actionPointsData: safeParse(a.actionPoints as any),
-        prospectDifficultyScore: a.prospectDifficulty ?? null,
-        callResult: (a as any).callResult ?? null,
-        objectionPresent: a.objectionPresent ?? null,
-        objectionResolved: a.objectionResolved ?? null,
-      };
-    });
+      // Parse JSON fields — with v2 fallback chain for skillScores
+      callAnalyses = callAnalysesRaw.map(a => {
+        const parsedSkillScores = safeParse(a.skillScores as any);
+        const parsedCategoryFeedback = safeParse(a.categoryFeedback as any);
+        const parsedPhaseScores = safeParse(a.phaseScores as any);
+        // Fallback chain: skillScores → categoryFeedback (has .score per cat) → derived from phaseScores
+        const isEmpty = (obj: any) => !obj || typeof obj !== 'object' || Object.keys(obj).length === 0;
+        let effectiveSkillScores = parsedSkillScores;
+        if (isEmpty(effectiveSkillScores) && !isEmpty(parsedCategoryFeedback)) {
+          effectiveSkillScores = parsedCategoryFeedback; // parseSkillScoresFlat handles { score: X } objects
+        }
+        if (isEmpty(effectiveSkillScores) && parsedPhaseScores) {
+          effectiveSkillScores = deriveSkillScoresFromPhases(parsedPhaseScores);
+        }
+        return {
+          overallScore: a.overallScore,
+          skillScores: effectiveSkillScores,
+          categoryFeedback: parsedCategoryFeedback,
+          objectionData: a.objectionDetails,
+          priorityFixesData: a.priorityFixes,
+          createdAt: a.createdAt,
+          effectiveDate: a.callDate ? new Date(a.callDate) : new Date(a.createdAt),
+          type: 'call' as const,
+          entityId: a.callId,
+          analysisId: a.id,
+          prospectName: (a as any).prospectName ?? null,
+          phaseScoresData: parsedPhaseScores,
+          phaseAnalysisData: safeParse(a.phaseAnalysis as any),
+          actionPointsData: safeParse(a.actionPoints as any),
+          prospectDifficultyScore: a.prospectDifficulty ?? null,
+          callResult: (a as any).callResult ?? null,
+          objectionPresent: a.objectionPresent ?? null,
+          objectionResolved: a.objectionResolved ?? null,
+        };
+      });
+    } catch (callQueryErr: unknown) {
+      console.error('[Performance API] SECTION FAILED: Call analysis query', callQueryErr instanceof Error ? callQueryErr.message : callQueryErr);
+      logger.error('PERFORMANCE', 'Call analysis query failed — returning empty call data', callQueryErr);
+      // callAnalyses stays as empty array — page shows roleplay-only data
+    }
 
     // ── Fetch roleplay analyses (with categoryFeedback + priorityFixes + v2 phase data) ──
-    const roleplayAnalysesRaw = await db
-      .select({
-        id: roleplayAnalysis.id,
-        sessionId: roleplaySessions.id,
-        overallScore: roleplayAnalysis.overallScore,
-        skillScores: roleplayAnalysis.skillScores,
-        categoryFeedback: roleplayAnalysis.categoryFeedback,
-        phaseScores: roleplayAnalysis.phaseScores,
-        phaseAnalysis: roleplayAnalysis.phaseAnalysis,
-        actionPoints: roleplayAnalysis.actionPoints,
-        objectionAnalysis: roleplayAnalysis.objectionAnalysis,
-        priorityFixes: roleplayAnalysis.priorityFixes,
-        prospectDifficulty: roleplayAnalysis.prospectDifficulty,
-        createdAt: roleplaySessions.createdAt,
-        offerId: roleplaySessions.offerId,
-        offerCategory: offers.offerCategory,
-        offerName: offers.name,
-        selectedDifficulty: roleplaySessions.selectedDifficulty,
-        actualDifficultyTier: roleplaySessions.actualDifficultyTier,
-      })
-      .from(roleplayAnalysis)
-      .innerJoin(roleplaySessions, eq(roleplayAnalysis.roleplaySessionId, roleplaySessions.id))
-      .leftJoin(offers, eq(roleplaySessions.offerId, offers.id))
-      .where(
-        and(
-          eq(roleplaySessions.userId, userId),
-          gte(roleplaySessions.createdAt, startDate),
-          lte(roleplaySessions.createdAt, endDate)
+    let roleplayAnalyses: AnalysisRow[] = [];
+    try {
+      const roleplayAnalysesRaw = await db
+        .select({
+          id: roleplayAnalysis.id,
+          sessionId: roleplaySessions.id,
+          overallScore: roleplayAnalysis.overallScore,
+          skillScores: roleplayAnalysis.skillScores,
+          categoryFeedback: roleplayAnalysis.categoryFeedback,
+          phaseScores: roleplayAnalysis.phaseScores,
+          phaseAnalysis: roleplayAnalysis.phaseAnalysis,
+          actionPoints: roleplayAnalysis.actionPoints,
+          objectionAnalysis: roleplayAnalysis.objectionAnalysis,
+          priorityFixes: roleplayAnalysis.priorityFixes,
+          prospectDifficulty: roleplayAnalysis.prospectDifficulty,
+          createdAt: roleplaySessions.createdAt,
+          offerId: roleplaySessions.offerId,
+          offerCategory: offers.offerCategory,
+          offerName: offers.name,
+          selectedDifficulty: roleplaySessions.selectedDifficulty,
+          actualDifficultyTier: roleplaySessions.actualDifficultyTier,
+        })
+        .from(roleplayAnalysis)
+        .innerJoin(roleplaySessions, eq(roleplayAnalysis.roleplaySessionId, roleplaySessions.id))
+        .leftJoin(offers, eq(roleplaySessions.offerId, offers.id))
+        .where(
+          and(
+            eq(roleplaySessions.userId, userId),
+            gte(roleplaySessions.createdAt, startDate),
+            lte(roleplaySessions.createdAt, endDate)
+          )
         )
-      )
-      .orderBy(desc(roleplaySessions.createdAt));
+        .orderBy(desc(roleplaySessions.createdAt));
 
-    // Parse JSON fields — with v2 fallback chain for skillScores
-    const roleplayAnalyses: AnalysisRow[] = roleplayAnalysesRaw.map(a => {
-      const parsedSkillScores = safeParse(a.skillScores as any);
-      const parsedCategoryFeedback = safeParse(a.categoryFeedback as any);
-      const parsedPhaseScores = safeParse(a.phaseScores as any);
-      const isEmpty = (obj: any) => !obj || typeof obj !== 'object' || Object.keys(obj).length === 0;
-      let effectiveSkillScores = parsedSkillScores;
-      if (isEmpty(effectiveSkillScores) && !isEmpty(parsedCategoryFeedback)) {
-        effectiveSkillScores = parsedCategoryFeedback;
-      }
-      if (isEmpty(effectiveSkillScores) && parsedPhaseScores) {
-        effectiveSkillScores = deriveSkillScoresFromPhases(parsedPhaseScores);
-      }
-      return {
-        overallScore: a.overallScore,
-        skillScores: effectiveSkillScores,
-        categoryFeedback: parsedCategoryFeedback,
-        objectionData: a.objectionAnalysis,
-        priorityFixesData: a.priorityFixes,
-        createdAt: a.createdAt,
-        effectiveDate: new Date(a.createdAt), // Roleplays don't have callDate — use createdAt
-        type: 'roleplay' as const,
-        offerId: a.offerId,
-        offerCategory: a.offerCategory,
-        offerName: a.offerName,
-        prospectName: a.offerName ?? 'Roleplay',
-        selectedDifficulty: a.selectedDifficulty,
-        actualDifficultyTier: a.actualDifficultyTier,
-        entityId: a.sessionId,
-        analysisId: a.id,
-        phaseScoresData: parsedPhaseScores,
-        phaseAnalysisData: safeParse(a.phaseAnalysis as any),
-        actionPointsData: safeParse(a.actionPoints as any),
-        prospectDifficultyScore: a.prospectDifficulty ?? null,
-      };
-    });
+      // Parse JSON fields — with v2 fallback chain for skillScores
+      roleplayAnalyses = roleplayAnalysesRaw.map(a => {
+        const parsedSkillScores = safeParse(a.skillScores as any);
+        const parsedCategoryFeedback = safeParse(a.categoryFeedback as any);
+        const parsedPhaseScores = safeParse(a.phaseScores as any);
+        const isEmpty = (obj: any) => !obj || typeof obj !== 'object' || Object.keys(obj).length === 0;
+        let effectiveSkillScores = parsedSkillScores;
+        if (isEmpty(effectiveSkillScores) && !isEmpty(parsedCategoryFeedback)) {
+          effectiveSkillScores = parsedCategoryFeedback;
+        }
+        if (isEmpty(effectiveSkillScores) && parsedPhaseScores) {
+          effectiveSkillScores = deriveSkillScoresFromPhases(parsedPhaseScores);
+        }
+        return {
+          overallScore: a.overallScore,
+          skillScores: effectiveSkillScores,
+          categoryFeedback: parsedCategoryFeedback,
+          objectionData: a.objectionAnalysis,
+          priorityFixesData: a.priorityFixes,
+          createdAt: a.createdAt,
+          effectiveDate: new Date(a.createdAt), // Roleplays don't have callDate — use createdAt
+          type: 'roleplay' as const,
+          offerId: a.offerId,
+          offerCategory: a.offerCategory,
+          offerName: a.offerName,
+          prospectName: a.offerName ?? 'Roleplay',
+          selectedDifficulty: a.selectedDifficulty,
+          actualDifficultyTier: a.actualDifficultyTier,
+          entityId: a.sessionId,
+          analysisId: a.id,
+          phaseScoresData: parsedPhaseScores,
+          phaseAnalysisData: safeParse(a.phaseAnalysis as any),
+          actionPointsData: safeParse(a.actionPoints as any),
+          prospectDifficultyScore: a.prospectDifficulty ?? null,
+        };
+      });
+    } catch (roleplayQueryErr: unknown) {
+      console.error('[Performance API] SECTION FAILED: Roleplay analysis query', roleplayQueryErr instanceof Error ? roleplayQueryErr.message : roleplayQueryErr);
+      logger.error('PERFORMANCE', 'Roleplay analysis query failed — returning empty roleplay data', roleplayQueryErr);
+      // roleplayAnalyses stays as empty array — page shows call-only data
+    }
 
     // ── Combine and sort by effectiveDate (callDate for calls, createdAt for roleplays) ──
     const filteredCalls = sourceParam === 'roleplays' ? [] : callAnalyses;
@@ -1180,7 +1194,8 @@ export async function GET(request: NextRequest) {
         ? Math.round((figSalesMade / figCallsShowed) * 1000) / 10
         : null;
     } catch (figErr: unknown) {
-      logger.warn('PERFORMANCE', 'Figures-compatible close rate query failed, falling back', figErr as Record<string, unknown>);
+      console.error('[Performance API] SECTION FAILED: Figures close-rate query', figErr instanceof Error ? figErr.message : figErr);
+      logger.warn('PERFORMANCE', 'Figures-compatible close rate query failed, falling back', { error: figErr instanceof Error ? figErr.message : String(figErr) });
       // Fallback to analysed-only close rate
       const allCallsWithResult = allAnalyses.filter(a => a.type === 'call' && (a as any).callResult);
       const closedCalls = allCallsWithResult.filter(a => (a as any).callResult === 'closed');
@@ -1903,9 +1918,13 @@ export async function GET(request: NextRequest) {
       v2: v2Data,
     });
   } catch (error) {
+    const errMsg = error instanceof Error ? error.message : String(error);
+    const errStack = error instanceof Error ? error.stack : undefined;
+    console.error('[Performance API] FATAL UNHANDLED ERROR:', errMsg);
+    if (errStack) console.error('[Performance API] Stack:', errStack);
     logger.error('PERFORMANCE', 'Failed to fetch performance data', error);
     return NextResponse.json(
-      { error: 'Failed to fetch performance data' },
+      { error: 'Failed to fetch performance data', detail: errMsg },
       { status: 500 }
     );
   }

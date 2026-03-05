@@ -167,7 +167,14 @@ export default function PerformancePage() {
       console.log('[Performance] Fetching:', url, { selectedMonth, selectedYear, dataSource });
       const response = await fetch(url, { cache: 'no-store' });
       if (!response.ok) {
-        throw new Error('Failed to fetch performance data');
+        // Try to extract detailed error from API response
+        let detail = '';
+        try {
+          const errBody = await response.json();
+          detail = errBody.detail || errBody.error || '';
+          console.error('[Performance] API error response:', errBody);
+        } catch { /* ignore parse failure */ }
+        throw new Error(detail || `Failed to fetch performance data (HTTP ${response.status})`);
       }
       const data = await response.json();
       console.log('[Performance] Response period:', data.period, 'totalAnalyses:', data.totalAnalyses);

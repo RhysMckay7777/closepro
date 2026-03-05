@@ -382,9 +382,29 @@ export function useVoiceSession({
         stableConnectionTimerRef.current = null;
       }
 
+      // Pre-check microphone permission to give a clear error before connecting
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        // Immediately release the stream — ElevenLabs will request its own
+        stream.getTracks().forEach(track => track.stop());
+        console.log('[VoiceSession] Microphone access confirmed');
+      } catch (micErr: any) {
+        const micMessage = micErr?.name === 'NotAllowedError'
+          ? 'Microphone access denied — please allow microphone permission in your browser settings and try again.'
+          : micErr?.name === 'NotFoundError'
+            ? 'No microphone found — please connect a microphone and try again.'
+            : `Microphone error: ${micErr?.message || 'unknown'}`;
+        console.error('[VoiceSession] Microphone pre-check failed:', micMessage);
+        setError(micMessage);
+        setVoiceStatus('disconnected');
+        onError?.(micMessage);
+        return;
+      }
+
       // Fetch signed URL (or reuse cached) + overrides from our API
       clearVoiceCache(); // Clear stale cache from previous session
       const { signedUrl, dynamicVariables } = await getOrFetchSignedUrl();
+      console.log('[VoiceSession] Starting session with signed URL');
 
       // Pass dynamic variables — ElevenLabs injects into {{prospect_context}}, {{offer_info}}, {{first_message}}
       await conversation.startSession({ signedUrl, dynamicVariables });
@@ -395,6 +415,7 @@ export function useVoiceSession({
     } catch (err: any) {
       const message = err?.message || 'Failed to start voice session';
       reportClientError('use-voice-session', `Start failed: ${message}`, { sessionId });
+      console.error('[VoiceSession] Start failed:', message);
       setError(message);
       setVoiceStatus('disconnected');
       onError?.(message);
