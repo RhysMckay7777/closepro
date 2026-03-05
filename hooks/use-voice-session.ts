@@ -43,6 +43,7 @@ export function useVoiceSession({
   const hasConnectedRef = useRef(false);
   const connectionStartTimeRef = useRef<number>(0);
   const keepaliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsAliveRef = useRef(false); // Track if WebSocket is in a usable state
 
   // Stable connection timer — only reset attempt counter after 10s of stable connection
   const stableConnectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -243,6 +244,7 @@ export function useVoiceSession({
     onConnect: () => {
 
       hasConnectedRef.current = true;
+      wsAliveRef.current = true;
       isReconnectingRef.current = false;
       setReconnectFailed(false);
       setError(null);
@@ -255,6 +257,7 @@ export function useVoiceSession({
       // Works alongside inactivity_timeout=180 on the signed URL.
       if (keepaliveRef.current) clearInterval(keepaliveRef.current);
       keepaliveRef.current = setInterval(() => {
+        if (!wsAliveRef.current) return; // Don't send on dead socket
         try {
           conversationRef.current?.sendContextualUpdate('');
         } catch {
@@ -274,6 +277,7 @@ export function useVoiceSession({
       }, STABLE_CONNECTION_THRESHOLD_MS);
     },
     onDisconnect: () => {
+      wsAliveRef.current = false; // Mark socket as dead immediately
       const connectionDuration = connectionStartTimeRef.current
         ? Date.now() - connectionStartTimeRef.current
         : Infinity;
@@ -315,16 +319,31 @@ export function useVoiceSession({
     onError: (message: string) => {
       reportClientError('use-voice-session', `Voice error: ${message}`, { sessionId });
 
-      // WebSocket errors should trigger reconnect
-      const isWebSocketError =
-        message.includes('WebSocket') ||
+      // WebSocket CLOSING/CLOSED errors — suppress if socket is already dead
+      // to prevent the reconnect → endSession → more errors → reconnect loop
+      const isClosingError =
         message.includes('CLOSING') ||
-        message.includes('CLOSED') ||
+        message.includes('CLOSED');
+
+      if (isClosingError && !wsAliveRef.current) {
+        // Socket is already dead — just suppress, don't cascade
+        return;
+      }
+
+      // Mark socket as dead on any WebSocket error
+      const isWebSocketError =
+        isClosingError ||
+        message.includes('WebSocket') ||
         message.includes('connection');
+
+      if (isWebSocketError) {
+        wsAliveRef.current = false;
+      }
 
       if (isWebSocketError && hasConnectedRef.current && !isReconnectingRef.current) {
         attemptReconnect();
-      } else {
+      } else if (!isClosingError) {
+        // Only surface non-WebSocket errors to the user
         setError(message);
         onError?.(message);
       }
@@ -341,7 +360,7 @@ export function useVoiceSession({
       // Turn gating: after user speaks, if < 4 prospect turns, remind AI to stay brief and avoid objections
       if (props.role === 'user') {
         const prospectTurns = transcriptRef.current.filter(e => e.role === 'prospect').length;
-        if (prospectTurns < 4) {
+        if (prospectTurns < 4 && wsAliveRef.current) {
           try {
             conversationRef.current?.sendContextualUpdate(
               'NO OBJECTIONS YET. Keep responses to 1-2 sentences. Be neutral and conversational.'
