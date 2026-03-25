@@ -191,15 +191,29 @@ export default function BillingPage() {
                   </p>
                 </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => window.open('https://whop.com/portal', '_blank')}
-                className="text-xs"
-              >
-                Manage via Whop
-                <ExternalLink className="ml-1.5 h-3 w-3" />
-              </Button>
+              {subscription.planTier === 'starter' ? (
+                <Button
+                  variant="default"
+                  size="sm"
+                  asChild
+                  className="text-xs"
+                >
+                  <Link href="/pricing">
+                    Upgrade to Pro
+                    <ArrowUpRight className="ml-1.5 h-3 w-3" />
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => window.open('https://whop.com/portal', '_blank')}
+                  className="text-xs"
+                >
+                  Manage Subscription
+                  <ExternalLink className="ml-1.5 h-3 w-3" />
+                </Button>
+              )}
             </div>
           </CardHeader>
         </Card>
@@ -296,39 +310,53 @@ export default function BillingPage() {
           <CardTitle className="font-serif text-base">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <Button variant="outline" className="w-full justify-between h-9 text-sm" asChild>
-            <Link href="/pricing">
-              <span className="flex items-center gap-2">
-                <TrendingUp className="h-3.5 w-3.5" />
-                Upgrade Plan
-              </span>
-              <ArrowUpRight className="h-3.5 w-3.5" />
-            </Link>
-          </Button>
+          {subscription?.planTier === 'starter' ? (
+            <Button variant="outline" className="w-full justify-between h-9 text-sm" asChild>
+              <Link href="/pricing">
+                <span className="flex items-center gap-2">
+                  <Zap className="h-3.5 w-3.5" />
+                  Upgrade to Pro — £99/month
+                </span>
+                <ArrowUpRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          ) : (
+            <>
+              <Button variant="outline" className="w-full justify-between h-9 text-sm" asChild>
+                <Link href="/pricing">
+                  <span className="flex items-center gap-2">
+                    <TrendingUp className="h-3.5 w-3.5" />
+                    Change Plan
+                  </span>
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
 
-          <Button
-            variant="outline"
-            className="w-full justify-between h-9 text-sm"
-            onClick={() => window.open('https://whop.com/portal', '_blank')}
-          >
-            <span className="flex items-center gap-2">
-              <CreditCard className="h-3.5 w-3.5" />
-              Payment Method
-            </span>
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-between h-9 text-sm"
+                onClick={() => window.open('https://whop.com/portal', '_blank')}
+              >
+                <span className="flex items-center gap-2">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Payment Method
+                </span>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
 
-          <Button
-            variant="outline"
-            className="w-full justify-between h-9 text-sm"
-            onClick={() => window.open('https://whop.com/portal', '_blank')}
-          >
-            <span className="flex items-center gap-2">
-              <Calendar className="h-3.5 w-3.5" />
-              Billing History
-            </span>
-            <ExternalLink className="h-3.5 w-3.5" />
-          </Button>
+              <Button
+                variant="outline"
+                className="w-full justify-between h-9 text-sm"
+                onClick={() => window.open('https://whop.com/portal', '_blank')}
+              >
+                <span className="flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5" />
+                  Billing History
+                </span>
+                <ExternalLink className="h-3.5 w-3.5" />
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
