@@ -167,9 +167,15 @@ export function Sidebar({
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
   const [loadingOrgs, setLoadingOrgs] = useState(true);
   const [switchingOrg, setSwitchingOrg] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     fetchOrganizations();
+    // Check admin status to conditionally show admin link
+    fetch('/api/admin/check')
+      .then((res) => res.json())
+      .then((data) => setIsAdmin(data.isAdmin === true))
+      .catch(() => setIsAdmin(false));
   }, []);
 
   const fetchOrganizations = async () => {
@@ -332,7 +338,14 @@ export function Sidebar({
 
       {/* Navigation */}
       <nav className={cn("flex-1 overflow-y-auto overflow-x-hidden space-y-8", collapsed ? "px-2 flex flex-col items-center" : "px-4")}>
-        {navSections.map((section) => (
+        {navSections.map((section) => {
+          // Filter out admin-only items for non-admin users
+          const filteredItems = section.items.filter(
+            (item) => item.href !== '/dashboard/admin' || isAdmin
+          );
+          if (filteredItems.length === 0) return null;
+
+          return (
           <div key={section.title} className={cn(collapsed && "w-full flex flex-col items-center")}>
             {!collapsed && (
               <div className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider mb-3 px-2">
@@ -340,7 +353,7 @@ export function Sidebar({
               </div>
             )}
             <div className={cn("space-y-1", collapsed && "w-11 flex flex-col items-center")}>
-              {section.items.map((item) => {
+              {filteredItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = pathname === item.href;
 
@@ -384,7 +397,8 @@ export function Sidebar({
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
 
 
       </nav>
