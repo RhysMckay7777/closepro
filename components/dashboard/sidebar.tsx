@@ -34,6 +34,7 @@ import {
   Check,
   Loader2,
   Compass,
+  Shield,
 } from 'lucide-react';
 import { useTour } from '@/components/tour';
 
@@ -125,6 +126,12 @@ const navSections: NavSection[] = [
         title: 'Billing',
         href: '/dashboard/billing',
         icon: CreditCard,
+      },
+      {
+        title: 'Admin',
+        href: '/dashboard/admin',
+        icon: Shield,
+        badge: 'Dev',
       },
     ],
   },
