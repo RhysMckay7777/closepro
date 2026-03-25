@@ -6,11 +6,12 @@ import { users, subscriptions } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { createWhopCheckoutUrl } from '@/lib/whop';
 import { PlanTier, PLANS } from '@/lib/plans';
+import { validateCoupon, getCouponWhopPlanId } from '@/lib/coupons';
 
 /**
  * Checkout API - Handles plan selection
  * - Starter (Free): Activates free subscription directly
- * - Pro: Redirects to Whop checkout
+ * - Pro: Redirects to Whop checkout (with optional coupon code)
  * - Enterprise: Returns mailto link for sales
  */
 export async function POST(request: NextRequest) {
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { planTier } = body as { planTier: PlanTier };
+    const { planTier, couponCode } = body as { planTier: PlanTier; couponCode?: string };
 
     if (!planTier || !['starter', 'pro', 'enterprise'].includes(planTier)) {
       return NextResponse.json(
@@ -105,14 +106,46 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true });
     }
 
-    // Pro → redirect to Whop checkout
+    // Pro → redirect to Whop checkout (with optional coupon)
+    let couponDiscount: number | undefined;
+
+    if (couponCode) {
+      const coupon = validateCoupon(couponCode);
+      if (!coupon) {
+        return NextResponse.json(
+          { error: 'Invalid coupon code' },
+          { status: 400 }
+        );
+      }
+
+      couponDiscount = coupon.discountPercent;
+
+      // Check if coupon has a dedicated discounted Whop plan
+      const couponPlanId = getCouponWhopPlanId(coupon);
+      if (couponPlanId) {
+        // Use the discounted Whop plan directly
+        const baseUrl = `https://whop.com/checkout/${couponPlanId}`;
+        const params = new URLSearchParams({
+          metadata: JSON.stringify({ organizationId, planTier, couponCode: coupon.code }),
+          prefilled_email: user[0].email,
+        });
+        return NextResponse.json({
+          checkoutUrl: `${baseUrl}?${params.toString()}`,
+          discount: couponDiscount,
+        });
+      }
+    }
+
     const checkoutUrl = createWhopCheckoutUrl(
       planTier,
       organizationId,
       user[0].email,
     );
 
-    return NextResponse.json({ checkoutUrl });
+    return NextResponse.json({
+      checkoutUrl,
+      ...(couponDiscount && { discount: couponDiscount }),
+    });
   } catch (error) {
     console.error('Error creating checkout:', error);
     return NextResponse.json(
@@ -121,3 +154,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

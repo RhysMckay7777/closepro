@@ -4,13 +4,17 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, ArrowRight, Sparkles, ArrowLeft } from 'lucide-react';
+import { Check, X, ArrowRight, Sparkles, ArrowLeft, Tag } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { PLANS, PlanTier } from '@/lib/plans';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function PricingPage() {
   const [isLoading, setIsLoading] = useState<string | null>(null);
+  const [couponCode, setCouponCode] = useState('');
+  const [showCoupon, setShowCoupon] = useState(false);
+  const [couponError, setCouponError] = useState<string | null>(null);
   const router = useRouter();
 
   const handleSelectPlan = async (tier: PlanTier) => {
@@ -51,10 +55,21 @@ export default function PricingPage() {
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ planTier: tier }),
+        body: JSON.stringify({
+          planTier: tier,
+          ...(couponCode.trim() && { couponCode: couponCode.trim() }),
+        }),
       });
 
       const data = await response.json();
+
+      if (!response.ok) {
+        if (data.error === 'Invalid coupon code') {
+          setCouponError('Invalid coupon code');
+        }
+        setIsLoading(null);
+        return;
+      }
 
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
@@ -65,6 +80,7 @@ export default function PricingPage() {
     } catch (error) {
       console.error('Error starting checkout:', error);
       setIsLoading(null);
+      setCouponError(null);
     }
   };
 
@@ -203,7 +219,7 @@ export default function PricingPage() {
                 </div>
               </CardContent>
 
-              <CardFooter>
+              <CardFooter className="flex flex-col gap-2">
                 <Button
                   className="w-full"
                   size="lg"
@@ -220,6 +236,41 @@ export default function PricingPage() {
                     </>
                   )}
                 </Button>
+
+                {/* Hidden coupon input — only on Pro card */}
+                {isPro && (
+                  <div className="w-full">
+                    {!showCoupon ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowCoupon(true)}
+                        className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center py-1"
+                      >
+                        Have a coupon code?
+                      </button>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <div className="flex gap-1.5">
+                          <div className="relative flex-1">
+                            <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
+                            <Input
+                              placeholder="Enter code"
+                              value={couponCode}
+                              onChange={(e) => {
+                                setCouponCode(e.target.value.toUpperCase());
+                                setCouponError(null);
+                              }}
+                              className="h-8 text-xs pl-8 uppercase"
+                            />
+                          </div>
+                        </div>
+                        {couponError && (
+                          <p className="text-xs text-destructive">{couponError}</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </CardFooter>
             </Card>
           );
