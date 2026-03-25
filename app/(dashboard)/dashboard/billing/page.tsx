@@ -114,7 +114,7 @@ export default function BillingPage() {
           <h1 className="text-2xl sm:text-3xl font-serif font-semibold">Billing & Subscription</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage your subscription and usage</p>
         </div>
-        {subscription && (
+        {subscription && !subscription.isAdminGranted && (
           <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
             <Link href="/pricing">
               <ArrowUpRight className="mr-2 h-4 w-4" />
