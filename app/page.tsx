@@ -224,7 +224,7 @@ export default function Home() {
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {[
                 { name: 'Starter', desc: 'For individual reps getting started with AI coaching', price: 'Free', cta: 'Get Started', href: '/signin', popular: false, features: ['Call analysis & transcription', 'AI insights & next steps', 'Basic roleplay practice', 'Your figures & close rate'] },
-                { name: 'Pro', desc: 'For teams that want to coach and scale performance', price: '£99', cta: 'Subscribe Now', href: 'https://whop.com/checkout/plan_sQvClKg9scBcT', popular: true, features: ['Unlimited call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
+                { name: 'Pro', desc: 'For teams that want to coach and scale performance', price: '£99', cta: 'Subscribe Now', href: '/pricing', popular: true, features: ['Unlimited call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
                 { name: 'Enterprise', desc: 'For orgs that need full control and security', price: 'Custom', cta: 'Contact Sales', href: '#', popular: false, features: ['Everything in Pro', 'SSO & advanced security', 'Dedicated success manager', 'Custom integrations'] },
               ].map((plan) => (
                 <div
