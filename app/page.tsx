@@ -223,9 +223,9 @@ export default function Home() {
             </div>
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {[
-                { name: 'Starter', desc: 'For individual reps getting started with AI coaching', price: 'Free', cta: 'Get Started', popular: false, features: ['Call analysis & transcription', 'AI insights & next steps', 'Basic roleplay practice', 'Your figures & close rate'] },
-                { name: 'Pro', desc: 'For teams that want to coach and scale performance', price: 'Custom', cta: 'Contact Sales', popular: true, features: ['Unlimited call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
-                { name: 'Enterprise', desc: 'For orgs that need full control and security', price: 'Custom', cta: 'Contact Sales', popular: false, features: ['Everything in Pro', 'SSO & advanced security', 'Dedicated success manager', 'Custom integrations'] },
+                { name: 'Starter', desc: 'For individual reps getting started with AI coaching', price: 'Free', cta: 'Get Started', href: '/signin', popular: false, features: ['Call analysis & transcription', 'AI insights & next steps', 'Basic roleplay practice', 'Your figures & close rate'] },
+                { name: 'Pro', desc: 'For teams that want to coach and scale performance', price: '£99', cta: 'Subscribe Now', href: 'https://whop.com/checkout/plan_sQvClKg9scBcT', popular: true, features: ['Unlimited call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
+                { name: 'Enterprise', desc: 'For orgs that need full control and security', price: 'Custom', cta: 'Contact Sales', href: '#', popular: false, features: ['Everything in Pro', 'SSO & advanced security', 'Dedicated success manager', 'Custom integrations'] },
               ].map((plan) => (
                 <div
                   key={plan.name}
@@ -244,10 +244,10 @@ export default function Home() {
                     </div>
                     <div className="mb-4 flex items-end gap-1">
                       <span className="text-4xl font-semibold tracking-tighter text-black/80 dark:text-white/80">{plan.price}</span>
-                      {plan.price !== 'Free' && <span className="mb-1 text-xs tracking-tighter text-black/60 dark:text-white/60">/month</span>}
+                      {plan.price !== 'Free' && plan.price !== 'Custom' && <span className="mb-1 text-xs tracking-tighter text-black/60 dark:text-white/60">/month</span>}
                     </div>
                     <Link
-                      href={plan.cta === 'Contact Sales' ? '#' : '/signin'}
+                      href={plan.href}
                       className={`inline-flex h-9 w-full items-center justify-center rounded-lg border px-4 py-2 text-xs font-medium tracking-tighter transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${plan.popular
                         ? 'mb-4 border-[#d09e38] border-dashed bg-[#ecbf64]/20 text-neutral-900 hover:bg-[#ecbf64]/30 dark:bg-[#ecbf64]/20 dark:text-neutral-50 dark:hover:bg-[#ecbf64]/30'
                         : 'mb-4 border-dashed border-black/5 bg-black/5 text-black/80 hover:bg-black/10 dark:border-white/10 dark:bg-white/5 dark:text-white/80 dark:hover:bg-white/10'

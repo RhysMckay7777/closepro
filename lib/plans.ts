@@ -23,7 +23,7 @@ export const PLANS: Record<PlanTier, PlanFeatures> = {
   starter: {
     name: 'Starter',
     tier: 'starter',
-    price: 99,
+    price: 0,
     maxSeats: 5,
     callsPerMonth: 50,
     roleplaySessionsPerMonth: 0,
@@ -40,7 +40,7 @@ export const PLANS: Record<PlanTier, PlanFeatures> = {
   pro: {
     name: 'Pro',
     tier: 'pro',
-    price: 399,
+    price: 99,
     maxSeats: 20,
     callsPerMonth: 200,
     roleplaySessionsPerMonth: 50,

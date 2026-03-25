@@ -87,10 +87,12 @@ export default function PricingPage() {
                 <div className="mt-4 flex items-baseline justify-center gap-2">
                   {isEnterprise ? (
                     <span className="text-4xl font-bold">Custom</span>
+                  ) : plan.price === 0 ? (
+                    <span className="text-5xl font-bold tracking-tight">Free</span>
                   ) : (
                     <>
                       <span className="text-5xl font-bold tracking-tight">
-                        ${plan.price}
+                        £{plan.price}
                       </span>
                       <span className="text-muted-foreground">/month</span>
                     </>
