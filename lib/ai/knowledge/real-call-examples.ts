@@ -264,7 +264,7 @@ export const REAL_CALL_EXAMPLES: RealCallExample[] = [
     },
     {
         id: 'raj-call',
-        title: 'ClosePro Raj Call - Product Demo',
+        title: 'ProCloser Raj Call - Product Demo',
         source: 'close pro raj call',
         prospectProfile: {
             name: 'Sales Manager',

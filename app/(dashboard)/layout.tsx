@@ -4,11 +4,11 @@ import DashboardShell from './dashboard-shell';
 
 export const metadata: Metadata = {
   title: 'Dashboard',
-  description: 'ClosePro dashboard – performance, figures, calls, AI roleplay, and team.',
+  description: 'ProCloser dashboard – performance, figures, calls, AI roleplay, and team.',
   robots: { index: false, follow: true },
   openGraph: {
     title: `Dashboard | ${seo.siteName}`,
-    description: 'ClosePro dashboard – performance, figures, calls, AI roleplay.',
+    description: 'ProCloser dashboard – performance, figures, calls, AI roleplay.',
     url: `${seo.baseUrl}/dashboard`,
   },
 };

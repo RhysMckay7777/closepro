@@ -9,7 +9,7 @@ export const DASHBOARD_TOUR_STEPS: TourStep[] = [
   {
     id: 'greeting',
     targetSelector: '[data-tour="dashboard-greeting"]',
-    title: 'Welcome to ClosePro',
+    title: 'Welcome to ProCloser',
     description: "Here's your performance at a glance. Your calls and roleplays feed into these numbers.",
   },
   {

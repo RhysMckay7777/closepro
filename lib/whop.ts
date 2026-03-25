@@ -86,16 +86,16 @@ export function createWhopCheckoutUrl(
   organizationId: string,
   userEmail: string
 ): string {
-  const whopCompanyId = process.env.NEXT_PUBLIC_WHOP_COMPANY_ID;
+  // Use the Pro plan ID directly (single plan: £99/month)
+  const whopPlanId = process.env.WHOP_PRO_PLAN_ID;
   
-  if (!whopCompanyId) {
-    throw new Error('WHOP_COMPANY_ID is not configured');
+  if (!whopPlanId) {
+    throw new Error('WHOP_PRO_PLAN_ID is not configured');
   }
 
   // Build checkout URL with metadata
-  const baseUrl = `https://whop.com/checkout/${whopCompanyId}`;
+  const baseUrl = `https://whop.com/checkout/${whopPlanId}`;
   const params = new URLSearchParams({
-    plan: planTier,
     metadata: JSON.stringify({
       organizationId,
       planTier,

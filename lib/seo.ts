@@ -1,6 +1,6 @@
 /**
  * Central SEO config: base URL, site name, default copy.
- * Use NEXT_PUBLIC_APP_URL in production (e.g. https://close-pro.vercel.app).
+ * Use NEXT_PUBLIC_APP_URL in production (e.g. https://procloser.vercel.app).
  */
 const baseUrl =
   process.env.NEXT_PUBLIC_APP_URL ||
@@ -10,11 +10,11 @@ const baseUrl =
 
 export const seo = {
   baseUrl: baseUrl.replace(/\/$/, ''),
-  siteName: 'ClosePro',
+  siteName: 'ProCloser',
   tagline: 'AI Sales Coaching',
-  defaultTitle: 'ClosePro – AI Sales Coaching & Performance Analytics',
+  defaultTitle: 'ProCloser – AI Sales Coaching & Performance Analytics',
   defaultDescription:
-    'ClosePro is AI-powered sales coaching for reps and teams. Analyze calls, practice with AI roleplay, track performance and figures, and improve close rates.',
+    'ProCloser is AI-powered sales coaching for reps and teams. Analyze calls, practice with AI roleplay, track performance and figures, and improve close rates.',
   defaultKeywords: [
     'sales coaching',
     'AI sales',
@@ -25,7 +25,7 @@ export const seo = {
     'sales roleplay',
     'sales analytics',
   ] as string[],
-  twitterHandle: '', // e.g. @closepro
+  twitterHandle: '', // e.g. @procloser
   ogImagePath: '/og.png', // optional: add og.png to public/
 } as const;
 

@@ -1,6 +1,6 @@
 /**
  * Connor's Training Framework — Central Exports
- * Single source of truth for all AI prompts in ClosePro.
+ * Single source of truth for all AI prompts in ProCloser.
  */
 
 export {

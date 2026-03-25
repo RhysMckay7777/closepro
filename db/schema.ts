@@ -63,13 +63,17 @@ export const organizations = pgTable('organizations', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-// Subscriptions table (Whop integration)
+// Subscriptions table (Whop + Stripe integration)
 export const subscriptions = pgTable('subscriptions', {
   id: uuid('id').defaultRandom().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   whopSubscriptionId: text('whop_subscription_id').unique(),
   whopCustomerId: text('whop_customer_id'),
   whopPlanId: text('whop_plan_id'),
+  // Stripe fields
+  stripeSubscriptionId: text('stripe_subscription_id').unique(),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripePriceId: text('stripe_price_id'),
   status: subscriptionStatusEnum('status').notNull().default('incomplete'),
   planTier: planTierEnum('plan_tier').notNull(),
   seats: integer('seats').notNull().default(5),
@@ -121,12 +125,13 @@ export const usageTracking = pgTable('usage_tracking', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
-// Billing history table (payment events from Whop)
+// Billing history table (payment events from Whop / Stripe)
 export const billingHistory = pgTable('billing_history', {
   id: uuid('id').defaultRandom().primaryKey(),
   organizationId: uuid('organization_id').notNull().references(() => organizations.id, { onDelete: 'cascade' }),
   subscriptionId: uuid('subscription_id').references(() => subscriptions.id, { onDelete: 'set null' }),
   whopEventId: text('whop_event_id').unique(),
+  stripeEventId: text('stripe_event_id').unique(),
   eventType: text('event_type').notNull(), // payment_succeeded, payment_failed, etc.
   amount: integer('amount'), // Amount in cents
   currency: text('currency').default('usd'),

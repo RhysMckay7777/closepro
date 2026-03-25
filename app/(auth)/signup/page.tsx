@@ -83,7 +83,7 @@ export default function SignUpPage() {
                 <path d="M8 17v-3" />
               </svg>
             </div>
-            ClosePro
+            ProCloser
           </Link>
           <ThemeSwitcher />
         </div>

@@ -24,7 +24,9 @@
       "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && npx drizzle-kit generate 2>&1)",
       "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && node -e \"\nconst { neon } = require\\('@neondatabase/serverless'\\);\nconst sql = neon\\(process.env.DATABASE_URL || require\\('dotenv'\\).config\\(\\).parsed?.DATABASE_URL || ''\\);\n\n\\(async \\(\\) => {\n  try {\n    await sql\\\\`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS practice_mode text\\\\`;\n    await sql\\\\`ALTER TABLE roleplay_sessions ADD COLUMN IF NOT EXISTS practice_context text\\\\`;\n    console.log\\('Migration successful: practice_mode and practice_context columns added'\\);\n  } catch \\(e\\) {\n    console.error\\('Migration failed:', e.message\\);\n  }\n}\\)\\(\\);\n\" 2>&1)",
       "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && node migrate-practice-mode.mjs 2>&1)",
-      "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && npx tsx migrate-practice-mode.mjs 2>&1)"
+      "Bash(cd \"C:\\\\Users\\\\sauba_xqr\\\\Downloads\\\\closepro copy\\\\closepro\" && npx tsx migrate-practice-mode.mjs 2>&1)",
+      "Bash(cat ~/.claude.json 2>/dev/null | python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d.get\\('mcpServers',{}\\), indent=2\\)\\)\" 2>/dev/null || cat ~/.claude.json 2>/dev/null | node -e \"const d=require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\); const j=JSON.parse\\(d\\); console.log\\(JSON.stringify\\(j.mcpServers||{},null,2\\)\\)\")",
+      "Bash(claude mcp:*)"
     ]
   }
 }

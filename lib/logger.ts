@@ -1,5 +1,5 @@
 /**
- * Structured Logger for ClosePro
+ * Structured Logger for ProCloser
  *
  * Provides consistent [FEATURE:LEVEL] prefixed logging across the application.
  * In production, only WARN and ERROR log by default.

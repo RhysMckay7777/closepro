@@ -253,7 +253,7 @@ export function autoDetectTags(
   const lowerFilename = filename.toLowerCase();
   const lowerText = cleanText.toLowerCase().substring(0, 3000);
 
-  if (lowerFilename.includes('close pro') || lowerFilename.includes('closepro')) {
+  if (lowerFilename.includes('close pro') || lowerFilename.includes('closepro') || lowerFilename.includes('procloser') || lowerFilename.includes('pro closer')) {
     tags.push('close-pro');
   }
   if (lowerFilename.includes('fitness') || lowerText.includes('fitness') || lowerText.includes('workout') || lowerText.includes('nutrition')) {

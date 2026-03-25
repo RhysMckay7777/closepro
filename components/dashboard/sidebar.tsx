@@ -148,7 +148,7 @@ interface SidebarProps {
 
 export function Sidebar({
   userName = 'User',
-  userEmail = 'user@closepro.com',
+  userEmail = 'user@procloser.com',
   userAvatar,
   lastLogin,
   collapsed = true,
@@ -242,7 +242,7 @@ export function Sidebar({
           </div>
           {!collapsed && (
             <div>
-              <div className="font-serif font-semibold text-foreground text-base">ClosePro</div>
+              <div className="font-serif font-semibold text-foreground text-base">ProCloser</div>
               <div className="text-xs text-muted-foreground">
                 AI Sales Coaching
               </div>
@@ -444,12 +444,12 @@ export function Sidebar({
         {collapsed ? (
           <span
             className="text-xs text-muted-foreground select-none"
-            title="© 2026 ClosePro"
+            title="© 2026 ProCloser"
           >
             ©
           </span>
         ) : (
-          <div className="text-xs text-muted-foreground">© 2026 ClosePro</div>
+          <div className="text-xs text-muted-foreground">© 2026 ProCloser</div>
         )}
       </div>
     </aside>

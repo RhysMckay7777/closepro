@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { users, organizations } from '@/db/schema';
+import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { createWhopCheckoutUrl } from '@/lib/whop';
 import { PlanTier } from '@/lib/plans';
 
 /**
- * Checkout API - Creates Whop checkout URL
+ * Checkout API - Creates Whop Checkout URL (primary)
+ * Stripe integration available as backup in lib/stripe.ts
  */
 export async function POST(request: NextRequest) {
   try {
@@ -51,15 +52,15 @@ export async function POST(request: NextRequest) {
     // For enterprise, redirect to contact sales
     if (planTier === 'enterprise') {
       return NextResponse.json({
-        checkoutUrl: '/contact-sales', // You can create this page
+        checkoutUrl: '/contact-sales',
       });
     }
 
-    // Create Whop checkout URL
+    // Create Whop Checkout URL
     const checkoutUrl = createWhopCheckoutUrl(
       planTier,
       user[0].organizationId,
-      user[0].email
+      user[0].email,
     );
 
     return NextResponse.json({ checkoutUrl });

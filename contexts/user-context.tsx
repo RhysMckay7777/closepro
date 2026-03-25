@@ -20,7 +20,7 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-const CACHE_KEY = 'closepro_user_profile';
+const CACHE_KEY = 'procloser_user_profile';
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 interface CacheData {

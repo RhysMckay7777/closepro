@@ -44,6 +44,7 @@ export function useVoiceSession({
   const connectionStartTimeRef = useRef<number>(0);
   const keepaliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const wsAliveRef = useRef(false); // Track if WebSocket is in a usable state
+  const reconnectHaltedRef = useRef(false); // Track if reconnection was explicitly stopped
 
   // Stable connection timer — only reset attempt counter after 10s of stable connection
   const stableConnectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,7 +144,9 @@ export function useVoiceSession({
    */
   const haltReconnection = useCallback((message: string) => {
     reportClientError('use-voice-session', `Halting reconnection: ${message}`, { sessionId });
+    console.error('[VoiceSession] HALTED:', message);
     isReconnectingRef.current = false;
+    reconnectHaltedRef.current = true; // Prevent onError from overriding
     setReconnectFailed(true);
     setError(message);
     setVoiceStatus('disconnected');
@@ -242,10 +245,11 @@ export function useVoiceSession({
   // If connection holds, the problem is purely in override format.
   const conversation = useConversation({
     onConnect: () => {
-
+      console.log('[VoiceSession] ✅ Connected successfully');
       hasConnectedRef.current = true;
       wsAliveRef.current = true;
       isReconnectingRef.current = false;
+      reconnectHaltedRef.current = false;
       setReconnectFailed(false);
       setError(null);
 
@@ -281,6 +285,7 @@ export function useVoiceSession({
       const connectionDuration = connectionStartTimeRef.current
         ? Date.now() - connectionStartTimeRef.current
         : Infinity;
+      console.warn(`[VoiceSession] ❌ Disconnected after ${Math.round(connectionDuration / 1000)}s (intentional: ${intentionalDisconnectRef.current})`);
 
 
 
@@ -317,7 +322,13 @@ export function useVoiceSession({
       }
     },
     onError: (message: string) => {
+      console.error('[VoiceSession] ⚠️ Error:', message, { halted: reconnectHaltedRef.current, alive: wsAliveRef.current, reconnecting: isReconnectingRef.current });
       reportClientError('use-voice-session', `Voice error: ${message}`, { sessionId });
+
+      // If reconnection was explicitly halted, don't do anything else
+      if (reconnectHaltedRef.current) {
+        return;
+      }
 
       // WebSocket CLOSING/CLOSED errors — suppress if socket is already dead
       // to prevent the reconnect → endSession → more errors → reconnect loop
@@ -390,6 +401,7 @@ export function useVoiceSession({
       intentionalDisconnectRef.current = false;
       hasConnectedRef.current = false;
       reconnectAttemptsRef.current = 0;
+      reconnectHaltedRef.current = false;
       isReconnectingRef.current = false;
       reconnectTimestampsRef.current = [];
       sessionStartRef.current = Date.now();

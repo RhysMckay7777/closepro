@@ -1,5 +1,5 @@
 {
-  "name": "closepro",
+  "name": "procloser",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -72,6 +72,7 @@
     "react-resizable-panels": "^4.4.1",
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
+    "stripe": "^20.4.1",
     "tailwind-merge": "^3.4.0",
     "vaul": "^1.1.2",
     "zod": "^4.3.5"

@@ -1,4 +1,4 @@
-// Plan configuration for ClosePro
+// Plan configuration for ProCloser
 export type PlanTier = 'starter' | 'pro' | 'enterprise';
 
 export interface PlanFeatures {
@@ -16,6 +16,7 @@ export interface PlanFeatures {
     customIntegrations: boolean;
   };
   whopPlanId?: string; // Set this to your actual Whop plan IDs
+  stripePriceId?: string; // Stripe Price ID for this plan
 }
 
 export const PLANS: Record<PlanTier, PlanFeatures> = {
@@ -34,6 +35,7 @@ export const PLANS: Record<PlanTier, PlanFeatures> = {
       customIntegrations: false,
     },
     whopPlanId: process.env.WHOP_STARTER_PLAN_ID,
+    stripePriceId: process.env.STRIPE_STARTER_PRICE_ID,
   },
   pro: {
     name: 'Pro',
@@ -50,6 +52,7 @@ export const PLANS: Record<PlanTier, PlanFeatures> = {
       customIntegrations: false,
     },
     whopPlanId: process.env.WHOP_PRO_PLAN_ID,
+    stripePriceId: process.env.STRIPE_PRO_PRICE_ID,
   },
   enterprise: {
     name: 'Enterprise',
@@ -66,6 +69,7 @@ export const PLANS: Record<PlanTier, PlanFeatures> = {
       customIntegrations: true,
     },
     whopPlanId: process.env.WHOP_ENTERPRISE_PLAN_ID,
+    stripePriceId: process.env.STRIPE_ENTERPRISE_PRICE_ID,
   },
 };
 
@@ -82,6 +86,18 @@ export function getPlan(tier: PlanTier): PlanFeatures {
 export function getPlanTierFromWhopId(whopPlanId: string): PlanTier | null {
   for (const [tier, plan] of Object.entries(PLANS)) {
     if (plan.whopPlanId === whopPlanId) {
+      return tier as PlanTier;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get plan tier from Stripe Price ID
+ */
+export function getPlanTierFromStripePriceId(stripePriceId: string): PlanTier | null {
+  for (const [tier, plan] of Object.entries(PLANS)) {
+    if (plan.stripePriceId === stripePriceId) {
       return tier as PlanTier;
     }
   }

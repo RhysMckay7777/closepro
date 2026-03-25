@@ -83,7 +83,7 @@ function SignInForm() {
                 <path d="M8 17v-3" />
               </svg>
             </div>
-            ClosePro
+            ProCloser
           </Link>
           <ThemeSwitcher />
         </div>
@@ -206,7 +206,7 @@ export default function SignInPage() {
                   <path d="M8 17v-3" />
                 </svg>
               </div>
-              ClosePro
+              ProCloser
             </Link>
             <ThemeSwitcher />
           </div>

@@ -17,7 +17,7 @@ export default function SupportPage() {
                 </Link>
                 <h1 className="text-2xl sm:text-3xl font-bold">Support</h1>
                 <p className="text-muted-foreground mt-1">
-                    We&apos;re here to help you get the most out of ClosePro.
+                    We&apos;re here to help you get the most out of ProCloser.
                 </p>
             </div>
 
@@ -33,10 +33,10 @@ export default function SupportPage() {
                         Reach out to our team for any questions, feedback, or issues.
                     </p>
                     <a
-                        href="mailto:support@closepro.ai"
+                        href="mailto:support@procloser.ai"
                         className="text-primary font-medium hover:underline"
                     >
-                        support@closepro.ai
+                        support@procloser.ai
                     </a>
                 </CardContent>
             </Card>
