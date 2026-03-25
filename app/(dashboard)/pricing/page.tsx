@@ -14,10 +14,40 @@ export default function PricingPage() {
   const router = useRouter();
 
   const handleSelectPlan = async (tier: PlanTier) => {
-    setIsLoading(tier);
+    // Enterprise → open sales email
+    if (tier === 'enterprise') {
+      window.location.href = 'mailto:sales@closepro.co?subject=Enterprise%20Plan%20Inquiry&body=Hi%2C%20I%27m%20interested%20in%20the%20Enterprise%20plan%20for%20ProCloser.%20Please%20get%20in%20touch%20with%20pricing%20details.';
+      return;
+    }
 
+    // Starter (Free) → activate free plan directly
+    if (tier === 'starter') {
+      setIsLoading(tier);
+      try {
+        const response = await fetch('/api/checkout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ planTier: 'starter' }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          router.push('/dashboard/billing');
+        } else {
+          console.error('Failed to activate free plan:', data.error);
+          setIsLoading(null);
+        }
+      } catch (error) {
+        console.error('Error activating free plan:', error);
+        setIsLoading(null);
+      }
+      return;
+    }
+
+    // Pro → redirect to Whop checkout
+    setIsLoading(tier);
     try {
-      // Redirect to checkout API route which will handle Whop redirect
       const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
