@@ -55,8 +55,8 @@ export function useVoiceSession({
   // Ref to hold the conversation instance — bridges the circular dependency
   const conversationRef = useRef<ReturnType<typeof useConversation> | null>(null);
 
-  // Cache signed URL to reuse within its validity window (avoids voice config changes mid-session)
-  const signedUrlCacheRef = useRef<{ url: string; dynamicVariables: any; createdAt: number } | null>(null);
+  // Cache signed URL + voiceId to reuse within its validity window (avoids voice config changes mid-session)
+  const signedUrlCacheRef = useRef<{ url: string; dynamicVariables: any; voiceId: string | null; createdAt: number } | null>(null);
 
   // Persist transcript to server
   const persistTranscript = useCallback(async () => {
@@ -87,7 +87,7 @@ export function useVoiceSession({
    * Get or fetch a signed URL. Reuses the cached URL if less than 8 minutes old
    * to prevent voice config changes mid-session on reconnect.
    */
-  const getOrFetchSignedUrl = useCallback(async (): Promise<{ signedUrl: string; dynamicVariables: any }> => {
+  const getOrFetchSignedUrl = useCallback(async (): Promise<{ signedUrl: string; dynamicVariables: any; voiceId: string | null }> => {
     // Reuse existing URL if less than 8 minutes old (signed URLs valid ~10 minutes)
     if (
       signedUrlCacheRef.current &&
@@ -96,6 +96,7 @@ export function useVoiceSession({
       return {
         signedUrl: signedUrlCacheRef.current.url,
         dynamicVariables: signedUrlCacheRef.current.dynamicVariables,
+        voiceId: signedUrlCacheRef.current.voiceId,
       };
     }
 
@@ -108,15 +109,17 @@ export function useVoiceSession({
 
     const data = await tokenRes.json();
     const url = data.signedUrl || data.signed_url || data.url;
+    const voiceId = data.voiceId || null;
 
-    // Cache it
+    // Cache it (including voiceId so reconnections use the same voice)
     signedUrlCacheRef.current = {
       url,
       dynamicVariables: data.dynamicVariables,
+      voiceId,
       createdAt: Date.now(),
     };
 
-    return { signedUrl: url, dynamicVariables: data.dynamicVariables };
+    return { signedUrl: url, dynamicVariables: data.dynamicVariables, voiceId };
   }, [sessionId]);
 
   /**
@@ -209,7 +212,7 @@ export function useVoiceSession({
       ) {
         signedUrlCacheRef.current = null;
       }
-      const { signedUrl, dynamicVariables } = await getOrFetchSignedUrl();
+      const { signedUrl, dynamicVariables, voiceId } = await getOrFetchSignedUrl();
 
       if (!conv) {
         throw new Error('Conversation instance not available');
@@ -229,7 +232,12 @@ export function useVoiceSession({
         };
       }
 
-      await conv.startSession({ signedUrl, dynamicVariables: reconnectDynamicVars });
+      // Pass voice override so reconnection uses the SAME voice as the original session
+      await conv.startSession({
+        signedUrl,
+        dynamicVariables: reconnectDynamicVars,
+        overrides: voiceId ? { tts: { voiceId } } : undefined,
+      });
 
 
     } catch (err: any) {
@@ -434,11 +442,15 @@ export function useVoiceSession({
 
       // Fetch signed URL (or reuse cached) + overrides from our API
       clearVoiceCache(); // Clear stale cache from previous session
-      const { signedUrl, dynamicVariables } = await getOrFetchSignedUrl();
-      console.log('[VoiceSession] Starting session with signed URL');
+      const { signedUrl, dynamicVariables, voiceId } = await getOrFetchSignedUrl();
+      console.log('[VoiceSession] Starting session with signed URL', voiceId ? `(voice: ${voiceId})` : '(no voice override)');
 
-      // Pass dynamic variables — ElevenLabs injects into {{prospect_context}}, {{offer_info}}, {{first_message}}
-      await conversation.startSession({ signedUrl, dynamicVariables });
+      // Pass dynamic variables + voice override to lock the prospect voice for the entire session
+      await conversation.startSession({
+        signedUrl,
+        dynamicVariables,
+        overrides: voiceId ? { tts: { voiceId } } : undefined,
+      });
 
       // Start periodic persistence timer (every 30s)
       if (persistTimerRef.current) clearInterval(persistTimerRef.current);
