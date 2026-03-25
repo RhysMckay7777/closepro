@@ -85,7 +85,8 @@ export async function incrementUsage(
 }
 
 /**
- * Check if organization can perform an action based on plan limits
+ * Check if organization can perform an action based on plan limits.
+ * Auto-creates a Starter subscription if org has none.
  */
 export async function canPerformAction(
   organizationId: string,
@@ -112,18 +113,37 @@ export async function canPerformAction(
   }
 
   // Get subscription
-  const subscription = await getActiveSubscription(organizationId);
+  let subscription = await getActiveSubscription(organizationId);
   
+  // Auto-create Starter subscription if none exists
   if (!subscription) {
-    // Check if in trial period
+    // Check if in trial period first
     if (org[0].trialEndsAt && new Date(org[0].trialEndsAt) > new Date()) {
       return { allowed: true };
     }
-    // Allow upload_call (transcript + audio) when no subscription so testing/demo works without a paid plan
-    if (action === 'upload_call') {
-      return { allowed: true };
-    }
-    return { allowed: false, reason: 'No active subscription' };
+
+    // Auto-create free Starter subscription
+    const { PLANS } = await import('./plans');
+    const starterPlan = PLANS.starter;
+    const now = new Date();
+    const periodEnd = new Date();
+    periodEnd.setFullYear(periodEnd.getFullYear() + 100);
+
+    const [newSub] = await db.insert(subscriptions).values({
+      organizationId,
+      whopSubscriptionId: `free_${organizationId}_${Date.now()}`,
+      whopPlanId: 'free',
+      planTier: 'starter',
+      status: 'active',
+      seats: starterPlan.maxSeats,
+      callsPerMonth: starterPlan.callsPerMonth,
+      roleplaySessionsPerMonth: starterPlan.roleplaySessionsPerMonth,
+      currentPeriodStart: now,
+      currentPeriodEnd: periodEnd,
+      cancelAtPeriodEnd: false,
+    }).returning();
+
+    subscription = newSub;
   }
 
   // Check subscription status
@@ -146,7 +166,7 @@ export async function canPerformAction(
     if (usage.callsUsed >= subscription.callsPerMonth) {
       return { 
         allowed: false, 
-        reason: `Monthly call limit reached (${subscription.callsPerMonth})` 
+        reason: `You've used all ${subscription.callsPerMonth} calls this month. Upgrade to Pro for 200 calls/month.` 
       };
     }
     
@@ -158,7 +178,7 @@ export async function canPerformAction(
     if (subscription.roleplaySessionsPerMonth === 0) {
       return { 
         allowed: false, 
-        reason: 'AI Roleplay not available in your plan. Upgrade to Pro or Enterprise.' 
+        reason: 'AI Roleplay is not available on the Starter plan. Upgrade to Pro to unlock 50 sessions/month.' 
       };
     }
 
@@ -169,7 +189,7 @@ export async function canPerformAction(
     if (usage.roleplaySessionsUsed >= subscription.roleplaySessionsPerMonth) {
       return { 
         allowed: false, 
-        reason: `Monthly roleplay limit reached (${subscription.roleplaySessionsPerMonth})` 
+        reason: `You've used all ${subscription.roleplaySessionsPerMonth} roleplay sessions this month. Upgrade to Pro or Enterprise for more.` 
       };
     }
     

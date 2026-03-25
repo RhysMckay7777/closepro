@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { headers } from 'next/headers';
 import { db } from '@/db';
-import { users, organizations, userOrganizations } from '@/db/schema';
-import { eq } from 'drizzle-orm';
+import { users, organizations, userOrganizations, subscriptions } from '@/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { getActiveSubscription, getCurrentUsage, getOrganizationSeatCount } from '@/lib/subscription';
+import { PLANS } from '@/lib/plans';
 
 /**
- * Get billing and subscription data for the current user's organization
+ * Get billing and subscription data for the current user's organization.
+ * Auto-creates a free Starter subscription if org has none.
  */
 export async function GET(request: NextRequest) {
   try {
@@ -72,7 +74,31 @@ export async function GET(request: NextRequest) {
     }
 
     // Get active subscription
-    const subscription = await getActiveSubscription(organizationId);
+    let subscription = await getActiveSubscription(organizationId);
+
+    // Auto-create Starter subscription if org has none (for existing free-tier orgs)
+    if (!subscription) {
+      const starterPlan = PLANS.starter;
+      const now = new Date();
+      const periodEnd = new Date();
+      periodEnd.setFullYear(periodEnd.getFullYear() + 100);
+
+      const [newSub] = await db.insert(subscriptions).values({
+        organizationId,
+        whopSubscriptionId: `free_${organizationId}_${Date.now()}`,
+        whopPlanId: 'free',
+        planTier: 'starter',
+        status: 'active',
+        seats: starterPlan.maxSeats,
+        callsPerMonth: starterPlan.callsPerMonth,
+        roleplaySessionsPerMonth: starterPlan.roleplaySessionsPerMonth,
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd,
+        cancelAtPeriodEnd: false,
+      }).returning();
+
+      subscription = newSub;
+    }
 
     // Get current usage
     const usage = await getCurrentUsage(organizationId);
@@ -110,3 +136,4 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+

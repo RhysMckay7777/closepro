@@ -123,7 +123,20 @@ export default function BillingPage() {
         )}
       </div>
 
-      {/* Status Alerts */}
+      {/* Upgrade Prompt for Starter (Free) Plan */}
+      {subscription?.planTier === 'starter' && (
+        <Alert className="border-primary/50 bg-primary/10">
+          <Zap className="h-4 w-4 text-primary" />
+          <AlertDescription className="text-foreground">
+            You're on the <strong>Free Starter</strong> plan (50 calls/month).{' '}
+            <Link href="/pricing" className="underline font-medium hover:text-primary transition-colors">
+              Upgrade to Pro
+            </Link>{' '}
+            for 200 calls, AI Roleplay, and priority support.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {!subscription && (
         <Alert className="border-primary/50 bg-primary/10">
           <AlertCircle className="h-4 w-4 text-primary" />
