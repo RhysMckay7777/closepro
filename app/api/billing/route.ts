@@ -116,6 +116,7 @@ export async function GET(request: NextRequest) {
         roleplaySessionsPerMonth: subscription.roleplaySessionsPerMonth,
         currentPeriodEnd: subscription.currentPeriodEnd,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        isAdminGranted: subscription.whopPlanId?.startsWith('admin_') || subscription.whopSubscriptionId?.startsWith('admin_grant_') || subscription.whopPlanId === 'free',
       } : null,
       usage: {
         callsUsed: usage.callsUsed,

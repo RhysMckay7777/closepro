@@ -29,6 +29,7 @@ interface SubscriptionData {
     roleplaySessionsPerMonth: number;
     currentPeriodEnd: string;
     cancelAtPeriodEnd: boolean;
+    isAdminGranted?: boolean;
   } | null;
   usage: {
     callsUsed: number;
@@ -203,6 +204,11 @@ export default function BillingPage() {
                     <ArrowUpRight className="ml-1.5 h-3 w-3" />
                   </Link>
                 </Button>
+              ) : subscription.isAdminGranted ? (
+                <Badge variant="secondary" className="text-xs h-7 px-3">
+                  <CheckCircle2 className="mr-1.5 h-3 w-3" />
+                  Managed by Admin
+                </Badge>
               ) : (
                 <Button
                   variant="ghost"
@@ -320,6 +326,24 @@ export default function BillingPage() {
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
+          ) : subscription?.isAdminGranted ? (
+            <>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10">
+                <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />
+                <span className="text-xs text-muted-foreground">
+                  Your plan is managed by a platform administrator. No payment required.
+                </span>
+              </div>
+              <Button variant="outline" className="w-full justify-between h-9 text-sm" asChild>
+                <Link href="/dashboard/team">
+                  <span className="flex items-center gap-2">
+                    <Users className="h-3.5 w-3.5" />
+                    Manage Team
+                  </span>
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </Link>
+              </Button>
+            </>
           ) : (
             <>
               <Button variant="outline" className="w-full justify-between h-9 text-sm" asChild>
