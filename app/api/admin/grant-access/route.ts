@@ -3,7 +3,7 @@ import { requireAdmin } from '@/lib/admin';
 import { db } from '@/db';
 import { organizations, subscriptions } from '@/db/schema';
 import { eq, and } from 'drizzle-orm';
-import { PLANS, PlanTier } from '@/lib/plans';
+import { PlanTier, getPlan } from '@/lib/plans';
 
 /**
  * POST /api/admin/grant-access
@@ -11,7 +11,7 @@ import { PLANS, PlanTier } from '@/lib/plans';
  * Upgrades or downgrades an organization's subscription plan.
  * Creates a new subscription record with the target plan's limits.
  *
- * Body: { organizationId: string, planTier: 'starter' | 'pro' | 'enterprise' }
+ * Body: { organizationId: string, planTier: 'rep' | 'manager' | 'enterprise' }
  *
  * Admin-only endpoint (ADMIN_EMAILS env var).
  */
@@ -34,9 +34,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['starter', 'pro', 'enterprise'].includes(planTier)) {
+    if (!['rep', 'manager', 'enterprise'].includes(planTier)) {
       return NextResponse.json(
-        { error: 'Invalid planTier — must be starter, pro, or enterprise' },
+        { error: 'Invalid planTier — must be rep, manager, or enterprise' },
         { status: 400 }
       );
     }
@@ -55,7 +55,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const plan = PLANS[planTier];
+    const plan = getPlan(planTier);
 
     // Step 1: Cancel all existing active subscriptions for this org
     await db

@@ -2,7 +2,7 @@
 import { db } from '@/db';
 import { subscriptions, usageTracking, organizations, userOrganizations } from '@/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
-import { PlanTier, isWithinLimit } from './plans';
+import { PlanTier, isWithinLimit, getPlan } from './plans';
 import { shouldBypassSubscription } from './dev-mode';
 
 /**
@@ -86,7 +86,7 @@ export async function incrementUsage(
 
 /**
  * Check if organization can perform an action based on plan limits.
- * Auto-creates a Starter subscription if org has none.
+ * No free tier — users must have a paid subscription.
  */
 export async function canPerformAction(
   organizationId: string,
@@ -113,37 +113,19 @@ export async function canPerformAction(
   }
 
   // Get subscription
-  let subscription = await getActiveSubscription(organizationId);
+  const subscription = await getActiveSubscription(organizationId);
   
-  // Auto-create Starter subscription if none exists
+  // No subscription and no trial → must subscribe
   if (!subscription) {
     // Check if in trial period first
     if (org[0].trialEndsAt && new Date(org[0].trialEndsAt) > new Date()) {
       return { allowed: true };
     }
 
-    // Auto-create free Starter subscription
-    const { PLANS } = await import('./plans');
-    const starterPlan = PLANS.starter;
-    const now = new Date();
-    const periodEnd = new Date();
-    periodEnd.setFullYear(periodEnd.getFullYear() + 100);
-
-    const [newSub] = await db.insert(subscriptions).values({
-      organizationId,
-      whopSubscriptionId: `free_${organizationId}_${Date.now()}`,
-      whopPlanId: 'free',
-      planTier: 'starter',
-      status: 'active',
-      seats: starterPlan.maxSeats,
-      callsPerMonth: starterPlan.callsPerMonth,
-      roleplaySessionsPerMonth: starterPlan.roleplaySessionsPerMonth,
-      currentPeriodStart: now,
-      currentPeriodEnd: periodEnd,
-      cancelAtPeriodEnd: false,
-    }).returning();
-
-    subscription = newSub;
+    return { 
+      allowed: false, 
+      reason: 'No active subscription. Choose a plan to get started.' 
+    };
   }
 
   // Check subscription status
@@ -166,7 +148,7 @@ export async function canPerformAction(
     if (usage.callsUsed >= subscription.callsPerMonth) {
       return { 
         allowed: false, 
-        reason: `You've used all ${subscription.callsPerMonth} calls this month. Upgrade to Pro for 200 calls/month.` 
+        reason: `You've used all ${subscription.callsPerMonth} calls this month. Upgrade your plan for more calls.` 
       };
     }
     
@@ -178,7 +160,7 @@ export async function canPerformAction(
     if (subscription.roleplaySessionsPerMonth === 0) {
       return { 
         allowed: false, 
-        reason: 'AI Roleplay is not available on the Starter plan. Upgrade to Pro to unlock 50 sessions/month.' 
+        reason: 'AI Roleplay is not available on your current plan. Upgrade to unlock roleplay sessions.' 
       };
     }
 
@@ -189,7 +171,7 @@ export async function canPerformAction(
     if (usage.roleplaySessionsUsed >= subscription.roleplaySessionsPerMonth) {
       return { 
         allowed: false, 
-        reason: `You've used all ${subscription.roleplaySessionsPerMonth} roleplay sessions this month. Upgrade to Pro or Enterprise for more.` 
+        reason: `You've used all ${subscription.roleplaySessionsPerMonth} roleplay sessions this month. Upgrade your plan for more.` 
       };
     }
     
@@ -238,8 +220,8 @@ export async function canAddSeat(organizationId: string): Promise<boolean> {
       return currentSeats < org[0].maxSeats;
     }
     
-    // For new orgs without subscription, use default maxSeats
-    return currentSeats < org[0].maxSeats;
+    // No subscription, no trial — cannot add seats
+    return false;
   }
 
   // With subscription, check against subscription seats

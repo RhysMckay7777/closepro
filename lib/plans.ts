@@ -1,11 +1,14 @@
 // Plan configuration for ProCloser
-export type PlanTier = 'starter' | 'pro' | 'enterprise';
+export type PlanTier = 'rep' | 'manager' | 'enterprise';
+export type ActivePlanTier = PlanTier;
 
 export interface PlanFeatures {
   name: string;
   tier: PlanTier;
-  price: number; // in dollars
-  maxSeats: number;
+  price: number; // in GBP
+  includedSeats: number;
+  additionalSeatPrice: number; // price per extra seat (GBP/month)
+  maxSeats: number; // hard cap
   callsPerMonth: number;
   roleplaySessionsPerMonth: number;
   features: {
@@ -19,31 +22,35 @@ export interface PlanFeatures {
   stripePriceId?: string; // Stripe Price ID for this plan
 }
 
-export const PLANS: Record<PlanTier, PlanFeatures> = {
-  starter: {
-    name: 'Starter',
-    tier: 'starter',
-    price: 0,
-    maxSeats: 5,
-    callsPerMonth: 50,
-    roleplaySessionsPerMonth: 0,
-    features: {
-      aiAnalysis: true,
-      managerDashboard: true,
-      aiRoleplay: false,
-      prioritySupport: false,
-      customIntegrations: false,
-    },
-    whopPlanId: process.env.WHOP_STARTER_PLAN_ID,
-    stripePriceId: process.env.STRIPE_STARTER_PRICE_ID,
-  },
-  pro: {
-    name: 'Pro',
-    tier: 'pro',
+export const PLANS: Record<ActivePlanTier, PlanFeatures> = {
+  rep: {
+    name: 'Rep',
+    tier: 'rep',
     price: 99,
-    maxSeats: 20,
+    includedSeats: 1,
+    additionalSeatPrice: 0, // single-seat plan, no add-ons
+    maxSeats: 1,
     callsPerMonth: 200,
     roleplaySessionsPerMonth: 50,
+    features: {
+      aiAnalysis: true,
+      managerDashboard: false,
+      aiRoleplay: true,
+      prioritySupport: true,
+      customIntegrations: false,
+    },
+    whopPlanId: process.env.WHOP_REP_PLAN_ID,
+    stripePriceId: process.env.STRIPE_REP_PRICE_ID,
+  },
+  manager: {
+    name: 'Manager',
+    tier: 'manager',
+    price: 147,
+    includedSeats: 2,
+    additionalSeatPrice: 99, // £99 per extra seat
+    maxSeats: 50,
+    callsPerMonth: 500,
+    roleplaySessionsPerMonth: 100,
     features: {
       aiAnalysis: true,
       managerDashboard: true,
@@ -51,13 +58,15 @@ export const PLANS: Record<PlanTier, PlanFeatures> = {
       prioritySupport: true,
       customIntegrations: false,
     },
-    whopPlanId: process.env.WHOP_PRO_PLAN_ID,
-    stripePriceId: process.env.STRIPE_PRO_PRICE_ID,
+    whopPlanId: process.env.WHOP_MANAGER_PLAN_ID,
+    stripePriceId: process.env.STRIPE_MANAGER_PRICE_ID,
   },
   enterprise: {
     name: 'Enterprise',
     tier: 'enterprise',
     price: 0, // Custom pricing
+    includedSeats: 999,
+    additionalSeatPrice: 0,
     maxSeats: 999,
     callsPerMonth: -1, // Unlimited
     roleplaySessionsPerMonth: -1, // Unlimited
@@ -74,10 +83,10 @@ export const PLANS: Record<PlanTier, PlanFeatures> = {
 };
 
 /**
- * Get plan configuration by tier
+ * Get plan configuration by tier.
  */
 export function getPlan(tier: PlanTier): PlanFeatures {
-  return PLANS[tier];
+  return PLANS[tier] ?? PLANS.rep;
 }
 
 /**
@@ -108,7 +117,7 @@ export function getPlanTierFromStripePriceId(stripePriceId: string): PlanTier | 
  * Check if a feature is available for a plan tier
  */
 export function hasFeature(tier: PlanTier, feature: keyof PlanFeatures['features']): boolean {
-  return PLANS[tier].features[feature];
+  return getPlan(tier).features[feature];
 }
 
 /**
@@ -119,7 +128,7 @@ export function isWithinLimit(
   usageType: 'calls' | 'roleplay' | 'seats',
   currentUsage: number
 ): boolean {
-  const plan = PLANS[tier];
+  const plan = getPlan(tier);
   
   switch (usageType) {
     case 'calls':
@@ -141,9 +150,17 @@ export function getUsagePercentage(
   usageType: 'calls' | 'roleplay',
   currentUsage: number
 ): number {
-  const plan = PLANS[tier];
+  const plan = getPlan(tier);
   const limit = usageType === 'calls' ? plan.callsPerMonth : plan.roleplaySessionsPerMonth;
   
   if (limit === -1) return 0; // Unlimited
+  if (limit === 0) return 0; // Not available
   return Math.min((currentUsage / limit) * 100, 100);
+}
+
+/**
+ * Check if a tier is a paid (active) tier
+ */
+export function isActivePaidTier(tier: string): tier is ActivePlanTier {
+  return tier in PLANS;
 }

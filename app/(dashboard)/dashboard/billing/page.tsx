@@ -43,6 +43,16 @@ interface SubscriptionData {
   };
 }
 
+// Human-friendly plan display names
+function getPlanDisplayName(tier: string): string {
+  switch (tier) {
+    case 'rep': return 'Rep';
+    case 'manager': return 'Manager';
+    case 'enterprise': return 'Enterprise';
+    default: return tier.charAt(0).toUpperCase() + tier.slice(1);
+  }
+}
+
 export default function BillingPage() {
   const [data, setData] = useState<SubscriptionData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -124,28 +134,16 @@ export default function BillingPage() {
         )}
       </div>
 
-      {/* Upgrade Prompt for Starter (Free) Plan */}
-      {subscription?.planTier === 'starter' && (
+      {/* No Subscription → Upgrade Prompt */}
+      {!subscription && (
         <Alert className="border-primary/50 bg-primary/10">
           <Zap className="h-4 w-4 text-primary" />
           <AlertDescription className="text-foreground">
-            You're on the <strong>Free Starter</strong> plan (50 calls/month).{' '}
-            <Link href="/pricing" className="underline font-medium hover:text-primary transition-colors">
-              Upgrade to Pro
-            </Link>{' '}
-            for 200 calls, AI Roleplay, and priority support.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {!subscription && (
-        <Alert className="border-primary/50 bg-primary/10">
-          <AlertCircle className="h-4 w-4 text-primary" />
-          <AlertDescription className="text-foreground">
             No active subscription.{' '}
             <Link href="/pricing" className="underline font-medium hover:text-primary transition-colors">
-              View plans
-            </Link>
+              Choose a plan
+            </Link>{' '}
+            to start using ProCloser with AI-powered call analysis and roleplay coaching.
           </AlertDescription>
         </Alert>
       )}
@@ -170,8 +168,8 @@ export default function BillingPage() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <CardTitle className="text-xl sm:text-2xl font-serif font-semibold capitalize">
-                      {subscription.planTier}
+                    <CardTitle className="text-xl sm:text-2xl font-serif font-semibold">
+                      {getPlanDisplayName(subscription.planTier)}
                     </CardTitle>
                     <Badge
                       variant={
@@ -192,19 +190,7 @@ export default function BillingPage() {
                   </p>
                 </div>
               </div>
-              {subscription.planTier === 'starter' ? (
-                <Button
-                  variant="default"
-                  size="sm"
-                  asChild
-                  className="text-xs"
-                >
-                  <Link href="/pricing">
-                    Upgrade to Pro
-                    <ArrowUpRight className="ml-1.5 h-3 w-3" />
-                  </Link>
-                </Button>
-              ) : subscription.isAdminGranted ? (
+              {subscription.isAdminGranted ? (
                 <Badge variant="secondary" className="text-xs h-7 px-3">
                   <CheckCircle2 className="mr-1.5 h-3 w-3" />
                   Managed by Admin
@@ -226,89 +212,88 @@ export default function BillingPage() {
       )}
 
       {/* Usage Stats - Compact Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardContent className="pt-4 pb-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-serif font-semibold">Calls</span>
-                </div>
-                <span className="text-xs font-medium">
-                  {subscription?.callsPerMonth === -1
-                    ? '∞'
-                    : `${Math.round(callsPercentage)}%`}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    {usage.callsUsed} / {subscription?.callsPerMonth === -1 ? '∞' : subscription?.callsPerMonth || 0}
+      {subscription && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardContent className="pt-4 pb-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-serif font-semibold">Calls</span>
+                  </div>
+                  <span className="text-xs font-medium">
+                    {subscription?.callsPerMonth === -1
+                      ? '∞'
+                      : `${Math.round(callsPercentage)}%`}
                   </span>
                 </div>
-                <Progress value={callsPercentage} className="h-1.5" />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      {usage.callsUsed} / {subscription?.callsPerMonth === -1 ? '∞' : subscription?.callsPerMonth || 0}
+                    </span>
+                  </div>
+                  <Progress value={callsPercentage} className="h-1.5" />
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardContent className="pt-4 pb-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Zap className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-serif font-semibold">Roleplay</span>
-                </div>
-                <span className="text-xs font-medium">
-                  {subscription?.roleplaySessionsPerMonth === -1
-                    ? '∞'
-                    : subscription?.roleplaySessionsPerMonth === 0
-                      ? 'N/A'
-                      : `${Math.round(roleplayPercentage)}%`}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    {usage.roleplaySessionsUsed} / {subscription?.roleplaySessionsPerMonth === -1 ? '∞' : subscription?.roleplaySessionsPerMonth || 0}
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardContent className="pt-4 pb-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-serif font-semibold">Roleplay</span>
+                  </div>
+                  <span className="text-xs font-medium">
+                    {subscription?.roleplaySessionsPerMonth === -1
+                      ? '∞'
+                      : subscription?.roleplaySessionsPerMonth === 0
+                        ? 'N/A'
+                        : `${Math.round(roleplayPercentage)}%`}
                   </span>
                 </div>
-                <Progress value={roleplayPercentage} className="h-1.5" />
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      {usage.roleplaySessionsUsed} / {subscription?.roleplaySessionsPerMonth === -1 ? '∞' : subscription?.roleplaySessionsPerMonth || 0}
+                    </span>
+                  </div>
+                  <Progress value={roleplayPercentage} className="h-1.5" />
+                </div>
               </div>
-              {subscription?.roleplaySessionsPerMonth === 0 && (
-                <p className="text-xs text-muted-foreground mt-1">Upgrade for AI Roleplay</p>
-              )}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
 
-        <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
-          <CardContent className="pt-4 pb-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-serif font-semibold">Seats</span>
+          <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
+            <CardContent className="pt-4 pb-4">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-primary" />
+                    <span className="text-sm font-serif font-semibold">Seats</span>
+                  </div>
+                  <span className="text-xs font-medium">{Math.round(seatsPercentage)}%</span>
                 </div>
-                <span className="text-xs font-medium">{Math.round(seatsPercentage)}%</span>
-              </div>
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-muted-foreground">
-                    {organization.currentSeats} / {subscription?.seats || 0}
-                  </span>
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">
+                      {organization.currentSeats} / {subscription?.seats || 0}
+                    </span>
+                  </div>
+                  <Progress value={seatsPercentage} className="h-1.5" />
                 </div>
-                <Progress value={seatsPercentage} className="h-1.5" />
+                <Button variant="ghost" size="sm" className="w-full mt-2 h-7 text-xs" asChild>
+                  <Link href="/dashboard/team">Manage Team</Link>
+                </Button>
               </div>
-              <Button variant="ghost" size="sm" className="w-full mt-2 h-7 text-xs" asChild>
-                <Link href="/dashboard/team">Manage Team</Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Quick Actions - Compact */}
       <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl shadow-xl">
@@ -316,17 +301,17 @@ export default function BillingPage() {
           <CardTitle className="font-serif text-base">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          {subscription?.planTier === 'starter' ? (
+          {!subscription ? (
             <Button variant="outline" className="w-full justify-between h-9 text-sm" asChild>
               <Link href="/pricing">
                 <span className="flex items-center gap-2">
                   <Zap className="h-3.5 w-3.5" />
-                  Upgrade to Pro — £99/month
+                  Choose a Plan
                 </span>
                 <ArrowUpRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
-          ) : subscription?.isAdminGranted ? (
+          ) : subscription.isAdminGranted ? (
             <>
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/10">
                 <CheckCircle2 className="h-4 w-4 text-primary shrink-0" />

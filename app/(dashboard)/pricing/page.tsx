@@ -4,52 +4,26 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Check, X, ArrowRight, Sparkles, ArrowLeft, Tag } from 'lucide-react';
+import { Check, X, ArrowRight, Sparkles, ArrowLeft, Tag, Users } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { PLANS, PlanTier } from '@/lib/plans';
+import { PLANS, ActivePlanTier } from '@/lib/plans';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
 export default function PricingPage() {
   const [isLoading, setIsLoading] = useState<string | null>(null);
   const [couponCode, setCouponCode] = useState('');
-  const [showCoupon, setShowCoupon] = useState(false);
   const [couponError, setCouponError] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleSelectPlan = async (tier: PlanTier) => {
+  const handleSelectPlan = async (tier: ActivePlanTier) => {
     // Enterprise → open sales email
     if (tier === 'enterprise') {
       window.location.href = 'mailto:sales@closepro.co?subject=Enterprise%20Plan%20Inquiry&body=Hi%2C%20I%27m%20interested%20in%20the%20Enterprise%20plan%20for%20ProCloser.%20Please%20get%20in%20touch%20with%20pricing%20details.';
       return;
     }
 
-    // Starter (Free) → activate free plan directly
-    if (tier === 'starter') {
-      setIsLoading(tier);
-      try {
-        const response = await fetch('/api/checkout', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ planTier: 'starter' }),
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-          router.push('/dashboard/billing');
-        } else {
-          console.error('Failed to activate free plan:', data.error);
-          setIsLoading(null);
-        }
-      } catch (error) {
-        console.error('Error activating free plan:', error);
-        setIsLoading(null);
-      }
-      return;
-    }
-
-    // Pro → redirect to Whop checkout
+    // Rep / Manager → redirect to Whop checkout
     setIsLoading(tier);
     try {
       const response = await fetch('/api/checkout', {
@@ -84,42 +58,76 @@ export default function PricingPage() {
     }
   };
 
+  const planEntries: { key: ActivePlanTier; plan: typeof PLANS.rep }[] = [
+    { key: 'rep', plan: PLANS.rep },
+    { key: 'manager', plan: PLANS.manager },
+    { key: 'enterprise', plan: PLANS.enterprise },
+  ];
+
   return (
     <div className="space-y-8 mt-20">
       <Link href="/dashboard" className="absolute top-4 left-4">
-          <Button variant="ghost" size="sm" className="mb-2">
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Go to Dashboard
-          </Button>
-        </Link>
+        <Button variant="ghost" size="sm" className="mb-2">
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Go to Dashboard
+        </Button>
+      </Link>
+
       {/* Header */}
       <div className="text-center space-y-3 sm:space-y-4">
         <Badge className="backdrop-blur-sm bg-primary/10 text-primary border-primary/20">
           Pricing Plans
         </Badge>
         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-serif font-semibold tracking-tight px-4">
-          Choose the right plan for your team
+          Choose the right plan for you
         </h1>
         <p className="text-sm sm:text-base lg:text-lg text-muted-foreground max-w-2xl mx-auto px-4">
-          Scale your sales performance with AI-powered coaching and analytics
+          AI-powered sales coaching and analytics for individual closers and teams
         </p>
+      </div>
+
+      {/* Coupon Code — always visible, prominent */}
+      <div className="max-w-md mx-auto px-4">
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+            <Tag className="h-4 w-4" />
+            Have a coupon code?
+          </label>
+          <div className="flex gap-2">
+            <Input
+              placeholder="Enter coupon code"
+              value={couponCode}
+              onChange={(e) => {
+                setCouponCode(e.target.value.toUpperCase());
+                setCouponError(null);
+              }}
+              className="uppercase"
+            />
+          </div>
+          {couponError && (
+            <p className="text-sm text-destructive">{couponError}</p>
+          )}
+          {couponCode.trim() && !couponError && (
+            <p className="text-sm text-primary">Coupon will be applied at checkout</p>
+          )}
+        </div>
       </div>
 
       {/* Pricing Cards */}
       <div className="grid gap-6 sm:gap-8 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 max-w-6xl mx-auto px-4">
-        {Object.entries(PLANS).map(([key, plan]) => {
-          const isPro = key === 'pro';
+        {planEntries.map(({ key, plan }) => {
+          const isManager = key === 'manager';
           const isEnterprise = key === 'enterprise';
 
           return (
             <Card
               key={key}
-              className={`relative border backdrop-blur-xl shadow-xl transition-all hover:scale-[1.02] ${isPro
+              className={`relative border backdrop-blur-xl shadow-xl transition-all hover:scale-[1.02] ${isManager
                   ? 'border-primary bg-linear-to-br from-primary/10 to-primary/5 shadow-primary/20'
                   : 'border-white/10 bg-linear-to-br from-card/80 to-card/40'
                 }`}
             >
-              {isPro && (
+              {isManager && (
                 <div className="absolute -top-4 left-1/2 -translate-x-1/2">
                   <Badge className="bg-linear-to-r from-primary to-primary/80 text-primary-foreground border-0 shadow-lg shadow-primary/50 gap-1">
                     <Sparkles className="h-3 w-3" />
@@ -133,8 +141,6 @@ export default function PricingPage() {
                 <div className="mt-4 flex items-baseline justify-center gap-2">
                   {isEnterprise ? (
                     <span className="text-4xl font-bold">Custom</span>
-                  ) : plan.price === 0 ? (
-                    <span className="text-5xl font-bold tracking-tight">Free</span>
                   ) : (
                     <>
                       <span className="text-5xl font-bold tracking-tight">
@@ -144,9 +150,14 @@ export default function PricingPage() {
                     </>
                   )}
                 </div>
+                {isManager && (
+                  <p className="text-sm text-primary mt-2 font-medium">
+                    +£{plan.additionalSeatPrice}/month per additional seat
+                  </p>
+                )}
                 <CardDescription className="mt-2">
-                  {key === 'starter' && 'Perfect for small teams getting started'}
-                  {key === 'pro' && 'Best for growing sales teams'}
+                  {key === 'rep' && 'For individual closers'}
+                  {key === 'manager' && 'For team leads managing reps'}
                   {key === 'enterprise' && 'Custom solutions for large organizations'}
                 </CardDescription>
               </CardHeader>
@@ -156,10 +167,11 @@ export default function PricingPage() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 text-sm">
                     <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                      <Check className="h-4 w-4 text-primary" />
+                      <Users className="h-4 w-4 text-primary" />
                     </div>
                     <span>
-                      <strong>{plan.maxSeats === 999 ? 'Unlimited' : plan.maxSeats}</strong> seats
+                      <strong>{plan.includedSeats === 999 ? 'Unlimited' : plan.includedSeats}</strong>{' '}
+                      {plan.includedSeats === 1 ? 'seat' : 'seats'} included
                     </span>
                   </div>
 
@@ -175,21 +187,19 @@ export default function PricingPage() {
                     </span>
                   </div>
 
-                  {plan.roleplaySessionsPerMonth > 0 && (
-                    <div className="flex items-center gap-3 text-sm">
-                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-                        <Check className="h-4 w-4 text-primary" />
-                      </div>
-                      <span>
-                        <strong>
-                          {plan.roleplaySessionsPerMonth === -1
-                            ? 'Unlimited'
-                            : plan.roleplaySessionsPerMonth}
-                        </strong>{' '}
-                        roleplay sessions/month
-                      </span>
+                  <div className="flex items-center gap-3 text-sm">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Check className="h-4 w-4 text-primary" />
                     </div>
-                  )}
+                    <span>
+                      <strong>
+                        {plan.roleplaySessionsPerMonth === -1
+                          ? 'Unlimited'
+                          : plan.roleplaySessionsPerMonth}
+                      </strong>{' '}
+                      roleplay sessions/month
+                    </span>
+                  </div>
                 </div>
 
                 <div className="h-px bg-border" />
@@ -219,12 +229,12 @@ export default function PricingPage() {
                 </div>
               </CardContent>
 
-              <CardFooter className="flex flex-col gap-2">
+              <CardFooter>
                 <Button
                   className="w-full"
                   size="lg"
-                  variant={isPro ? 'default' : 'outline'}
-                  onClick={() => handleSelectPlan(key as PlanTier)}
+                  variant={isManager ? 'default' : 'outline'}
+                  onClick={() => handleSelectPlan(key)}
                   disabled={isLoading !== null}
                 >
                   {isLoading === key ? (
@@ -236,41 +246,6 @@ export default function PricingPage() {
                     </>
                   )}
                 </Button>
-
-                {/* Hidden coupon input — only on Pro card */}
-                {isPro && (
-                  <div className="w-full">
-                    {!showCoupon ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowCoupon(true)}
-                        className="text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-center py-1"
-                      >
-                        Have a coupon code?
-                      </button>
-                    ) : (
-                      <div className="space-y-1.5">
-                        <div className="flex gap-1.5">
-                          <div className="relative flex-1">
-                            <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
-                            <Input
-                              placeholder="Enter code"
-                              value={couponCode}
-                              onChange={(e) => {
-                                setCouponCode(e.target.value.toUpperCase());
-                                setCouponError(null);
-                              }}
-                              className="h-8 text-xs pl-8 uppercase"
-                            />
-                          </div>
-                        </div>
-                        {couponError && (
-                          <p className="text-xs text-destructive">{couponError}</p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
               </CardFooter>
             </Card>
           );

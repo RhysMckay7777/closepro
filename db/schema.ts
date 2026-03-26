@@ -3,7 +3,7 @@ import { relations } from 'drizzle-orm';
 
 // Enums
 export const userRoleEnum = pgEnum('user_role', ['admin', 'manager', 'rep']);
-export const planTierEnum = pgEnum('plan_tier', ['starter', 'pro', 'enterprise']);
+export const planTierEnum = pgEnum('plan_tier', ['starter', 'pro', 'enterprise', 'rep', 'manager']);
 export const subscriptionStatusEnum = pgEnum('subscription_status', [
   'active',
   'past_due',

@@ -49,10 +49,10 @@ interface OrgData {
   } | null;
 }
 
-const PLAN_CONFIG = {
-  starter: { label: 'Starter', icon: Star, color: 'text-muted-foreground', badge: 'secondary' as const },
-  pro: { label: 'Pro', icon: Zap, color: 'text-primary', badge: 'default' as const },
-  enterprise: { label: 'Enterprise', icon: Crown, color: 'text-amber-500', badge: 'outline' as const },
+const PLAN_CONFIG: Record<string, { label: string; icon: typeof Star; color: string; badge: 'secondary' | 'default' | 'outline' }> = {
+  rep: { label: 'Rep', icon: Zap, color: 'text-primary', badge: 'default' },
+  manager: { label: 'Manager', icon: Crown, color: 'text-amber-500', badge: 'default' },
+  enterprise: { label: 'Enterprise', icon: Crown, color: 'text-amber-500', badge: 'outline' },
 };
 
 export default function AdminPage() {
@@ -209,9 +209,9 @@ export default function AdminPage() {
         <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl">
           <CardContent className="pt-4 pb-4">
             <div className="text-2xl font-bold">
-              {orgs.filter((o) => o.subscription?.planTier === 'pro' || o.planTier === 'pro').length}
+              {orgs.filter((o) => ['rep', 'manager', 'pro'].includes(o.subscription?.planTier || o.planTier)).length}
             </div>
-            <div className="text-xs text-muted-foreground">Pro Plans</div>
+            <div className="text-xs text-muted-foreground">Paid Plans</div>
           </CardContent>
         </Card>
         <Card className="border border-white/10 bg-linear-to-br from-card/80 to-card/40 backdrop-blur-xl">
@@ -251,8 +251,8 @@ export default function AdminPage() {
               </p>
             ) : (
               orgs.map((org) => {
-                const currentPlan = (org.subscription?.planTier || org.planTier) as keyof typeof PLAN_CONFIG;
-                const config = PLAN_CONFIG[currentPlan] || PLAN_CONFIG.starter;
+                const currentPlan = org.subscription?.planTier || org.planTier;
+                const config = PLAN_CONFIG[currentPlan] || PLAN_CONFIG.rep;
                 const PlanIcon = config.icon;
                 const hasPendingChange = pendingChanges[org.id] && pendingChanges[org.id] !== currentPlan;
 
@@ -291,14 +291,14 @@ export default function AdminPage() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="starter">
+                          <SelectItem value="rep">
                             <span className="flex items-center gap-1.5">
-                              <Star className="h-3 w-3" /> Starter
+                              <Zap className="h-3 w-3" /> Rep — £99/mo
                             </span>
                           </SelectItem>
-                          <SelectItem value="pro">
+                          <SelectItem value="manager">
                             <span className="flex items-center gap-1.5">
-                              <Zap className="h-3 w-3" /> Pro
+                              <Crown className="h-3 w-3" /> Manager — £147/mo
                             </span>
                           </SelectItem>
                           <SelectItem value="enterprise">

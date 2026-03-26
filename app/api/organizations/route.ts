@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { organizations, users, userOrganizations, subscriptions } from '@/db/schema';
+import { organizations, users, userOrganizations } from '@/db/schema';
 import { auth } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
 import { createSeedData } from '@/lib/seed-data';
-import { PLANS } from '@/lib/plans';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,35 +25,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Create organization
+    // Create organization (no free plan — user must subscribe)
     const [org] = await db
       .insert(organizations)
       .values({
         name,
-        planTier: 'starter',
-        maxSeats: 5,
+        planTier: 'starter', // Legacy default; user will select a paid plan
+        maxSeats: 1,
       })
       .returning();
-
-    // Auto-create free Starter subscription so billing page works immediately
-    const starterPlan = PLANS.starter;
-    const now = new Date();
-    const periodEnd = new Date();
-    periodEnd.setFullYear(periodEnd.getFullYear() + 100); // Free plan never expires
-
-    await db.insert(subscriptions).values({
-      organizationId: org.id,
-      whopSubscriptionId: `free_${org.id}_${Date.now()}`,
-      whopPlanId: 'free',
-      planTier: 'starter',
-      status: 'active',
-      seats: starterPlan.maxSeats,
-      callsPerMonth: starterPlan.callsPerMonth,
-      roleplaySessionsPerMonth: starterPlan.roleplaySessionsPerMonth,
-      currentPeriodStart: now,
-      currentPeriodEnd: periodEnd,
-      cancelAtPeriodEnd: false,
-    });
 
     // Update user with organization ID (primary org)
     await db
@@ -90,4 +69,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

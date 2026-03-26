@@ -1,5 +1,5 @@
 // Whop API integration utilities
-import { PlanTier, getPlanTierFromWhopId } from './plans';
+import { PlanTier, ActivePlanTier, getPlanTierFromWhopId, PLANS } from './plans';
 
 const WHOP_API_KEY = process.env.WHOP_API_KEY;
 const WHOP_API_URL = 'https://api.whop.com/v1';
@@ -79,18 +79,24 @@ export async function getWhopSubscription(subscriptionId: string): Promise<WhopS
 }
 
 /**
- * Create a Whop checkout URL
+ * Create a Whop checkout URL for Rep or Manager plans
  */
 export function createWhopCheckoutUrl(
   planTier: PlanTier,
   organizationId: string,
   userEmail: string
 ): string {
-  // Use the Pro plan ID directly (single plan: £99/month)
-  const whopPlanId = process.env.WHOP_PRO_PLAN_ID;
-  
+  // Map tier to the correct env var
+  let whopPlanId: string | undefined;
+
+  if (planTier === 'rep') {
+    whopPlanId = process.env.WHOP_REP_PLAN_ID;
+  } else if (planTier === 'manager') {
+    whopPlanId = process.env.WHOP_MANAGER_PLAN_ID;
+  }
+
   if (!whopPlanId) {
-    throw new Error('WHOP_PRO_PLAN_ID is not configured');
+    throw new Error(`Whop plan ID not configured for tier: ${planTier}. Set WHOP_${planTier.toUpperCase()}_PLAN_ID in env.`);
   }
 
   // Build checkout URL with metadata
