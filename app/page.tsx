@@ -27,7 +27,7 @@ const jsonLd = {
   url: seo.baseUrl,
   applicationCategory: 'BusinessApplication',
   operatingSystem: 'Web',
-  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  offers: { '@type': 'Offer', price: '99', priceCurrency: 'GBP' },
   featureList: [
     'AI call analysis',
     'Sales performance analytics',
@@ -215,17 +215,17 @@ export default function Home() {
                 </div>
               </div>
               <h2 className="text-3xl font-semibold tracking-tight text-neutral-900 sm:text-4xl dark:text-neutral-50">
-                Plans that scale with your team
+                Choose the right plan for you
               </h2>
               <p className="mx-auto max-w-[500px] text-sm text-neutral-500 dark:text-neutral-400">
-                Start free. Upgrade when you&apos;re ready. All plans include a trial.
+                AI-powered sales coaching and analytics for individual closers and teams.
               </p>
             </div>
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {[
-                { name: 'Starter', desc: 'For individual reps getting started with AI coaching', price: 'Free', cta: 'Get Started', href: '/signin', popular: false, features: ['Call analysis & transcription', 'AI insights & next steps', 'Basic roleplay practice', 'Your figures & close rate'] },
-                { name: 'Pro', desc: 'For teams that want to coach and scale performance', price: '£99', cta: 'Subscribe Now', href: '/pricing', popular: true, features: ['Unlimited call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
-                { name: 'Enterprise', desc: 'For orgs that need full control and security', price: 'Custom', cta: 'Contact Sales', href: '#', popular: false, features: ['Everything in Pro', 'SSO & advanced security', 'Dedicated success manager', 'Custom integrations'] },
+                { name: 'Rep', desc: 'For individual closers', price: '£99', sub: '', cta: 'Get Started', href: '/pricing', popular: false, features: ['200 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Priority support'] },
+                { name: 'Manager', desc: 'For team leads managing reps', price: '£147', sub: '+£99/mo per additional seat', cta: 'Get Started', href: '/pricing', popular: true, features: ['500 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
+                { name: 'Enterprise', desc: 'For orgs that need full control and security', price: 'Custom', sub: '', cta: 'Contact Sales', href: '/pricing', popular: false, features: ['Everything in Manager', 'SSO & advanced security', 'Dedicated success manager', 'Custom integrations'] },
               ].map((plan) => (
                 <div
                   key={plan.name}
@@ -242,10 +242,14 @@ export default function Home() {
                       <h3 className="mb-1.5 text-xl font-semibold tracking-tighter text-black/80 dark:text-white/80">{plan.name}</h3>
                       <p className="text-xs tracking-tighter text-black/60 dark:text-white/60">{plan.desc}</p>
                     </div>
-                    <div className="mb-4 flex items-end gap-1">
+                    <div className="mb-1 flex items-end gap-1">
                       <span className="text-4xl font-semibold tracking-tighter text-black/80 dark:text-white/80">{plan.price}</span>
-                      {plan.price !== 'Free' && plan.price !== 'Custom' && <span className="mb-1 text-xs tracking-tighter text-black/60 dark:text-white/60">/month</span>}
+                      {plan.price !== 'Custom' && <span className="mb-1 text-xs tracking-tighter text-black/60 dark:text-white/60">/month</span>}
                     </div>
+                    {plan.sub && (
+                      <p className="mb-3 text-xs font-medium tracking-tighter text-[#d09e38]">{plan.sub}</p>
+                    )}
+                    {!plan.sub && <div className="mb-3" />}
                     <Link
                       href={plan.href}
                       className={`inline-flex h-9 w-full items-center justify-center rounded-lg border px-4 py-2 text-xs font-medium tracking-tighter transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${plan.popular
@@ -271,7 +275,7 @@ export default function Home() {
               ))}
             </div>
             <p className="mx-auto mt-12 max-w-2xl text-center text-xs tracking-tighter text-black/60 dark:text-white/60">
-              Start with a free trial. No credit card required. Cancel anytime.
+              All plans include a 14-day free trial. No credit card required. Cancel anytime.
             </p>
           </div>
         </section>
