@@ -79,8 +79,8 @@ export async function POST(request: NextRequest) {
 
       couponDiscount = coupon.discountPercent;
 
-      // Check if coupon has a dedicated discounted Whop plan
-      const couponPlanId = getCouponWhopPlanId(coupon);
+      // Check if coupon has a dedicated discounted Whop plan for this tier
+      const couponPlanId = getCouponWhopPlanId(coupon, planTier);
       if (couponPlanId) {
         // Use the discounted Whop plan directly
         const baseUrl = `https://whop.com/checkout/${couponPlanId}`;

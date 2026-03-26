@@ -1,13 +1,15 @@
 // Coupon code configuration — server-only
-// Coupons map a code to a discount and optional alternate Whop plan
+// Coupons map a code to a discount and optional per-tier alternate Whop plans
+
+import { PlanTier } from './plans';
 
 export interface Coupon {
   code: string;
   discountPercent: number;
   description: string;
-  // If the coupon uses a separate Whop plan (with discounted pricing already configured),
-  // set this env var. Otherwise, the discount is applied via Whop's coupon param.
-  whopPlanIdEnvVar?: string;
+  // Per-tier Whop plan IDs for this coupon's discounted checkout pages.
+  // Each tier that has a discounted Whop plan should have an env var here.
+  whopPlanIdEnvVars?: Partial<Record<PlanTier, string>>;
   isActive: boolean;
 }
 
@@ -16,8 +18,11 @@ const COUPONS: Coupon[] = [
   {
     code: 'CONNOR50',
     discountPercent: 50,
-    description: '50% off Pro plan',
-    whopPlanIdEnvVar: 'WHOP_COUPON_CONNOR50_PLAN_ID',
+    description: '50% off any plan',
+    whopPlanIdEnvVars: {
+      rep: 'WHOP_COUPON_CONNOR50_REP_PLAN_ID',
+      manager: 'WHOP_COUPON_CONNOR50_MANAGER_PLAN_ID',
+    },
     isActive: true,
   },
 ];
@@ -35,10 +40,12 @@ export function validateCoupon(code: string): Coupon | null {
 }
 
 /**
- * Get the Whop plan ID for a coupon (if it has an alternate plan configured).
- * Falls back to null if no alternate plan is set.
+ * Get the Whop plan ID for a coupon + tier combination.
+ * Returns the discounted plan ID if configured, or null to fall back to regular checkout.
  */
-export function getCouponWhopPlanId(coupon: Coupon): string | null {
-  if (!coupon.whopPlanIdEnvVar) return null;
-  return process.env[coupon.whopPlanIdEnvVar] || null;
+export function getCouponWhopPlanId(coupon: Coupon, tier: PlanTier): string | null {
+  if (!coupon.whopPlanIdEnvVars) return null;
+  const envVar = coupon.whopPlanIdEnvVars[tier];
+  if (!envVar) return null;
+  return process.env[envVar] || null;
 }
