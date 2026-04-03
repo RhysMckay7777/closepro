@@ -5,8 +5,8 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Public routes that don't require authentication
-  const publicRoutes = ['/signin', '/signup', '/'];
-  const isPublicRoute = publicRoutes.some(route => pathname === route);
+  const publicRoutes = ['/signin', '/signup', '/', '/pricing'];
+  const isPublicRoute = publicRoutes.some(route => pathname === route) || pathname.startsWith('/checkout/');
 
   // Special routes that handle their own authentication checks
   // These pages check for session client-side, so we allow them through

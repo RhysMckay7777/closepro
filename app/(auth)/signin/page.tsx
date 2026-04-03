@@ -15,6 +15,7 @@ const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'tru
 
 function SignInForm() {
   const searchParams = useSearchParams();
+  const checkoutToken = searchParams.get('checkout');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -49,14 +50,32 @@ function SignInForm() {
           const orgData = await orgResponse.json();
           if (!orgData.organizations || orgData.organizations.length === 0) {
             // User has no organizations - redirect to create-organization
-            window.location.href = '/dashboard/create-organization';
+            const createOrgUrl = checkoutToken
+              ? `/dashboard/create-organization?checkout=${checkoutToken}`
+              : '/dashboard/create-organization';
+            window.location.href = createOrgUrl;
             return;
+          }
+
+          // User has organizations — if they came from a checkout, claim it for their existing org
+          if (checkoutToken) {
+            try {
+              await fetch('/api/checkout/claim', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ checkoutToken }),
+              });
+            } catch (claimErr) {
+              console.error('Error claiming checkout:', claimErr);
+            }
           }
         }
       } catch (error) {
         console.error('Error checking organizations:', error);
-        // On error, redirect to create-organization to be safe
-        window.location.href = '/dashboard/create-organization';
+        const createOrgUrl = checkoutToken
+          ? `/dashboard/create-organization?checkout=${checkoutToken}`
+          : '/dashboard/create-organization';
+        window.location.href = createOrgUrl;
         return;
       }
 
@@ -166,7 +185,7 @@ function SignInForm() {
                 <Field>
                   <FieldDescription className="text-center">
                     Don&apos;t have an account?{' '}
-                    <Link href="/signup" className="font-medium text-primary hover:underline">
+                    <Link href={checkoutToken ? `/signup?checkout=${checkoutToken}` : '/signup'} className="font-medium text-primary hover:underline">
                       Sign up
                     </Link>
                   </FieldDescription>

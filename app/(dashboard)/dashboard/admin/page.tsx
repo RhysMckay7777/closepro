@@ -293,12 +293,12 @@ export default function AdminPage() {
                         <SelectContent>
                           <SelectItem value="rep">
                             <span className="flex items-center gap-1.5">
-                              <Zap className="h-3 w-3" /> Rep — £99/mo
+                              <Zap className="h-3 w-3" /> Rep — £9/mo
                             </span>
                           </SelectItem>
                           <SelectItem value="manager">
                             <span className="flex items-center gap-1.5">
-                              <Crown className="h-3 w-3" /> Manager — £147/mo
+                              <Crown className="h-3 w-3" /> Manager — £59/mo
                             </span>
                           </SelectItem>
                           <SelectItem value="enterprise">

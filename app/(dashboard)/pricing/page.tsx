@@ -8,6 +8,7 @@ import { Check, X, ArrowRight, Sparkles, ArrowLeft, Tag, Users } from 'lucide-re
 import { Input } from '@/components/ui/input';
 import { PLANS, ActivePlanTier } from '@/lib/plans';
 import { useRouter } from 'next/navigation';
+import { useSession } from '@/lib/auth-client';
 import Link from 'next/link';
 
 export default function PricingPage() {
@@ -15,18 +16,14 @@ export default function PricingPage() {
   const [couponCode, setCouponCode] = useState('');
   const [couponError, setCouponError] = useState<string | null>(null);
   const router = useRouter();
+  const { data: session } = useSession();
 
   const handleSelectPlan = async (tier: ActivePlanTier) => {
-    // Enterprise → open sales email
-    if (tier === 'enterprise') {
-      window.location.href = 'mailto:sales@closepro.co?subject=Enterprise%20Plan%20Inquiry&body=Hi%2C%20I%27m%20interested%20in%20the%20Enterprise%20plan%20for%20ProCloser.%20Please%20get%20in%20touch%20with%20pricing%20details.';
-      return;
-    }
-
-    // Rep / Manager → redirect to Whop checkout
     setIsLoading(tier);
     try {
-      const response = await fetch('/api/checkout', {
+      // Use guest checkout for unauthenticated users, regular checkout for authenticated
+      const endpoint = session?.user ? '/api/checkout' : '/api/checkout/guest';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -66,10 +63,10 @@ export default function PricingPage() {
 
   return (
     <div className="space-y-8 mt-20">
-      <Link href="/dashboard" className="absolute top-4 left-4">
+      <Link href={session?.user ? '/dashboard' : '/'} className="absolute top-4 left-4">
         <Button variant="ghost" size="sm" className="mb-2">
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Go to Dashboard
+          {session?.user ? 'Go to Dashboard' : 'Back to Home'}
         </Button>
       </Link>
 
@@ -139,16 +136,12 @@ export default function PricingPage() {
               <CardHeader className="text-center pb-8 pt-6">
                 <CardTitle className="text-2xl font-serif">{plan.name}</CardTitle>
                 <div className="mt-4 flex items-baseline justify-center gap-2">
-                  {isEnterprise ? (
-                    <span className="text-4xl font-bold">Custom</span>
-                  ) : (
-                    <>
-                      <span className="text-5xl font-bold tracking-tight">
-                        £{plan.price}
-                      </span>
-                      <span className="text-muted-foreground">/month</span>
-                    </>
-                  )}
+                  <span className="text-5xl font-bold tracking-tight">
+                    £{plan.price}
+                  </span>
+                  <span className="text-muted-foreground">
+                    {isEnterprise ? '/one-time' : '/month'}
+                  </span>
                 </div>
                 {isManager && (
                   <p className="text-sm text-primary mt-2 font-medium">
@@ -158,7 +151,7 @@ export default function PricingPage() {
                 <CardDescription className="mt-2">
                   {key === 'rep' && 'For individual closers'}
                   {key === 'manager' && 'For team leads managing reps'}
-                  {key === 'enterprise' && 'Custom solutions for large organizations'}
+                  {key === 'enterprise' && '3 months at Rep Level + Free Sales Training'}
                 </CardDescription>
               </CardHeader>
 
@@ -202,6 +195,12 @@ export default function PricingPage() {
                   </div>
                 </div>
 
+                {isEnterprise && (
+                  <div className="rounded-lg bg-primary/10 border border-primary/20 p-3 text-sm text-primary font-medium">
+                    Includes Free Multi Hour Sales Training Program
+                  </div>
+                )}
+
                 <div className="h-px bg-border" />
 
                 {/* Feature List */}
@@ -241,7 +240,7 @@ export default function PricingPage() {
                     'Loading...'
                   ) : (
                     <>
-                      {isEnterprise ? 'Contact Sales' : 'Get Started'}
+                      Get Started
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </>
                   )}

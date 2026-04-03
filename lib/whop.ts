@@ -93,6 +93,8 @@ export function createWhopCheckoutUrl(
     whopPlanId = process.env.WHOP_REP_PLAN_ID;
   } else if (planTier === 'manager') {
     whopPlanId = process.env.WHOP_MANAGER_PLAN_ID;
+  } else if (planTier === 'enterprise') {
+    whopPlanId = process.env.WHOP_ENTERPRISE_PLAN_ID;
   }
 
   if (!whopPlanId) {
@@ -107,6 +109,44 @@ export function createWhopCheckoutUrl(
       planTier,
     }),
     prefilled_email: userEmail,
+  });
+
+  return `${baseUrl}?${params.toString()}`;
+}
+
+/**
+ * Create a Whop checkout URL for unauthenticated (guest) users.
+ * Uses a checkoutToken instead of organizationId so the subscription
+ * can be linked after the user signs up.
+ */
+export function createGuestWhopCheckoutUrl(
+  planTier: PlanTier,
+  checkoutToken: string,
+  email?: string,
+  redirectUrl?: string,
+): string {
+  let whopPlanId: string | undefined;
+
+  if (planTier === 'rep') {
+    whopPlanId = process.env.WHOP_REP_PLAN_ID;
+  } else if (planTier === 'manager') {
+    whopPlanId = process.env.WHOP_MANAGER_PLAN_ID;
+  } else if (planTier === 'enterprise') {
+    whopPlanId = process.env.WHOP_ENTERPRISE_PLAN_ID;
+  }
+
+  if (!whopPlanId) {
+    throw new Error(`Whop plan ID not configured for tier: ${planTier}. Set WHOP_${planTier.toUpperCase()}_PLAN_ID in env.`);
+  }
+
+  const baseUrl = `https://whop.com/checkout/${whopPlanId}`;
+  const params = new URLSearchParams({
+    metadata: JSON.stringify({
+      checkoutToken,
+      planTier,
+    }),
+    ...(email && { prefilled_email: email }),
+    ...(redirectUrl && { d: redirectUrl }),
   });
 
   return `${baseUrl}?${params.toString()}`;

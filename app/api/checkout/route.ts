@@ -12,11 +12,8 @@ const VALID_PAID_TIERS: ActivePlanTier[] = ['rep', 'manager', 'enterprise'];
 
 /**
  * Checkout API - Handles plan selection
- * - Rep: Redirects to Whop checkout (with optional coupon code)
- * - Manager: Redirects to Whop checkout (with optional coupon code)
- * - Enterprise: Returns mailto link for sales
- *
- * No free tier available.
+ * All tiers (rep, manager, enterprise) redirect to Whop checkout.
+ * Supports optional coupon codes.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -58,14 +55,7 @@ export async function POST(request: NextRequest) {
 
     const organizationId = user[0].organizationId;
 
-    // Enterprise → mailto link for sales
-    if (planTier === 'enterprise') {
-      return NextResponse.json({
-        checkoutUrl: 'mailto:sales@closepro.co?subject=Enterprise%20Plan%20Inquiry&body=Hi%2C%20I%27m%20interested%20in%20the%20Enterprise%20plan%20for%20ProCloser.%20Please%20get%20in%20touch%20with%20pricing%20details.',
-      });
-    }
-
-    // Rep / Manager → redirect to Whop checkout (with optional coupon)
+    // All tiers → redirect to Whop checkout (with optional coupon)
     let couponDiscount: number | undefined;
 
     if (couponCode) {

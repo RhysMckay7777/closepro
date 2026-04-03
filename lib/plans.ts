@@ -26,7 +26,7 @@ export const PLANS: Record<ActivePlanTier, PlanFeatures> = {
   rep: {
     name: 'Rep',
     tier: 'rep',
-    price: 99,
+    price: 9,
     includedSeats: 1,
     additionalSeatPrice: 0, // single-seat plan, no add-ons
     maxSeats: 1,
@@ -45,9 +45,9 @@ export const PLANS: Record<ActivePlanTier, PlanFeatures> = {
   manager: {
     name: 'Manager',
     tier: 'manager',
-    price: 147,
+    price: 59,
     includedSeats: 2,
-    additionalSeatPrice: 99, // £99 per extra seat
+    additionalSeatPrice: 9, // £9 per extra seat
     maxSeats: 50,
     callsPerMonth: 500,
     roleplaySessionsPerMonth: 100,
@@ -62,20 +62,20 @@ export const PLANS: Record<ActivePlanTier, PlanFeatures> = {
     stripePriceId: process.env.STRIPE_MANAGER_PRICE_ID,
   },
   enterprise: {
-    name: 'Enterprise',
+    name: 'Pro Closer AI',
     tier: 'enterprise',
-    price: 0, // Custom pricing
-    includedSeats: 999,
+    price: 107, // 3-month Rep bundle
+    includedSeats: 1,
     additionalSeatPrice: 0,
-    maxSeats: 999,
-    callsPerMonth: -1, // Unlimited
-    roleplaySessionsPerMonth: -1, // Unlimited
+    maxSeats: 1,
+    callsPerMonth: 200,
+    roleplaySessionsPerMonth: 50,
     features: {
       aiAnalysis: true,
-      managerDashboard: true,
+      managerDashboard: false,
       aiRoleplay: true,
       prioritySupport: true,
-      customIntegrations: true,
+      customIntegrations: false,
     },
     whopPlanId: process.env.WHOP_ENTERPRISE_PLAN_ID,
     stripePriceId: process.env.STRIPE_ENTERPRISE_PRICE_ID,

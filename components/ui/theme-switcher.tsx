@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "next-themes";
@@ -24,6 +25,12 @@ const themes = [
 
 export const ThemeSwitcher = ({ className }: { className?: string }) => {
   const { theme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div
       className={cn(
@@ -32,7 +39,7 @@ export const ThemeSwitcher = ({ className }: { className?: string }) => {
       )}
     >
       {themes.map(({ key, icon: Icon, label }) => {
-        const isActive = theme === key;
+        const isActive = mounted && theme === key;
 
         return (
           <button

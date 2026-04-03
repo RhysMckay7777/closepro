@@ -27,7 +27,7 @@ const jsonLd = {
   url: seo.baseUrl,
   applicationCategory: 'BusinessApplication',
   operatingSystem: 'Web',
-  offers: { '@type': 'Offer', price: '99', priceCurrency: 'GBP' },
+  offers: { '@type': 'Offer', price: '9', priceCurrency: 'GBP' },
   featureList: [
     'AI call analysis',
     'Sales performance analytics',
@@ -77,7 +77,7 @@ export default function Home() {
                 </div>
                 <div className="flex min-[400px]:flex-row flex-col gap-2 pt-2">
                   <Link
-                    href="/signup"
+                    href="/pricing"
                     className="inline-flex h-9 w-fit items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#e2ae47] px-3 text-sm font-medium text-neutral-900 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:bg-[#ecbf64]/80 hover:shadow-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 dark:bg-[#ecbf64] dark:text-neutral-900 dark:hover:bg-[#ecbf64]/80"
                   >
                     Get Started
@@ -223,9 +223,9 @@ export default function Home() {
             </div>
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {[
-                { name: 'Rep', desc: 'For individual closers', price: '£99', sub: '', cta: 'Get Started', href: '/pricing', popular: false, features: ['200 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Priority support'] },
-                { name: 'Manager', desc: 'For team leads managing reps', price: '£147', sub: '+£99/mo per additional seat', cta: 'Get Started', href: '/pricing', popular: true, features: ['500 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
-                { name: 'Enterprise', desc: 'For orgs that need full control and security', price: 'Custom', sub: '', cta: 'Contact Sales', href: '/pricing', popular: false, features: ['Everything in Manager', 'SSO & advanced security', 'Dedicated success manager', 'Custom integrations'] },
+                { name: 'Rep', desc: 'For individual closers', price: '£9', sub: '', cta: 'Get Started', href: '/pricing', popular: false, features: ['200 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Priority support'] },
+                { name: 'Manager', desc: 'For team leads managing reps', price: '£59', sub: '+£9/mo per additional seat', cta: 'Get Started', href: '/pricing', popular: true, features: ['500 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
+                { name: 'Pro Closer AI', desc: '3 months at Rep Level', price: '£107', sub: '', cta: 'Get Started', href: '/pricing', popular: false, features: ['3 months Rep access', 'Free Multi Hour Sales Training Program', 'AI call analysis', 'AI roleplay & prospect avatars'] },
               ].map((plan) => (
                 <div
                   key={plan.name}

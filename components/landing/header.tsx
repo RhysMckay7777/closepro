@@ -82,7 +82,7 @@ export function LandingHeader() {
             <div className="mx-3 h-4 w-px bg-black/10 dark:bg-white/10" />
             <ThemeSwitcher className="rounded-lg border-black/10 bg-transparent p-1 ring-0 dark:border-white/10" />
             <Link
-              href="/signup"
+              href="/pricing"
               className="inline-flex h-9 w-fit items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#ecbf64] px-3 py-2 text-sm font-medium text-neutral-900 shadow-sm transition-all duration-200 hover:scale-[1.02] hover:bg-[#ecbf64]/80 hover:shadow-md dark:bg-[#ecbf64] dark:text-neutral-900 dark:hover:bg-[#ecbf64]/80"
             >
               Get Started
@@ -128,7 +128,7 @@ export function LandingHeader() {
                   </Link>
                 </nav>
                 <Link
-                  href="/signin"
+                  href="/pricing"
                   className="inline-flex h-9 w-fit items-center justify-center rounded-lg bg-[#ecbf64] px-4 text-sm font-medium text-neutral-900 dark:bg-[#ecbf64] dark:text-neutral-900"
                 >
                   Get Started

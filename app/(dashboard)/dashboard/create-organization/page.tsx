@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from '@/lib/auth-client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,8 +10,10 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from '@/components/ui
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Building2, Loader2 } from 'lucide-react';
 
-export default function CreateOrganizationPage() {
+function CreateOrganizationContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const checkoutToken = searchParams.get('checkout');
   const { data: session, isPending } = useSession();
   const [organizationName, setOrganizationName] = useState('');
   const [error, setError] = useState('');
@@ -60,7 +62,10 @@ export default function CreateOrganizationPage() {
       const response = await fetch('/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: organizationName.trim() }),
+        body: JSON.stringify({
+          name: organizationName.trim(),
+          ...(checkoutToken && { checkoutToken }),
+        }),
       });
 
       if (!response.ok) {
@@ -142,5 +147,22 @@ export default function CreateOrganizationPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function CreateOrganizationPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center h-full">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="text-muted-foreground">Loading...</div>
+          </div>
+        </div>
+      }
+    >
+      <CreateOrganizationContent />
+    </Suspense>
   );
 }

@@ -73,6 +73,7 @@ export default function DashboardShell({
   const { user, loading: userLoading } = useUser();
   const isCreateOrgPage = pathname?.includes('/create-organization');
   const isPricingPage = pathname?.includes('/pricing');
+  const isCheckoutPage = pathname?.includes('/checkout');
 
   useEffect(() => {
     const checkOrganizations = async () => {
@@ -102,7 +103,7 @@ export default function DashboardShell({
   const breadcrumbs = useMemo(() => getBreadcrumbsFromPathname(pathname ?? null), [pathname]);
   const isRoleplaySession = pathname?.includes('/roleplay/') && pathname?.match(/\/roleplay\/[^/]+$/);
 
-  if (isCreateOrgPage || isRoleplaySession || isPricingPage) {
+  if (isCreateOrgPage || isRoleplaySession || isPricingPage || isCheckoutPage) {
     return <>{children}</>;
   }
 

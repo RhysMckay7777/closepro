@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
-import { subscriptions, billingHistory, organizations } from '@/db/schema';
+import { subscriptions, billingHistory, organizations, pendingCheckouts } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import { verifyWhopWebhook, parseWhopWebhook, mapWhopStatus } from '@/lib/whop';
 import { getPlanTierFromWhopId, PLANS } from '@/lib/plans';
@@ -67,24 +67,93 @@ export async function POST(request: NextRequest) {
  */
 async function handleSubscriptionUpdate(event: any) {
   const whopSubscription = event.data.subscription;
-  
+
   if (!whopSubscription) {
     console.error('No subscription data in event');
     return;
   }
 
-  // Get organization from metadata (passed during checkout)
+  // Get metadata (passed during checkout)
   const metadata = whopSubscription.metadata || {};
   const organizationId = metadata.organizationId;
+  const checkoutToken = metadata.checkoutToken;
+
+  // Guest checkout flow: no organizationId, but has checkoutToken
+  if (!organizationId && checkoutToken) {
+    console.log('Guest checkout webhook — processing token:', checkoutToken);
+
+    // Check if this checkout was already claimed by an org (user signed up fast)
+    const [pending] = await db
+      .select()
+      .from(pendingCheckouts)
+      .where(eq(pendingCheckouts.checkoutToken, checkoutToken))
+      .limit(1);
+
+    if (pending?.status === 'claimed' && pending.claimedByOrgId) {
+      // Org already created — directly create the subscription for that org
+      const planTier = getPlanTierFromWhopId(whopSubscription.plan_id);
+      if (planTier) {
+        const planConfig = PLANS[planTier];
+        await db.insert(subscriptions).values({
+          organizationId: pending.claimedByOrgId,
+          whopSubscriptionId: whopSubscription.id,
+          whopCustomerId: whopSubscription.user_id,
+          whopPlanId: whopSubscription.plan_id,
+          status: mapWhopStatus(whopSubscription.status),
+          planTier,
+          seats: planConfig.maxSeats,
+          callsPerMonth: planConfig.callsPerMonth,
+          roleplaySessionsPerMonth: planConfig.roleplaySessionsPerMonth,
+          currentPeriodStart: new Date(whopSubscription.current_period_start * 1000),
+          currentPeriodEnd: new Date(whopSubscription.current_period_end * 1000),
+          cancelAtPeriodEnd: whopSubscription.cancel_at_period_end,
+          updatedAt: new Date(),
+        });
+
+        // Also update the org to be active
+        await db
+          .update(organizations)
+          .set({
+            isActive: whopSubscription.status === 'active' || whopSubscription.status === 'trialing',
+            updatedAt: new Date(),
+          })
+          .where(eq(organizations.id, pending.claimedByOrgId));
+
+        console.log('Late webhook: created subscription for already-claimed org:', pending.claimedByOrgId);
+      }
+    } else {
+      // Store subscription data in pending checkout for later claiming
+      await db
+        .update(pendingCheckouts)
+        .set({
+          status: 'paid',
+          whopSubscriptionId: whopSubscription.id,
+          whopCustomerId: whopSubscription.user_id,
+          whopPlanId: whopSubscription.plan_id,
+          subscriptionData: JSON.stringify({
+            status: whopSubscription.status,
+            current_period_start: whopSubscription.current_period_start,
+            current_period_end: whopSubscription.current_period_end,
+            cancel_at_period_end: whopSubscription.cancel_at_period_end,
+          }),
+          updatedAt: new Date(),
+        })
+        .where(eq(pendingCheckouts.checkoutToken, checkoutToken));
+
+      console.log('Stored subscription data for pending checkout token:', checkoutToken);
+    }
+
+    return;
+  }
 
   if (!organizationId) {
-    console.error('No organizationId in subscription metadata');
+    console.error('No organizationId or checkoutToken in subscription metadata');
     return;
   }
 
   // Determine plan tier from Whop plan ID
   const planTier = getPlanTierFromWhopId(whopSubscription.plan_id);
-  
+
   if (!planTier) {
     console.error('Unknown Whop plan ID:', whopSubscription.plan_id);
     return;
@@ -112,8 +181,8 @@ async function handleSubscriptionUpdate(event: any) {
     currentPeriodStart: new Date(whopSubscription.current_period_start * 1000),
     currentPeriodEnd: new Date(whopSubscription.current_period_end * 1000),
     cancelAtPeriodEnd: whopSubscription.cancel_at_period_end,
-    canceledAt: whopSubscription.canceled_at 
-      ? new Date(whopSubscription.canceled_at * 1000) 
+    canceledAt: whopSubscription.canceled_at
+      ? new Date(whopSubscription.canceled_at * 1000)
       : null,
     updatedAt: new Date(),
   };
@@ -124,14 +193,14 @@ async function handleSubscriptionUpdate(event: any) {
       .update(subscriptions)
       .set(subscriptionData)
       .where(eq(subscriptions.id, existing[0].id));
-    
+
     console.log('Updated subscription:', existing[0].id);
   } else {
     // Create new subscription
     await db
       .insert(subscriptions)
       .values(subscriptionData);
-    
+
     console.log('Created new subscription for org:', organizationId);
   }
 

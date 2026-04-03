@@ -141,6 +141,23 @@ export const billingHistory = pgTable('billing_history', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
 
+// Pending checkouts table (for unauthenticated users who pay before signing up)
+export const pendingCheckouts = pgTable('pending_checkouts', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  checkoutToken: text('checkout_token').notNull().unique(),
+  planTier: planTierEnum('plan_tier').notNull(),
+  couponCode: text('coupon_code'),
+  email: text('email'), // Filled from Whop prefilled_email or webhook
+  whopSubscriptionId: text('whop_subscription_id'),
+  whopCustomerId: text('whop_customer_id'),
+  whopPlanId: text('whop_plan_id'),
+  subscriptionData: text('subscription_data'), // JSON string of full webhook payload
+  status: text('status').notNull().default('pending'), // 'pending', 'paid', 'claimed'
+  claimedByOrgId: uuid('claimed_by_org_id').references(() => organizations.id, { onDelete: 'set null' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+});
+
 // Notifications table
 export const notifications = pgTable('notifications', {
   id: uuid('id').defaultRandom().primaryKey(),

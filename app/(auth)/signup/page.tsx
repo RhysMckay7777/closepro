@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { signUp, signInWithGoogle } from '@/lib/auth-client';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
@@ -10,11 +10,15 @@ import { Input } from '@/components/ui/input';
 import { Field, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from '@/components/ui/field';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ThemeSwitcher } from '@/components/ui/theme-switcher';
+import { Suspense } from 'react';
+import { CheckCircle2 } from 'lucide-react';
 
 const GOOGLE_AUTH_ENABLED = process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true';
 
-export default function SignUpPage() {
+function SignUpForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const checkoutToken = searchParams.get('checkout');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -48,7 +52,6 @@ export default function SignUpPage() {
 
       if (result.error) {
         console.error('Signup error:', result.error);
-        // Show more detailed error in development
         const errorMessage = process.env.NODE_ENV === 'development'
           ? result.error.message || JSON.stringify(result.error)
           : result.error.message || 'Failed to create account';
@@ -57,11 +60,13 @@ export default function SignUpPage() {
         return;
       }
 
-      // Redirect to organization creation page
-      router.push('/dashboard/create-organization');
+      // Pass checkout token through to org creation if it exists
+      const redirectUrl = checkoutToken
+        ? `/dashboard/create-organization?checkout=${checkoutToken}`
+        : '/dashboard/create-organization';
+      router.push(redirectUrl);
     } catch (err) {
       console.error('Signup exception:', err);
-      // Show more detailed error in development
       const errorMessage = process.env.NODE_ENV === 'development' && err instanceof Error
         ? err.message
         : 'An error occurred. Please try again.';
@@ -89,12 +94,23 @@ export default function SignUpPage() {
         </div>
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-xs">
+            {checkoutToken && (
+              <div className="mb-6 flex items-center gap-3 rounded-lg border border-green-500/20 bg-green-500/10 p-4">
+                <CheckCircle2 className="h-5 w-5 text-green-500 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-green-700 dark:text-green-400">Payment successful!</p>
+                  <p className="text-xs text-muted-foreground">Create your account to get started.</p>
+                </div>
+              </div>
+            )}
             <form className={cn("flex flex-col gap-6")} onSubmit={handleSubmit}>
               <FieldGroup>
                 <div className="flex flex-col items-center gap-1 text-center">
                   <h1 className="text-2xl font-bold">Create your account</h1>
                   <p className="text-muted-foreground text-sm text-balance">
-                    Fill in the form below to create your account
+                    {checkoutToken
+                      ? 'Almost there! Create your account to activate your plan.'
+                      : 'Fill in the form below to create your account'}
                   </p>
                 </div>
                 {GOOGLE_AUTH_ENABLED && (
@@ -189,7 +205,7 @@ export default function SignUpPage() {
                 <Field>
                   <FieldDescription className="text-center">
                     Already have an account?{' '}
-                    <Link href="/signin" className="font-medium text-primary hover:underline">
+                    <Link href={checkoutToken ? `/signin?checkout=${checkoutToken}` : '/signin'} className="font-medium text-primary hover:underline">
                       Sign in
                     </Link>
                   </FieldDescription>
@@ -211,5 +227,13 @@ export default function SignUpPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignUpForm />
+    </Suspense>
   );
 }

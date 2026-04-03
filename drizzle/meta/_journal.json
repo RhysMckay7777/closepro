@@ -50,6 +50,13 @@
       "when": 1772087163496,
       "tag": "0006_stiff_lionheart",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1775123971656,
+      "tag": "0007_cultured_loa",
+      "breakpoints": true
     }
   ]
 }
