@@ -26,7 +26,7 @@ export const PLANS: Record<ActivePlanTier, PlanFeatures> = {
   rep: {
     name: 'Rep',
     tier: 'rep',
-    price: 9,
+    price: 39,
     includedSeats: 1,
     additionalSeatPrice: 0, // single-seat plan, no add-ons
     maxSeats: 1,
@@ -47,7 +47,7 @@ export const PLANS: Record<ActivePlanTier, PlanFeatures> = {
     tier: 'manager',
     price: 59,
     includedSeats: 2,
-    additionalSeatPrice: 9, // £9 per extra seat
+    additionalSeatPrice: 39, // £39 per extra seat
     maxSeats: 50,
     callsPerMonth: 500,
     roleplaySessionsPerMonth: 100,

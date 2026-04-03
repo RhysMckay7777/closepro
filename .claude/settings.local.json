@@ -33,7 +33,11 @@
       "Bash(curl:*)",
       "Bash(taskkill //F //IM node.exe)",
       "Bash(pkill -f \"next dev\")",
-      "Bash(pkill -f node)"
+      "Bash(pkill -f node)",
+      "WebFetch(domain:docs.whop.com)",
+      "WebFetch(domain:dev.whop.com)",
+      "WebFetch(domain:whop.com)",
+      "WebFetch(domain:help.whop.com)"
     ]
   }
 }

@@ -27,7 +27,7 @@ const jsonLd = {
   url: seo.baseUrl,
   applicationCategory: 'BusinessApplication',
   operatingSystem: 'Web',
-  offers: { '@type': 'Offer', price: '9', priceCurrency: 'GBP' },
+  offers: { '@type': 'Offer', price: '39', priceCurrency: 'GBP' },
   featureList: [
     'AI call analysis',
     'Sales performance analytics',
@@ -223,8 +223,8 @@ export default function Home() {
             </div>
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
               {[
-                { name: 'Rep', desc: 'For individual closers', price: '£9', sub: '', cta: 'Get Started', href: '/pricing', popular: false, features: ['200 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Priority support'] },
-                { name: 'Manager', desc: 'For team leads managing reps', price: '£59', sub: '+£9/mo per additional seat', cta: 'Get Started', href: '/pricing', popular: true, features: ['500 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
+                { name: 'Rep', desc: 'For individual closers', price: '£39', sub: '', cta: 'Get Started', href: '/pricing', popular: false, features: ['200 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Priority support'] },
+                { name: 'Manager', desc: 'For team leads managing reps', price: '£59', sub: '+£39/mo per additional seat', cta: 'Get Started', href: '/pricing', popular: true, features: ['500 calls/month', 'AI call analysis', 'AI roleplay & prospect avatars', 'Team & manager dashboards', 'Priority support'] },
                 { name: 'Pro Closer AI', desc: '3 months at Rep Level', price: '£107', sub: '', cta: 'Get Started', href: '/pricing', popular: false, features: ['3 months Rep access', 'Free Multi Hour Sales Training Program', 'AI call analysis', 'AI roleplay & prospect avatars'] },
               ].map((plan) => (
                 <div
