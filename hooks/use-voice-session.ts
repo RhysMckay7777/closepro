@@ -288,14 +288,36 @@ export function useVoiceSession({
         stableConnectionTimerRef.current = null;
       }, STABLE_CONNECTION_THRESHOLD_MS);
     },
-    onDisconnect: () => {
+    onDisconnect: (...disconnectArgs: unknown[]) => {
       wsAliveRef.current = false; // Mark socket as dead immediately
       const connectionDuration = connectionStartTimeRef.current
         ? Date.now() - connectionStartTimeRef.current
         : Infinity;
-      console.warn(`[VoiceSession] ❌ Disconnected after ${Math.round(connectionDuration / 1000)}s (intentional: ${intentionalDisconnectRef.current})`);
-
-
+      // DIAGNOSTIC 2026-04-22: capture anything the SDK passes into onDisconnect (close code,
+      // reason, details) and ship it to the server log sink so we can diagnose ElevenLabs
+      // closes without dashboard access. See docs/legacy/2026-04-22-voice-diagnostic.md.
+      const disconnectDetails = disconnectArgs.map((a) => {
+        if (a && typeof a === 'object') {
+          const rec = a as Record<string, unknown>;
+          return {
+            code: rec.code,
+            reason: rec.reason,
+            wasClean: rec.wasClean,
+            message: rec.message,
+            type: rec.type,
+            keys: Object.keys(rec),
+          };
+        }
+        return { value: a };
+      });
+      console.warn(`[VoiceSession] ❌ Disconnected after ${Math.round(connectionDuration / 1000)}s (intentional: ${intentionalDisconnectRef.current})`, { disconnectDetails });
+      reportClientError('use-voice-session', 'Voice disconnected', {
+        sessionId,
+        connectionDurationMs: connectionDuration,
+        intentional: intentionalDisconnectRef.current,
+        hasConnectedPreviously: hasConnectedRef.current,
+        disconnectDetails,
+      });
 
       // Clear keepalive
       if (keepaliveRef.current) {
@@ -329,9 +351,26 @@ export function useVoiceSession({
         attemptReconnect();
       }
     },
-    onError: (message: string) => {
-      console.error('[VoiceSession] ⚠️ Error:', message, { halted: reconnectHaltedRef.current, alive: wsAliveRef.current, reconnecting: isReconnectingRef.current });
-      reportClientError('use-voice-session', `Voice error: ${message}`, { sessionId });
+    onError: (message: string, ...errorExtra: unknown[]) => {
+      // DIAGNOSTIC 2026-04-22: capture any extra args the SDK passes alongside the message.
+      // Some SDK versions emit structured payloads with close codes or cause data.
+      // See docs/legacy/2026-04-22-voice-diagnostic.md.
+      const extraDetails = errorExtra.map((a) => {
+        if (a && typeof a === 'object') {
+          const rec = a as Record<string, unknown>;
+          return {
+            code: rec.code,
+            reason: rec.reason,
+            type: rec.type,
+            name: rec.name,
+            message: rec.message,
+            keys: Object.keys(rec),
+          };
+        }
+        return { value: a };
+      });
+      console.error('[VoiceSession] ⚠️ Error:', message, { extraDetails, halted: reconnectHaltedRef.current, alive: wsAliveRef.current, reconnecting: isReconnectingRef.current });
+      reportClientError('use-voice-session', `Voice error: ${message}`, { sessionId, extraDetails });
 
       // If reconnection was explicitly halted, don't do anything else
       if (reconnectHaltedRef.current) {

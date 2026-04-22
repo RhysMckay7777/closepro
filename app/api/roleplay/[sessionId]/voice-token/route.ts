@@ -298,10 +298,12 @@ export async function GET(
       );
     }
 
-    // Extend ElevenLabs idle timeout from 20s (default) to 180s (max)
-    // Also increase silence duration for better turn-taking (800ms instead of default ~300ms)
-    const separator = rawSignedUrl.includes('?') ? '&' : '?';
-    const signedUrl = `${rawSignedUrl}${separator}inactivity_timeout=180&turn_end_threshold=0.8`;
+    // DIAGNOSTIC 2026-04-22: previously appended inactivity_timeout=180&turn_end_threshold=0.8
+    // to the ElevenLabs-signed URL to tune idle timeout and silence detection. Suspected of
+    // invalidating the URL signature or being misinterpreted by the WebSocket handshake,
+    // causing 13-16s unintentional disconnects. Using the raw signed URL to isolate.
+    // See docs/legacy/2026-04-22-voice-diagnostic.md for the legacy snippet and revert path.
+    const signedUrl = rawSignedUrl;
 
     // Build dynamic variables for ElevenLabs agent template
     // These get injected into {{prospect_context}}, {{offer_info}}, {{first_message}} placeholders
