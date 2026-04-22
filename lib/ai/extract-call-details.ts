@@ -1,7 +1,4 @@
-import Groq from 'groq-sdk';
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
+import { chatComplete, getActiveProvider, isProviderConfigured, stripJsonFences } from '@/lib/ai/llm';
 
 export interface ExtractedCallDetails {
   callDate: string | null;
@@ -35,8 +32,8 @@ export async function extractCallDetails(
   transcript: string,
   offerNames: string[]
 ): Promise<ExtractedCallDetails> {
-  if (!groq) {
-    console.warn('[extract-call-details] No Groq API key — skipping extraction');
+  if (!isProviderConfigured(getActiveProvider())) {
+    console.warn('[extract-call-details] No LLM provider configured — skipping extraction');
     return EMPTY_RESULT;
   }
 
@@ -76,18 +73,16 @@ ${snippet}
 ---`;
 
   try {
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+    const content = await chatComplete({
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
-      max_tokens: 600,
-      response_format: { type: 'json_object' },
+      maxTokens: 600,
+      jsonMode: true,
     });
 
-    const content = response.choices[0]?.message?.content;
     if (!content) return EMPTY_RESULT;
 
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const parsed = JSON.parse(stripJsonFences(content)) as Record<string, unknown>;
 
     // Map callType values to DB enum values
     let callType = typeof parsed.callType === 'string' ? parsed.callType : null;

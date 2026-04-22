@@ -8,10 +8,7 @@ import { eq, and } from 'drizzle-orm';
 import { users, userOrganizations } from '@/db/schema';
 import { calculateDifficultyIndex } from '@/lib/ai/roleplay/prospect-avatar';
 import { transcribeAudioFile } from '@/lib/ai/transcription';
-import { Groq } from 'groq-sdk';
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
+import { chatComplete, getActiveProvider, isProviderConfigured, stripJsonFences } from '@/lib/ai/llm';
 
 export const maxDuration = 300;
 
@@ -184,9 +181,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract prospect intelligence using AI
-    if (!groq) {
+    if (!isProviderConfigured(getActiveProvider())) {
       return NextResponse.json(
-        { error: 'AI service not configured. Please set GROQ_API_KEY.' },
+        { error: 'AI service not configured. Please set GROQ_API_KEY or GEMINI_API_KEY.' },
         { status: 500 }
       );
     }
@@ -229,8 +226,7 @@ For executionResistance, look for signals like:
 
 Return ONLY valid JSON, no markdown formatting.`;
 
-    const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+    const content = await chatComplete({
       messages: [
         {
           role: 'system',
@@ -242,15 +238,14 @@ Return ONLY valid JSON, no markdown formatting.`;
         },
       ],
       temperature: 0.3,
-      response_format: { type: 'json_object' },
+      jsonMode: true,
     });
 
-    const content = response.choices[0]?.message?.content;
     if (!content) {
       throw new Error('No response from AI');
     }
 
-    const extracted = JSON.parse(content);
+    const extracted = JSON.parse(stripJsonFences(content));
 
     // Calculate difficulty (50-point model)
     const { index: difficultyIndex, tier: difficultyTier } = calculateDifficultyIndex(

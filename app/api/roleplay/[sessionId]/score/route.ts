@@ -8,19 +8,16 @@ import { eq, and } from 'drizzle-orm';
 import { analyzeCall, calculateCloserEffectiveness } from '@/lib/ai/analysis';
 import { sql } from 'drizzle-orm';
 import { ROLEPLAY_FEEDBACK_PROMPT, ROLEPLAY_FEEDBACK_DIMENSIONS, ROLEPLAY_FEEDBACK_LABELS, ROLEPLAY_FEEDBACK_DESCRIPTIONS } from '@/lib/training/scoring-categories';
-import Groq from 'groq-sdk';
+import { chatComplete, getActiveProvider, isProviderConfigured, stripJsonFences } from '@/lib/ai/llm';
 
 export const maxDuration = 300;
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const groqClient = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
 /**
  * Generate roleplay-specific post-call feedback (5 dimensions + coaching).
  * Runs as a secondary AI call after the main analysis.
  */
 async function generateRoleplayFeedback(transcript: string): Promise<Record<string, unknown> | null> {
-  if (!groqClient) return null;
+  if (!isProviderConfigured(getActiveProvider())) return null;
   try {
     const prompt = `You are a high-performance sales coach. Analyze this roleplay transcript and provide structured post-call feedback.
 
@@ -48,21 +45,18 @@ Return ONLY valid JSON with this structure:
   }
 }`;
 
-    const response = await groqClient.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+    const content = await chatComplete({
       messages: [
         { role: 'system', content: 'You are an elite sales performance coach. Return only valid JSON.' },
         { role: 'user', content: prompt },
       ],
       temperature: 0.3,
-      max_tokens: 3000,
-      response_format: { type: 'json_object' },
+      maxTokens: 3000,
+      jsonMode: true,
     });
 
-    const content = response.choices[0]?.message?.content;
     if (!content) return null;
-    let jsonText = content.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
-    return JSON.parse(jsonText);
+    return JSON.parse(stripJsonFences(content));
   } catch (err) {
     logger.error('ROLEPLAY', 'Feedback generation failed', err);
     return null;

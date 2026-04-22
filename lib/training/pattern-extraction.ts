@@ -3,11 +3,8 @@
  * Used by both the training transcripts API route and the admin seed route.
  */
 
-import Groq from 'groq-sdk';
+import { chatComplete, getActiveProvider, isProviderConfigured, stripJsonFences } from '@/lib/ai/llm';
 import { sampleForExtraction } from '@/lib/training/transcript-parser';
-
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const groqClient = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
 /**
  * Extract sales patterns from a transcript using AI.
@@ -15,13 +12,12 @@ const groqClient = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
  * instead of just truncating to the first 5000 chars.
  */
 export async function extractPatterns(transcript: string): Promise<Record<string, string[]> | null> {
-  if (!groqClient) return null;
+  if (!isProviderConfigured(getActiveProvider())) return null;
   try {
     // Smart sampling: covers the whole call instead of just the opening
     const sample = sampleForExtraction(transcript, 6000);
 
-    const response = await groqClient.chat.completions.create({
-      model: 'llama-3.3-70b-versatile',
+    const content = await chatComplete({
       messages: [
         {
           role: 'system',
@@ -45,13 +41,12 @@ Return JSON with these arrays (2-5 items each, be specific with actual phrases/t
         },
       ],
       temperature: 0.3,
-      max_tokens: 2000,
-      response_format: { type: 'json_object' },
+      maxTokens: 2000,
+      jsonMode: true,
     });
 
-    const content = response.choices[0]?.message?.content;
     if (!content) return null;
-    return JSON.parse(content.trim().replace(/^```json\n?/, '').replace(/\n?```$/, ''));
+    return JSON.parse(stripJsonFences(content));
   } catch (err) {
     console.error('[pattern-extraction] Error:', err);
     return null;

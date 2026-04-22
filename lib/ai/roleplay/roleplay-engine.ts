@@ -2,7 +2,7 @@
 // Integrates all layers to generate realistic prospect responses
 
 import Anthropic from '@anthropic-ai/sdk';
-import Groq from 'groq-sdk';
+import { chatComplete, getActiveProvider, isProviderConfigured } from '@/lib/ai/llm';
 import { OfferProfile, generateOfferSummary, getDefaultSalesStyle } from './offer-intelligence';
 import { ProspectAvatar, ProspectDifficultyProfile, DifficultyTier } from './prospect-avatar';
 import { FunnelContext } from './funnel-context';
@@ -16,11 +16,9 @@ import { getCondensedExamples } from '@/lib/ai/knowledge/real-call-examples';
 import { getTranscriptPatternsForUser } from './transcript-patterns';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const USE_GROQ = process.env.USE_GROQ !== 'false'; // Default to Groq
+const USE_GROQ = process.env.USE_GROQ !== 'false'; // Default to Groq (or whichever provider is active)
 
 const anthropic = ANTHROPIC_API_KEY ? new Anthropic({ apiKey: ANTHROPIC_API_KEY }) : null;
-const groq = GROQ_API_KEY ? new Groq({ apiKey: GROQ_API_KEY }) : null;
 
 export interface RoleplayMessage {
   role: 'rep' | 'prospect' | 'system';
@@ -87,17 +85,16 @@ export async function generateProspectResponse(
   // Generate response
   let prospectResponse: string;
   try {
-    if (USE_GROQ && groq) {
-      const response = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+    if (USE_GROQ && isProviderConfigured(getActiveProvider())) {
+      const content = await chatComplete({
         messages: [
           { role: 'system', content: systemPrompt },
           ...conversationMessages,
         ],
         temperature: 0.7, // More creative for realistic conversation
-        max_tokens: 200,
+        maxTokens: 200,
       });
-      prospectResponse = response.choices[0]?.message?.content || '...';
+      prospectResponse = content || '...';
     } else if (anthropic) {
       const response = await anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',

@@ -2,7 +2,7 @@
 // Alternative: Groq (faster, cheaper) or Together AI (flexible)
 
 import Anthropic from '@anthropic-ai/sdk';
-import Groq from 'groq-sdk';
+import { chatComplete, getActiveProvider, isProviderConfigured, stripJsonFences } from '@/lib/ai/llm';
 import { SALES_CATEGORIES, type SalesCategoryId } from './scoring-framework';
 import { getCondensedExamples } from './knowledge/real-call-examples';
 import {
@@ -20,16 +20,11 @@ import {
 import { getDifficultyBandV2 } from '@/lib/training/prospect-difficulty-model';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const USE_GROQ = process.env.USE_GROQ === 'true' || !ANTHROPIC_API_KEY; // Default to Groq if no Anthropic key
 
 // Initialize AI clients
 const anthropic = ANTHROPIC_API_KEY
   ? new Anthropic({ apiKey: ANTHROPIC_API_KEY })
-  : null;
-
-const groq = GROQ_API_KEY
-  ? new Groq({ apiKey: GROQ_API_KEY })
   : null;
 
 // ═══════════════════════════════════════════════════════════
@@ -374,31 +369,27 @@ export async function analyzeCall(
   const prompt = buildAnalysisPrompt(transcript, transcriptJson, offerCategory, customerStage, confirmFormContext);
   const systemPrompt = buildSystemPrompt();
 
-  // Try Groq first (cheaper, faster) if enabled, otherwise try Anthropic
-  if (USE_GROQ && groq) {
+  // Try LLM provider (Groq or Gemini per LLM_PROVIDER env) first if enabled, otherwise try Anthropic
+  if (USE_GROQ && isProviderConfigured(getActiveProvider())) {
     try {
-      const response = await groq.chat.completions.create({
-        model: 'llama-3.3-70b-versatile',
+      const content = await chatComplete({
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: prompt },
         ],
         temperature: 0.3,
-        max_tokens: 8000,
-        response_format: { type: 'json_object' },
+        maxTokens: 8000,
+        jsonMode: true,
       });
 
-      const content = response.choices[0]?.message?.content;
       if (!content) {
-        throw new Error('No response from Groq');
+        throw new Error('No response from LLM provider');
       }
 
-      let jsonText = content.trim();
-      jsonText = jsonText.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-      const analysis = JSON.parse(jsonText);
+      const analysis = JSON.parse(stripJsonFences(content));
       return normalizeAnalysis(analysis, offerCategory, customerStage);
     } catch (error: any) {
-      console.error('Groq analysis error:', error);
+      console.error('LLM provider analysis error:', error);
       if (!anthropic) {
         throw new Error(`Analysis failed: ${error.message || 'Unknown error'}`);
       }
@@ -436,26 +427,23 @@ export async function analyzeCall(
       console.error('Anthropic analysis error:', error);
       const msg = error?.message ?? '';
       const isCreditError = /credit|balance|too low|invalid_request|payment|upgrade/i.test(msg) || error?.status === 400;
-      if (isCreditError && groq) {
+      if (isCreditError && isProviderConfigured(getActiveProvider())) {
         try {
-          const response = await groq.chat.completions.create({
-            model: 'llama-3.3-70b-versatile',
+          const content = await chatComplete({
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: prompt },
             ],
             temperature: 0.3,
-            max_tokens: 8000,
-            response_format: { type: 'json_object' },
+            maxTokens: 8000,
+            jsonMode: true,
           });
-          const content = response.choices[0]?.message?.content;
-          if (!content) throw new Error('No response from Groq');
-          let jsonText = content.trim().replace(/^```json\n?/, '').replace(/\n?```$/, '');
-          const analysis = JSON.parse(jsonText);
-          console.info('Call analysis completed via Groq (Anthropic credits low or unavailable).');
+          if (!content) throw new Error('No response from LLM provider');
+          const analysis = JSON.parse(stripJsonFences(content));
+          console.info('Call analysis completed via LLM provider (Anthropic credits low or unavailable).');
           return normalizeAnalysis(analysis, offerCategory, customerStage);
-        } catch (groqError: any) {
-          console.error('Groq fallback error:', groqError);
+        } catch (llmError: any) {
+          console.error('LLM provider fallback error:', llmError);
         }
       }
       throw new Error(`Analysis failed: ${msg || 'Unknown error'}`);
